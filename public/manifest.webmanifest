@@ -1,0 +1,13 @@
+{
+  "name": "AntRep",
+  "short_name": "AntRep",
+  "description": "Log your workouts. Your coach sees your progress.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#9BD4C3",
+  "theme_color": "#9BD4C3",
+  "icons": [
+    { "src": "/icons/athlete-icon.png", "sizes": "1024x1024", "type": "image/png", "purpose": "any" }
+  ]
+}

@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#9BD4C3" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <title>AntRep</title>
+    <script>
+      // Coach portal gets its own manifest/branding so both flows are
+      // installable as separate home-screen apps from the same deploy.
+      const coach = location.pathname.startsWith("/coach");
+      document.title = coach ? "AntRep Coach" : "AntRep";
+      const manifest = document.createElement("link");
+      manifest.rel = "manifest";
+      manifest.href = coach ? "/coach.webmanifest" : "/manifest.webmanifest";
+      document.head.appendChild(manifest);
+      const touchIcon = document.createElement("link");
+      touchIcon.rel = "apple-touch-icon";
+      touchIcon.href = coach ? "/icons/coach-icon.png" : "/icons/athlete-icon.png";
+      document.head.appendChild(touchIcon);
+      const favicon = document.createElement("link");
+      favicon.rel = "icon";
+      favicon.type = "image/png";
+      favicon.href = coach ? "/icons/coach-icon.png" : "/icons/athlete-icon.png";
+      document.head.appendChild(favicon);
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

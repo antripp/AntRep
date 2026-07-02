@@ -1,0 +1,13 @@
+{
+  "name": "AntRep Coach",
+  "short_name": "AntRep Coach",
+  "description": "Build plans, review sessions, export progress.",
+  "start_url": "/coach",
+  "scope": "/coach",
+  "display": "standalone",
+  "background_color": "#9BD4C3",
+  "theme_color": "#9BD4C3",
+  "icons": [
+    { "src": "/icons/coach-icon.png", "sizes": "1024x1024", "type": "image/png", "purpose": "any" }
+  ]
+}

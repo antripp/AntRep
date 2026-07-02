@@ -1,0 +1,48 @@
+@import "tailwindcss";
+
+/* StarDo Valley tokens ported from the iOS app (DesignTokens.swift). */
+@theme {
+  --color-mint: #9bd4c3;
+  --color-mint-deep: #66b29c;
+  --color-mint-add: #8bcab7;
+  --color-mint-pale: #dff0ea;
+  --color-ink: #313131;
+  --color-chip: #66757f;
+  --color-check-back: #c1ceea;
+  --color-check-front: #e7ecf7;
+  --color-check-mark: #4e5aa8;
+  --color-done-back: #3e9e78;
+  --color-done: #4fbe92;
+  --color-star: #f5b301;
+  --color-valley-purple: #8c5cf5;
+  --color-valley-cyan: #21d4ed;
+  --color-valley-pink: #fa73b8;
+  --color-tab-label: #f4f9f1;
+
+  --font-sans: "Nunito", ui-rounded, -apple-system, "SF Pro Rounded", system-ui, sans-serif;
+
+  --radius-card: 1.5rem;
+}
+
+html {
+  background-color: var(--color-mint);
+}
+
+body {
+  margin: 0;
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  min-height: 100dvh;
+}
+
+/* Hide number-input spinners; we render our own steppers. */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
