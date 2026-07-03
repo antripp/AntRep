@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import type { CoachLink, Profile } from "../../lib/types";
+import { useRealtime } from "../../lib/useRealtime";
 import { Icons, TabBar } from "../../components/ui";
-import AthletesPage from "./AthletesPage";
-import PlanEditorPage from "./PlanEditorPage";
+import { athleteDisplayName } from "./AthletesPage";
+import PlansPage from "./PlansPage";
 import SessionsPage from "./SessionsPage";
 import CoachSettingsPage from "./CoachSettingsPage";
 
@@ -13,48 +14,47 @@ export interface LinkedAthlete {
 }
 
 export default function CoachApp() {
-  const [tab, setTab] = useState("athletes");
+  const [tab, setTab] = useState("plans");
   const [athletes, setAthletes] = useState<LinkedAthlete[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  async function loadAthletes() {
+  const loadAthletes = useCallback(async () => {
     const { data } = await supabase.from("coach_links").select("*").eq("status", "active");
-    const links = (data as CoachLink[]) ?? [];
-    const result: LinkedAthlete[] = [];
-    for (const link of links) {
-      if (!link.athlete_id) continue;
-      const { data: athlete } = await supabase
+    const links = ((data as CoachLink[]) ?? []).filter((l) => l.athlete_id);
+    let profiles: Profile[] = [];
+    if (links.length > 0) {
+      const { data: rows } = await supabase
         .from("profiles")
-        .select("id, role, display_name")
-        .eq("id", link.athlete_id)
-        .maybeSingle();
-      if (athlete) result.push({ link, athlete: athlete as Profile });
+        .select("*")
+        .in("id", links.map((l) => l.athlete_id as string));
+      profiles = (rows as Profile[]) ?? [];
     }
+    const result = links
+      .map((link) => ({ link, athlete: profiles.find((p) => p.id === link.athlete_id) }))
+      .filter((x): x is LinkedAthlete => Boolean(x.athlete));
     setAthletes(result);
-    setSelectedId((current) => current ?? result[0]?.athlete.id ?? null);
-  }
+    setSelectedId((current) =>
+      current && result.some((r) => r.athlete.id === current) ? current : (result[0]?.athlete.id ?? null),
+    );
+  }, []);
 
   useEffect(() => {
     loadAthletes();
-  }, []);
-
-  const selected = athletes.find((a) => a.athlete.id === selectedId) ?? null;
+  }, [loadAthletes]);
+  useRealtime("coach-athletes", ["coach_links", "profiles"], loadAthletes);
 
   return (
-    <div className="min-h-dvh bg-mint">
-      <main className="mx-auto max-w-md px-4 pb-28 pt-6 md:max-w-3xl md:pb-10 md:pl-28 lg:max-w-4xl">
-        {tab === "athletes" && (
-          <AthletesPage
+    <div className="pattern-bg min-h-dvh bg-bg">
+      <main className="mx-auto max-w-md px-4 pb-28 pt-6 md:max-w-4xl md:pb-10 md:pl-28 lg:max-w-5xl">
+        {tab === "plans" && (
+          <PlansPage
             athletes={athletes}
-            onChanged={loadAthletes}
-            onSelect={(id) => {
+            onAthletesChanged={loadAthletes}
+            onOpenSessions={(id) => {
               setSelectedId(id);
-              setTab("plan");
+              setTab("sessions");
             }}
           />
-        )}
-        {tab === "plan" && (
-          <PlanEditorPage athletes={athletes} selectedId={selectedId} onSelectAthlete={setSelectedId} />
         )}
         {tab === "sessions" && (
           <SessionsPage athletes={athletes} selectedId={selectedId} onSelectAthlete={setSelectedId} />
@@ -65,24 +65,16 @@ export default function CoachApp() {
         active={tab}
         onSelect={setTab}
         tabs={[
-          { key: "athletes", label: "Athletes", icon: Icons.athletes },
-          { key: "plan", label: "Plan", icon: Icons.plan },
+          { key: "plans", label: "Plans", icon: Icons.plan },
           { key: "sessions", label: "Sessions", icon: Icons.sessions },
           { key: "settings", label: "Settings", icon: Icons.settings },
         ]}
       />
-      {selected && tab !== "athletes" && tab !== "settings" && (
-        <div className="pointer-events-none fixed left-0 right-0 top-0 z-10 flex justify-center md:pl-20">
-          <span className="rounded-b-2xl bg-ink px-4 py-1 text-xs font-extrabold text-white">
-            {selected.athlete.display_name}
-          </span>
-        </div>
-      )}
     </div>
   );
 }
 
-/** Small athlete picker shown on Plan & Sessions tabs. */
+/** Small athlete picker shown on the Sessions tab. */
 export function AthletePicker({
   athletes,
   selectedId,
@@ -95,15 +87,15 @@ export function AthletePicker({
   if (athletes.length <= 1) return null;
   return (
     <div className="mb-3 flex flex-wrap gap-2">
-      {athletes.map((a) => (
+          {athletes.map((a) => (
         <button
           key={a.athlete.id}
           onClick={() => onSelect(a.athlete.id)}
-          className={`rounded-full px-3 py-1 text-xs font-extrabold ${
-            a.athlete.id === selectedId ? "bg-ink text-white" : "bg-white/70 text-ink"
+          className={`rounded-full px-3 py-1 text-xs font-extrabold transition ${
+            a.athlete.id === selectedId ? "bg-accent text-white" : "border-2 border-line bg-surface text-muted"
           }`}
         >
-          {a.athlete.display_name}
+          {athleteDisplayName(a.link, a.athlete)}
         </button>
       ))}
     </div>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { localDateString, type CoachSettings, type Session, type SetLog } from "../../lib/types";
 import { applyLayout, buildColumns, exportCsv, exportXlsx, type SessionExport } from "../../lib/exportXlsx";
+import { useRealtime } from "../../lib/useRealtime";
 import { Button, Card, EmptyState, Spinner } from "../../components/ui";
 import { useAuth } from "../auth/useAuth";
 import { AthletePicker, type LinkedAthlete } from "./CoachApp";
@@ -28,12 +29,12 @@ export default function SessionsPage({
   });
   const [toDate, setToDate] = useState(localDateString(new Date()));
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     if (!selectedId || !profile) {
       setLoading(false);
       return;
     }
-    setLoading(true);
+    if (!silent) setLoading(true);
     const { data: s } = await supabase
       .from("sessions")
       .select("*")
@@ -70,6 +71,9 @@ export default function SessionsPage({
   useEffect(() => {
     load();
   }, [load]);
+
+  // Live: new sets appear as the athlete logs them, no refresh needed.
+  useRealtime("coach-sessions", ["sessions", "set_logs"], () => load(true));
 
   function columns() {
     return applyLayout(buildColumns(settings?.custom_fields ?? []), settings?.export_columns ?? []);
@@ -108,7 +112,7 @@ export default function SessionsPage({
             From
             <input
               type="date"
-              className="mt-1 block rounded-xl border border-mint/60 bg-white px-2 py-1.5 text-sm font-bold text-ink"
+              className="mt-1 block rounded-xl border-2 border-line bg-inset px-2 py-1.5 text-sm font-bold text-ink outline-none focus:border-accent"
               value={fromDate}
               onChange={(e) => setFromDate(e.target.value)}
             />
@@ -117,7 +121,7 @@ export default function SessionsPage({
             To
             <input
               type="date"
-              className="mt-1 block rounded-xl border border-mint/60 bg-white px-2 py-1.5 text-sm font-bold text-ink"
+              className="mt-1 block rounded-xl border-2 border-line bg-inset px-2 py-1.5 text-sm font-bold text-ink outline-none focus:border-accent"
               value={toDate}
               onChange={(e) => setToDate(e.target.value)}
             />
@@ -162,6 +166,8 @@ export default function SessionsPage({
                     <p className="text-xs font-semibold text-chip">
                       {s.status === "complete" ? "✓ Complete" : "In progress"} · {sets.length} sets
                       {volume > 0 && ` · ${Math.round(volume)} kg volume`}
+                      {s.calories != null && ` · ${s.calories} kcal`}
+                      {s.plan_day_id === null && " · own session"}
                     </p>
                   </div>
                   <span className="text-chip">{open ? "▴" : "▾"}</span>

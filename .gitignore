@@ -2,6 +2,12 @@ node_modules
 dist
 .env
 .env.local
+.env.*
+!.env.example
 .DS_Store
 *.local
 *.tsbuildinfo
+
+# Database SQL — local only; run manually in Supabase SQL Editor (not versioned).
+supabase/*
+!supabase/.gitkeep

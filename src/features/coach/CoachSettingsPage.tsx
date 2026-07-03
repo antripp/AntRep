@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import type { CoachSettings, CustomField } from "../../lib/types";
 import { buildColumns } from "../../lib/exportXlsx";
-import { Button, Card, Spinner, TextInput } from "../../components/ui";
+import { Button, Card, Select, Spinner, TextInput } from "../../components/ui";
+import { AvatarCard, DeleteAccountCard, PatternLabCard, RoleSwitchCard, ThemeCard, AdminApprovalCard } from "../../components/SettingsShared";
 import { useAuth } from "../auth/useAuth";
 
 /**
@@ -11,7 +12,7 @@ import { useAuth } from "../auth/useAuth";
  *  - which columns (and order) exports contain, to match the coach's sheet
  */
 export default function CoachSettingsPage() {
-  const { profile, refreshProfile } = useAuth();
+  const { profile, refreshProfiles, signOut } = useAuth();
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState(profile?.display_name ?? "");
   const [fields, setFields] = useState<CustomField[]>([]);
@@ -95,7 +96,7 @@ export default function CoachSettingsPage() {
   async function saveName() {
     if (!profile) return;
     await supabase.from("profiles").update({ display_name: name.trim() }).eq("id", profile.id);
-    await refreshProfile();
+    await refreshProfiles();
   }
 
   if (loading) return <Spinner />;
@@ -111,6 +112,15 @@ export default function CoachSettingsPage() {
             <Button onClick={saveName}>Save</Button>
           </div>
         </Card>
+
+        <AvatarCard />
+
+        <ThemeCard />
+
+        <PatternLabCard />
+
+        <RoleSwitchCard />
+        <AdminApprovalCard />
 
         <Card>
           <h2 className="mb-1 font-black">Custom logging fields</h2>
@@ -143,14 +153,14 @@ export default function CoachSettingsPage() {
               value={newUnit}
               onChange={(e) => setNewUnit(e.target.value)}
             />
-            <select
-              className="rounded-xl border border-mint/60 bg-white px-2 text-xs font-extrabold"
+            <Select
               value={newType}
-              onChange={(e) => setNewType(e.target.value as "number" | "text")}
-            >
-              <option value="number">number</option>
-              <option value="text">text</option>
-            </select>
+              onChange={setNewType}
+              options={[
+                { value: "number", label: "number" },
+                { value: "text", label: "text" },
+              ]}
+            />
             <Button onClick={addField} disabled={!newLabel.trim()}>
               Add
             </Button>
@@ -185,6 +195,12 @@ export default function CoachSettingsPage() {
             );
           })}
         </Card>
+
+        <Button variant="secondary" onClick={signOut}>
+          Sign out
+        </Button>
+
+        <DeleteAccountCard onDeleted={() => window.location.assign("/coach")} />
       </div>
     </>
   );

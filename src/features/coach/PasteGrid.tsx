@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { supabase } from "../../lib/supabase";
-import { Button, Card } from "../../components/ui";
+import { Button, Modal, Select } from "../../components/ui";
 
 /**
  * Paste-from-Excel importer. Excel/Sheets put tab-separated text on the
@@ -117,78 +117,70 @@ export default function PasteGrid({
   }
 
   return (
-    <div className="fixed inset-0 z-30 flex items-end justify-center bg-ink/40 p-0 md:items-center md:p-6">
-      <Card className="max-h-[90dvh] w-full max-w-2xl overflow-y-auto rounded-b-none md:rounded-card">
-        <h2 className="mb-1 text-lg font-black">Paste from Excel</h2>
-        <p className="mb-3 text-xs font-semibold text-chip">
-          Copy the exercise rows in your sheet (Ctrl/Cmd+C), then paste below (Ctrl/Cmd+V).
-        </p>
+    <Modal title="Paste from Excel" onClose={onCancel} wide>
+      <p className="mb-3 text-xs font-semibold text-muted">
+        Copy the exercise rows in your sheet (Ctrl/Cmd+C), then paste below (Ctrl/Cmd+V).
+      </p>
 
-        <textarea
-          className="mb-2 h-28 w-full rounded-xl border border-mint/60 bg-white p-3 font-mono text-xs outline-none focus:border-mint-deep"
+      <textarea
+          className="mb-2 h-28 w-full rounded-xl border-2 border-line bg-inset p-3 font-mono text-xs text-ink outline-none focus:border-accent"
           placeholder={"Bench press\t3\t10\t60\nIncline DB press\t3\t12\t22.5"}
           value={raw}
           onChange={(e) => setRaw(e.target.value)}
         />
-        <label className="mb-3 flex items-center gap-2 text-xs font-bold text-chip">
-          <input type="checkbox" checked={hasHeader} onChange={(e) => setHasHeader(e.target.checked)} />
-          First row is a header
-        </label>
+      <label className="mb-3 flex items-center gap-2 text-xs font-bold text-muted">
+        <input type="checkbox" checked={hasHeader} onChange={(e) => setHasHeader(e.target.checked)} />
+        First row is a header
+      </label>
 
-        {rows.length > 0 && (
-          <div className="mb-3 overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr>
-                  {Array.from({ length: width }, (_, i) => (
-                    <th key={i} className="p-1">
-                      <select
-                        className="w-full rounded-lg border border-mint/60 bg-white px-1 py-1 text-[11px] font-extrabold"
-                        value={effectiveMapping[i]}
-                        onChange={(e) => {
-                          const next = [...effectiveMapping];
-                          next[i] = e.target.value as Target;
-                          setMapping(next);
-                        }}
-                      >
-                        {TARGETS.map((t) => (
-                          <option key={t} value={t}>
-                            {TARGET_LABELS[t]}
-                          </option>
-                        ))}
-                      </select>
-                    </th>
+      {rows.length > 0 && (
+        <div className="mb-3 overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr>
+                {Array.from({ length: width }, (_, i) => (
+                  <th key={i} className="p-1">
+                    <Select
+                      className="w-full px-1 py-1 text-[11px]"
+                      value={effectiveMapping[i]}
+                      onChange={(v) => {
+                        const next = [...effectiveMapping];
+                        next[i] = v as Target;
+                        setMapping(next);
+                      }}
+                      options={TARGETS.map((t) => ({ value: t, label: TARGET_LABELS[t] }))}
+                    />
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {dataRows.slice(0, 8).map((row, ri) => (
+                <tr key={ri} className="border-t-2 border-line">
+                  {Array.from({ length: width }, (_, ci) => (
+                    <td key={ci} className="truncate p-1 font-semibold">
+                      {row[ci] ?? ""}
+                    </td>
                   ))}
                 </tr>
-              </thead>
-              <tbody>
-                {dataRows.slice(0, 8).map((row, ri) => (
-                  <tr key={ri} className="border-t border-mint-pale">
-                    {Array.from({ length: width }, (_, ci) => (
-                      <td key={ci} className="truncate p-1 font-semibold">
-                        {row[ci] ?? ""}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {dataRows.length > 8 && (
-              <p className="mt-1 text-[11px] font-bold text-chip">…and {dataRows.length - 8} more rows</p>
-            )}
-          </div>
-        )}
-
-        {error && <p className="mb-2 text-xs font-bold text-red-500">{error}</p>}
-        <div className="flex gap-2">
-          <Button onClick={importRows} disabled={busy || preview.length === 0}>
-            {busy ? "…" : `Import ${preview.length} exercise${preview.length === 1 ? "" : "s"}`}
-          </Button>
-          <Button variant="ghost" onClick={onCancel}>
-            Cancel
-          </Button>
+              ))}
+            </tbody>
+          </table>
+          {dataRows.length > 8 && (
+            <p className="mt-1 text-[11px] font-bold text-muted">…and {dataRows.length - 8} more rows</p>
+          )}
         </div>
-      </Card>
-    </div>
+      )}
+
+      {error && <p className="mb-2 text-xs font-bold text-danger">{error}</p>}
+      <div className="flex gap-2">
+        <Button onClick={importRows} disabled={busy || preview.length === 0}>
+          {busy ? "…" : `Import ${preview.length} exercise${preview.length === 1 ? "" : "s"}`}
+        </Button>
+        <Button variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </Modal>
   );
 }

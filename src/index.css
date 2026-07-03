@@ -1,39 +1,145 @@
 @import "tailwindcss";
 
-/* StarDo Valley tokens ported from the iOS app (DesignTokens.swift). */
+/* ============================================================
+   Runtime theme: <html data-theme="light|dark" data-accent="…">
+   (set by ThemeProvider). Raw values live in --t-* vars so the
+   Tailwind tokens below react to theme/accent switches.
+   ============================================================ */
+
+:root {
+  /* accent (default: mint/duo-green) */
+  --t-accent: #58cc02;
+  --t-accent-deep: #46a302;
+
+  /* light mode surfaces */
+  --t-bg: #f5f7f2;
+  --t-surface: #ffffff;
+  --t-inset: #f2f4f0;
+  --t-ink: #3c3c3c;
+  --t-muted: #82898f;
+  --t-line: #e5e5e5;
+  --t-checker: rgba(60, 60, 60, 0.03);
+
+  --t-accent-soft: color-mix(in srgb, var(--t-accent) 13%, var(--t-surface));
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --t-bg: #131f24;
+  --t-surface: #202f36;
+  --t-inset: #17262d;
+  --t-ink: #f1f7fb;
+  --t-muted: #8ba5b0;
+  --t-line: #37464f;
+  --t-checker: rgba(255, 255, 255, 0.03);
+  color-scheme: dark;
+}
+
+:root[data-accent="sky"] {
+  --t-accent: #1cb0f6;
+  --t-accent-deep: #1899d6;
+}
+:root[data-accent="grape"] {
+  --t-accent: #a560f8;
+  --t-accent-deep: #8a48d8;
+}
+:root[data-accent="punch"] {
+  --t-accent: #ff4b8b;
+  --t-accent-deep: #d63771;
+}
+:root[data-accent="sunset"] {
+  --t-accent: #ff9600;
+  --t-accent-deep: #db8100;
+}
+
 @theme {
-  --color-mint: #9bd4c3;
-  --color-mint-deep: #66b29c;
-  --color-mint-add: #8bcab7;
-  --color-mint-pale: #dff0ea;
-  --color-ink: #313131;
-  --color-chip: #66757f;
-  --color-check-back: #c1ceea;
-  --color-check-front: #e7ecf7;
-  --color-check-mark: #4e5aa8;
-  --color-done-back: #3e9e78;
-  --color-done: #4fbe92;
-  --color-star: #f5b301;
-  --color-valley-purple: #8c5cf5;
-  --color-valley-cyan: #21d4ed;
-  --color-valley-pink: #fa73b8;
-  --color-tab-label: #f4f9f1;
+  /* semantic tokens */
+  --color-bg: var(--t-bg);
+  --color-surface: var(--t-surface);
+  --color-inset: var(--t-inset);
+  --color-ink: var(--t-ink);
+  --color-muted: var(--t-muted);
+  --color-line: var(--t-line);
+  --color-accent: var(--t-accent);
+  --color-accent-deep: var(--t-accent-deep);
+  --color-accent-soft: var(--t-accent-soft);
+  --color-danger: #ff4b4b;
+  --color-danger-deep: #d33131;
+  --color-gold: #ffc800;
+  --color-done: #58cc02;
+  --color-done-deep: #46a302;
+
+  /* legacy aliases (older class names used across the app) */
+  --color-mint: var(--t-accent);
+  --color-mint-deep: var(--t-accent-deep);
+  --color-mint-pale: var(--t-accent-soft);
+  --color-chip: var(--t-muted);
+  --color-done-back: #46a302;
+  --color-star: #ffc800;
+  --color-check-back: var(--t-line);
+  --color-check-front: var(--t-inset);
+  --color-tab-label: var(--t-muted);
 
   --font-sans: "Nunito", ui-rounded, -apple-system, "SF Pro Rounded", system-ui, sans-serif;
+  --font-quote: "Baskerville", "Palatino", "Iowan Old Style", Georgia, serif;
 
-  --radius-card: 1.5rem;
+  --radius-card: 1rem;
 }
 
 html {
-  background-color: var(--color-mint);
+  background-color: var(--t-bg);
 }
 
 body {
   margin: 0;
-  color: var(--color-ink);
+  color: var(--t-ink);
+  background-color: var(--t-bg);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   min-height: 100dvh;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+/* Background texture — style comes from <html data-pattern="…">, tile size
+   from --pattern-size and ink from --t-checker (both set by ThemeProvider,
+   tunable in the dev-mode Pattern lab). */
+.pattern-bg,
+.checker-bg {
+  background-size: var(--pattern-size, 32px) var(--pattern-size, 32px);
+}
+html[data-pattern="checker"] .pattern-bg,
+html[data-pattern="checker"] .checker-bg {
+  background-image:
+    linear-gradient(45deg, var(--t-checker) 25%, transparent 25%, transparent 75%, var(--t-checker) 75%),
+    linear-gradient(45deg, var(--t-checker) 25%, transparent 25%, transparent 75%, var(--t-checker) 75%);
+  background-position:
+    0 0,
+    calc(var(--pattern-size, 32px) / 2) calc(var(--pattern-size, 32px) / 2);
+}
+html[data-pattern="dots"] .pattern-bg,
+html[data-pattern="dots"] .checker-bg {
+  background-image: radial-gradient(var(--t-checker) 1.5px, transparent 1.6px);
+}
+html[data-pattern="grid"] .pattern-bg,
+html[data-pattern="grid"] .checker-bg {
+  background-image:
+    linear-gradient(var(--t-checker) 1px, transparent 1px),
+    linear-gradient(90deg, var(--t-checker) 1px, transparent 1px);
+}
+html[data-pattern="diag"] .pattern-bg,
+html[data-pattern="diag"] .checker-bg {
+  background-image: repeating-linear-gradient(
+    45deg,
+    var(--t-checker) 0,
+    var(--t-checker) 1.5px,
+    transparent 1.5px,
+    transparent calc(var(--pattern-size, 32px) / 2)
+  );
+  background-size: auto;
+}
+html[data-pattern="none"] .pattern-bg,
+html[data-pattern="none"] .checker-bg {
+  background-image: none;
 }
 
 /* Hide number-input spinners; we render our own steppers. */

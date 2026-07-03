@@ -36,6 +36,7 @@ export function buildColumns(customFields: CustomField[]): ExportColumn[] {
       label: "Duration",
       value: (_s, l) => (l.duration_sec != null ? formatDuration(l.duration_sec) : ""),
     },
+    { key: "calories", label: "Calories", value: (_s, l) => l.calories ?? "" },
     { key: "note", label: "Notes", value: (_s, l) => l.note },
   ];
   const custom: ExportColumn[] = customFields.map((f) => ({
@@ -72,7 +73,7 @@ function setsRows(data: SessionExport[], columns: ExportColumn[]): (string | num
 
 function summaryRows(data: SessionExport[]): (string | number)[][] {
   const rows: (string | number)[][] = [
-    ["Date", "Session", "Exercises", "Sets", "Total volume (kg)", "Total distance (km)", "Duration"],
+    ["Date", "Session", "Exercises", "Sets", "Total volume (kg)", "Total distance (km)", "Duration", "Calories"],
   ];
   for (const { session, sets } of data) {
     const exercises = new Set(sets.map((s) => s.exercise_name)).size;
@@ -97,6 +98,7 @@ function summaryRows(data: SessionExport[]): (string | number)[][] {
       Math.round(volume),
       Number(distance.toFixed(2)),
       duration,
+      session.calories ?? "",
     ]);
   }
   return rows;

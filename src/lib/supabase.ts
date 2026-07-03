@@ -8,7 +8,7 @@ export const isConfigured = Boolean(url && anonKey);
 
 /**
  * The anon key is a public, browser-safe key by design — every table is
- * protected by Row-Level Security in supabase/schema.sql. The service_role
+ * protected by Row-Level Security in Postgres. The service_role
  * key must never appear anywhere in this repo.
  */
 export const supabase: SupabaseClient = createClient(
