@@ -1,18 +1,17 @@
 import { useState, type FormEvent } from "react";
 import { supabase } from "../../lib/supabase";
-import type { Role } from "../../lib/types";
 import { Button, Card, TextInput } from "../../components/ui";
+import { MASCOTS } from "../../lib/brand";
+import type { Role } from "../../lib/types";
 import { ensureProfile, signUpWithRole, useAuth } from "./useAuth";
 
-const BRAND: Record<Role, { name: string; mascot: string; tagline: string }> = {
+const BRAND: Record<Role, { name: string; tagline: string }> = {
   athlete: {
     name: "AntRep",
-    mascot: "/mascots/athlete-mascot.png",
     tagline: "Log your reps. Your coach handles the rest.",
   },
   coach: {
     name: "AntRep Coach",
-    mascot: "/mascots/coach-mascot.png",
     tagline: "Build plans. Watch sessions roll in.",
   },
 };
@@ -61,7 +60,11 @@ export default function AuthPage({ role }: { role: Role }) {
 
   return (
     <div className="pattern-bg flex min-h-dvh flex-col items-center justify-center bg-bg px-6 py-10">
-      <img src={brand.mascot} alt={`${brand.name} mascot`} className="mb-4 h-36 w-36 object-contain" />
+      <img
+        src={MASCOTS[role]}
+        alt={`${brand.name} mascot`}
+        className="mb-4 h-36 w-36 object-contain"
+      />
       <h1 className="text-3xl font-black tracking-tight text-ink">{brand.name}</h1>
       <p className="mb-6 mt-1 text-sm font-bold text-muted">{brand.tagline}</p>
 

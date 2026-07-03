@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from "react";
+import { MASCOTS } from "../lib/brand";
 import type { AvatarPref } from "../lib/types";
 
 /* Flat, bordered "Duolingo" card. */
@@ -232,7 +233,7 @@ export function Spinner() {
 export function EmptyState({ mascot, title, subtitle }: { mascot?: boolean; title: string; subtitle?: string }) {
   return (
     <div className="flex flex-col items-center gap-3 py-10 text-center">
-      {mascot && <img src="/mascots/athlete-mascot.png" alt="" className="h-28 w-28 opacity-90" />}
+      {mascot && <img src={MASCOTS.athlete} alt="" className="h-28 w-28 object-contain opacity-90" />}
       <p className="text-base font-extrabold">{title}</p>
       {subtitle && <p className="max-w-xs text-sm font-semibold text-muted">{subtitle}</p>}
     </div>

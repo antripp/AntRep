@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { MASCOTS } from "../../lib/brand";
 import type { CustomField, PlanExercise, Session, SetLog } from "../../lib/types";
 import { Button, Card, TextInput } from "../../components/ui";
 
@@ -44,7 +45,7 @@ export default function SessionSummary({
     <div className="flex flex-col gap-3">
       <Card className="border-done-deep bg-done text-white">
         <div className="flex items-center gap-4">
-          <img src="/mascots/athlete-mascot.png" alt="" className="h-16 w-16" />
+          <img src={MASCOTS.athlete} alt="" className="h-16 w-16 object-contain" />
           <div>
             <p className="text-lg font-black">Session complete! 🎉</p>
             <p className="text-sm font-bold opacity-90">
