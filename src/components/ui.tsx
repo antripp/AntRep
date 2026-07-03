@@ -47,7 +47,7 @@ export function Button({
 export function TextInput({ className = "", ...props }: InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
-      className={`w-full rounded-xl border-2 border-line bg-inset px-3 py-2 text-sm font-semibold text-ink outline-none placeholder:text-muted/70 focus:border-accent ${className}`}
+      className={`w-full rounded-xl border-2 border-line bg-inset px-3 py-2 text-base font-semibold text-ink outline-none placeholder:text-muted/70 focus:border-accent ${className}`}
       {...props}
     />
   );
