@@ -3,6 +3,7 @@ import { supabase } from "../../lib/supabase";
 import {
   DAY_TYPE_COLORS,
   WEEKDAY_LABELS,
+  activeAthletePlans,
   isoWeekday,
   planWeekIndex,
   type AthletePlan,
@@ -21,7 +22,7 @@ import { exerciseSubtitle } from "./TodayPage";
  * The athlete's full programme as a Trello-style board: week pills on
  * top, days as columns (single-day swipe view on phones). Read-only.
  */
-export default function PlanPage() {
+export default function PlanPage({ embedded = false }: { embedded?: boolean }) {
   const { profile } = useAuth();
   const [loading, setLoading] = useState(true);
   const [plans, setPlans] = useState<AthletePlan[]>([]);
@@ -41,8 +42,10 @@ export default function PlanPage() {
         setSchemaOld(result.schemaOld);
         setPlans(result.plans);
         setCoachNames(result.coachNames);
+        const active = activeAthletePlans(result.plans, new Date());
+        const defaultPlanId = active[0]?.plan.id ?? result.plans[0]?.plan.id ?? null;
         setSelectedPlanId((cur) =>
-          cur && result.plans.some((ap) => ap.plan.id === cur) ? cur : (result.plans[0]?.plan.id ?? null),
+          cur && result.plans.some((ap) => ap.plan.id === cur) ? cur : defaultPlanId,
         );
         if (result.plans.length > 0) {
           const { data: dayRows } = await supabase
@@ -110,7 +113,7 @@ export default function PlanPage() {
 
   return (
     <>
-      <h1 className="mb-3 text-2xl font-black">Your plan</h1>
+      {!embedded && <h1 className="mb-3 text-2xl font-black">Your plan</h1>}
 
       {plans.length > 1 && (
         <div className="mb-3 flex flex-wrap gap-2">

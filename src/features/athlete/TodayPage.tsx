@@ -32,7 +32,11 @@ interface Segment {
   coachFields: CustomField[];
 }
 
-export default function TodayPage() {
+export default function TodayPage({
+  embedded = false,
+}: {
+  embedded?: boolean;
+}) {
   const { profile } = useAuth();
   const [loading, setLoading] = useState(true);
   const [hasPlans, setHasPlans] = useState(false);
@@ -200,23 +204,35 @@ export default function TodayPage() {
     if (data) mergeSession(data as Session);
   }
 
+  async function saveAthleteNotes(session: Session, notes: string) {
+    const { data } = await supabase
+      .from("sessions")
+      .update({ athlete_notes: notes })
+      .eq("id", session.id)
+      .select()
+      .single();
+    if (data) mergeSession(data as Session);
+  }
+
   if (loading) return <Spinner />;
 
   const customSessions = sessions.filter((s) => s.plan_day_id === null);
 
   return (
     <>
-      <header className="mb-6">
-        <p className="text-sm font-bold text-muted">
-          {today.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
-        </p>
-        <h1 className="text-2xl font-black">
-          {greeting(today.getHours())}, {profile?.display_name || "athlete"}
-        </h1>
-        <p className="font-quote mt-3 border-l-2 border-accent/60 pl-3 text-base italic leading-snug text-ink/75">
-          {dailyQuote(dateStr + (profile?.id ?? ""))}
-        </p>
-      </header>
+      {!embedded && (
+        <header className="mb-6">
+          <p className="text-sm font-bold text-muted">
+            {today.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
+          </p>
+          <h1 className="text-2xl font-black">
+            {greeting(today.getHours())}, {profile?.display_name || "athlete"}
+          </h1>
+          <p className="font-quote mt-3 border-l-2 border-accent/60 pl-3 text-base italic leading-snug text-ink/75">
+            {dailyQuote(dateStr + (profile?.id ?? ""))}
+          </p>
+        </header>
+      )}
 
       {schemaOld && (
         <div className="mb-4">
@@ -246,6 +262,7 @@ export default function TodayPage() {
             onFinish={(s) => setSessionStatus(s, "complete")}
             onReopen={(s) => setSessionStatus(s, "in_progress")}
             onSaveCalories={saveCalories}
+            onSaveNotes={saveAthleteNotes}
             onLogSaved={mergeLog}
             onLogDeleted={dropLog}
             showCoach={segments.length > 1}
@@ -266,6 +283,7 @@ export default function TodayPage() {
             onFinish={() => setSessionStatus(s, "complete")}
             onReopen={() => setSessionStatus(s, "in_progress")}
             onSaveCalories={(cal) => saveCalories(s, cal)}
+            onSaveNotes={(notes) => saveAthleteNotes(s, notes)}
             onLogSaved={mergeLog}
             onLogDeleted={dropLog}
           />
@@ -301,6 +319,7 @@ function SegmentBlock({
   onFinish,
   onReopen,
   onSaveCalories,
+  onSaveNotes,
   onLogSaved,
   onLogDeleted,
   showCoach,
@@ -314,6 +333,7 @@ function SegmentBlock({
   onFinish: (s: Session) => void;
   onReopen: (s: Session) => void;
   onSaveCalories: (s: Session, cal: number | null) => void;
+  onSaveNotes: (s: Session, notes: string) => void;
   onLogSaved: (row: SetLog) => void;
   onLogDeleted: (id: string) => void;
   showCoach: boolean;
@@ -358,6 +378,7 @@ function SegmentBlock({
           customFields={segment.coachFields}
           onReopen={() => onReopen(session)}
           onSaveCalories={(cal) => onSaveCalories(session, cal)}
+          onSaveNotes={(notes) => onSaveNotes(session, notes)}
         />
       </section>
     );
@@ -443,6 +464,7 @@ function OwnSessionBlock({
   onFinish,
   onReopen,
   onSaveCalories,
+  onSaveNotes,
   onLogSaved,
   onLogDeleted,
 }: {
@@ -455,6 +477,7 @@ function OwnSessionBlock({
   onFinish: () => void;
   onReopen: () => void;
   onSaveCalories: (cal: number | null) => void;
+  onSaveNotes: (notes: string) => void;
   onLogSaved: (row: SetLog) => void;
   onLogDeleted: (id: string) => void;
 }) {
@@ -488,6 +511,7 @@ function OwnSessionBlock({
           customFields={[]}
           onReopen={onReopen}
           onSaveCalories={onSaveCalories}
+          onSaveNotes={onSaveNotes}
         />
       </section>
     );

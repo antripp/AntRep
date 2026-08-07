@@ -53,6 +53,8 @@ export default function ExerciseLogger({
   const [distanceKm, setDistanceKm] = useState<number>(last?.distance_km ?? 0);
   const [durationMin, setDurationMin] = useState<number>(last ? Math.round((last.duration_sec ?? 0) / 60) : 0);
   const [rpe, setRpe] = useState<number>(0);
+  const [pain, setPain] = useState<number>(0);
+  const [setNote, setSetNote] = useState("");
   const [calories, setCalories] = useState<number>(0);
   const [extra, setExtra] = useState<Record<string, string | number>>({});
   const [busy, setBusy] = useState(false);
@@ -73,6 +75,8 @@ export default function ExerciseLogger({
       weight_kg: isCardio || isTimed ? null : weight,
       reps: isCardio || isTimed ? null : reps,
       rpe: rpe > 0 ? rpe : null,
+      pain: pain > 0 ? pain : null,
+      note: setNote.trim(),
       distance_km: isCardio && distanceKm > 0 ? distanceKm : null,
       duration_sec: (isCardio || isTimed) && durationMin > 0 ? durationMin * 60 : null,
       calories: calories > 0 ? calories : null,
@@ -87,6 +91,8 @@ export default function ExerciseLogger({
       setWeightOverride(null);
       setRepsOverride(null);
       setRpe(0);
+      setPain(0);
+      setSetNote("");
       setCalories(0);
       setExtra({});
     }
@@ -112,6 +118,8 @@ export default function ExerciseLogger({
                     ? `${Math.round((l.duration_sec ?? 0) / 60)} min`
                     : `${l.weight_kg ?? 0} kg × ${l.reps ?? 0}`}
                 {l.rpe ? ` · RPE ${l.rpe}` : ""}
+                {l.pain ? ` · Pain ${l.pain}` : ""}
+                {l.note ? ` · "${l.note}"` : ""}
                 {l.calories ? ` · ${l.calories} kcal` : ""}
               </span>
               <button
@@ -174,6 +182,19 @@ export default function ExerciseLogger({
         </LabeledControl>
         <LabeledControl label="kcal (optional)">
           <Stepper value={calories} onChange={setCalories} step={10} />
+        </LabeledControl>
+        {!isCardio && !isTimed && (
+          <LabeledControl label="Pain (0–10)">
+            <Stepper value={pain} onChange={(v) => setPain(Math.min(10, v))} />
+          </LabeledControl>
+        )}
+        <LabeledControl label="Set note">
+          <TextInput
+            className="w-40"
+            placeholder="Optional"
+            value={setNote}
+            onChange={(e) => setSetNote(e.target.value)}
+          />
         </LabeledControl>
         {customFields.map((f) => (
           <LabeledControl key={f.key} label={f.unit ? `${f.label} (${f.unit})` : f.label}>

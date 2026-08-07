@@ -18,6 +18,7 @@ import { Avatar, Button, Card, Chip, Icons, Modal, Select, Spinner, TextInput } 
 import type { LinkedAthlete } from "./CoachApp";
 import ExerciseForm from "./ExerciseForm";
 import PasteGrid from "./PasteGrid";
+import { syncProgramForAthletePlan } from "../../lib/planSync";
 
 /**
  * Trello-style plan editor: week blocks as pills, days as board columns
@@ -395,6 +396,7 @@ function ManageAthletesModal({
       await supabase.from("plan_assignments").delete().eq("id", assigned.id);
     } else {
       await supabase.from("plan_assignments").insert({ plan_id: plan.id, athlete_id: athleteId });
+      await syncProgramForAthletePlan(plan.trainer_id, athleteId, plan, null);
     }
     await onChanged();
     setBusy(null);
@@ -405,6 +407,8 @@ function ManageAthletesModal({
       .from("plan_assignments")
       .update({ start_date: value || null })
       .eq("id", assignment.id);
+    const athleteId = assignment.athlete_id;
+    await syncProgramForAthletePlan(plan.trainer_id, athleteId, plan, value || null);
     await onChanged();
   }
 

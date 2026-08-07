@@ -7,12 +7,23 @@ export interface AvatarPref {
   color?: string; // background hex
 }
 
+export interface HealthMetrics {
+  height_cm?: string;
+  weight_kg?: string;
+  age?: string;
+  sex?: string;
+  resting_hr?: string;
+  blood_pressure?: string;
+  notes?: string;
+}
+
 export interface Profile {
   id: string;
   user_id: string;
   role: Role;
   display_name: string;
   avatar?: AvatarPref;
+  health_metrics?: HealthMetrics;
   approved_at: string | null;
   created_at?: string;
 }
@@ -124,6 +135,7 @@ export interface SetLog {
   weight_kg: number | null;
   reps: number | null;
   rpe: number | null;
+  pain: number | null;
   distance_km: number | null;
   duration_sec: number | null;
   note: string;
@@ -236,4 +248,93 @@ export function setTarget(ex: PlanExercise, setIndex: number): SetDetail {
     reps: detail?.reps ?? ex.target_reps,
     weight_kg: detail?.weight_kg ?? ex.target_weight_kg,
   };
+}
+
+export type ProgressionMetric = "max_weight" | "total_volume";
+
+export interface AthleteProgram {
+  id: string;
+  coach_link_id: string;
+  goals: string;
+  duration_weeks: number;
+  assessment_date: string | null;
+  start_date: string | null;
+  progression_metric: ProgressionMetric;
+  progression_overrides: Record<string, number>;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ProgressionExercise {
+  id: string;
+  coach_link_id: string;
+  exercise_name: string;
+  sort_order: number;
+}
+
+export interface CheckIn {
+  id: string;
+  coach_link_id: string;
+  week_index: number;
+  weight_kg: number | null;
+  sleep: string;
+  energy: string;
+  appetite: string;
+  pain: string;
+  submitted_at: string;
+}
+
+export interface CoachNote {
+  id: string;
+  coach_link_id: string;
+  note_date: string;
+  observation: string;
+  adjustment: string;
+  reason: string;
+  next_review: string | null;
+  created_at?: string;
+}
+
+export interface Message {
+  id: string;
+  coach_link_id: string;
+  sender_profile_id: string;
+  body: string;
+  created_at: string;
+  read_at: string | null;
+}
+
+export type TrackerKind = "body_assessment" | "mobility_pain" | "flexibility" | "cardio";
+
+export interface TrackerMetric {
+  key: string;
+  label: string;
+  unit?: string;
+}
+
+export interface TrackerTemplate {
+  id: string;
+  coach_link_id: string;
+  kind: TrackerKind;
+  title: string;
+  metrics: TrackerMetric[];
+  column_labels: string[];
+  column_mode: "weekly" | "milestone";
+  sort_order: number;
+  is_active: boolean;
+}
+
+export interface TrackerEntry {
+  id: string;
+  template_id: string;
+  coach_link_id: string;
+  metric_key: string;
+  column_index: number;
+  value: string;
+}
+
+export interface AthleteClientProfile {
+  coach_link_id: string;
+  profile: Record<string, unknown>;
+  updated_at?: string;
 }

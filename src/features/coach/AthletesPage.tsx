@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
-import { localDateString, type CoachLink, type Session } from "../../lib/types";
+import { fetchCoachLinkContext } from "../../lib/coachLinkData";
+import { localDateString, type AthleteProgram, type CoachLink, type Session } from "../../lib/types";
 import { useRealtime } from "../../lib/useRealtime";
+import { isSchemaOutdated, MigrationNotice } from "../../components/MigrationNotice";
 import { Avatar, Button, Card, EmptyState } from "../../components/ui";
 import { UnlinkModal } from "../../components/SettingsShared";
+import { useAuth } from "../auth/useAuth";
 import type { LinkedAthlete } from "./CoachApp";
 
 function formatExpiry(expiresAt: string): string {
@@ -23,49 +26,58 @@ export default function AthletesPage({
   athletes,
   onChanged,
   onSelect,
+  onOpenProgress,
+  onOpenInbox,
+  unreadByAthlete = new Map(),
+  recentSessions = [],
 }: {
   athletes: LinkedAthlete[];
   onChanged: () => Promise<void> | void;
   onSelect: (athleteId: string) => void;
+  onOpenProgress: (athleteId: string) => void;
+  onOpenInbox?: (linkId: string) => void;
+  unreadByAthlete?: Map<string, number>;
+  recentSessions?: Session[];
 }) {
+  const { profile } = useAuth();
   const [pending, setPending] = useState<(CoachLink & { invite_code: string })[]>([]);
-  const [recent, setRecent] = useState<Session[]>([]);
   const [copied, setCopied] = useState<string | null>(null);
   const [unlinkTarget, setUnlinkTarget] = useState<LinkedAthlete | null>(null);
   const [busy, setBusy] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
+  const [programs, setPrograms] = useState<Map<string, AthleteProgram | null>>(new Map());
+  const [schemaOld, setSchemaOld] = useState(false);
 
   const loadPending = useCallback(async () => {
     const { data } = await supabase.from("coach_links").select("*").eq("status", "pending");
     setPending(((data as CoachLink[]) ?? []).filter((l) => l.invite_code) as (CoachLink & { invite_code: string })[]);
   }, []);
 
-  const loadRecent = useCallback(async () => {
-    if (athletes.length === 0) {
-      setRecent([]);
-      return;
-    }
-    const since = new Date();
-    since.setDate(since.getDate() - 28);
-    const { data } = await supabase
-      .from("sessions")
-      .select("*")
-      .in("athlete_id", athletes.map((a) => a.athlete.id))
-      .gte("date", localDateString(since))
-      .order("date", { ascending: false });
-    setRecent((data as Session[]) ?? []);
-  }, [athletes]);
-
   useEffect(() => {
     loadPending();
   }, [loadPending]);
-  useEffect(() => {
-    loadRecent();
-  }, [loadRecent]);
-  useRealtime("coach-roster", ["coach_links", "sessions"], () => {
+  useRealtime("coach-roster", ["coach_links", "sessions", "athlete_programs"], () => {
     loadPending();
-    loadRecent();
+    loadPrograms();
   });
+
+  const loadPrograms = useCallback(async () => {
+    if (!profile || athletes.length === 0) return;
+    const progMap = new Map<string, AthleteProgram | null>();
+    for (const { link, athlete } of athletes) {
+      try {
+        const ctx = await fetchCoachLinkContext(profile.id, athlete.id);
+        progMap.set(link.id, ctx?.program ?? null);
+      } catch (e) {
+        if (isSchemaOutdated(e as never)) setSchemaOld(true);
+      }
+    }
+    setPrograms(progMap);
+  }, [profile, athletes]);
+
+  useEffect(() => {
+    loadPrograms();
+  }, [loadPrograms]);
 
   async function createInvite() {
     setBusy(true);
@@ -107,7 +119,7 @@ export default function AthletesPage({
   }
 
   function athleteStats(athleteId: string): string {
-    const sessions = recent.filter((s) => s.athlete_id === athleteId);
+    const sessions = recentSessions.filter((s) => s.athlete_id === athleteId);
     if (sessions.length === 0) return "No sessions in the last 4 weeks";
     const monday = new Date();
     monday.setDate(monday.getDate() - ((monday.getDay() === 0 ? 7 : monday.getDay()) - 1));
@@ -123,6 +135,11 @@ export default function AthletesPage({
 
   return (
     <>
+      {schemaOld && (
+        <div className="mb-3">
+          <MigrationNotice />
+        </div>
+      )}
       <div className="flex flex-col gap-3">
         {athletes.length === 0 && pending.length === 0 && (
           <Card>
@@ -135,15 +152,37 @@ export default function AthletesPage({
 
         {athletes.map(({ link, athlete }) => (
           <Card key={link.id}>
-            <div className="flex items-center gap-3">
+            <button
+              type="button"
+              className="flex w-full items-center gap-3 text-left"
+              onClick={() => onSelect(athlete.id)}
+            >
               <Avatar name={athleteDisplayName(link, athlete)} avatar={athlete.avatar} />
               <div className="min-w-0 flex-1">
-                <p className="truncate font-extrabold">{athleteDisplayName(link, athlete)}</p>
+                <div className="flex items-center gap-2">
+                  <p className="truncate font-extrabold">{athleteDisplayName(link, athlete)}</p>
+                  {(unreadByAthlete.get(athlete.id) ?? 0) > 0 && (
+                    <span className="shrink-0 rounded-full bg-accent px-1.5 py-0.5 text-[10px] font-black text-white">
+                      {unreadByAthlete.get(athlete.id)}
+                    </span>
+                  )}
+                </div>
                 <p className="truncate text-xs font-semibold text-muted">{athleteStats(athlete.id)}</p>
+                {programs.get(link.id)?.goals && (
+                  <p className="mt-0.5 truncate text-xs font-semibold text-accent">{programs.get(link.id)!.goals}</p>
+                )}
               </div>
-              <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => onSelect(athlete.id)}>
-                Sessions
+              <span className="text-muted">›</span>
+            </button>
+            <div className="mt-2 flex flex-wrap gap-2 border-t-2 border-line pt-2">
+              <Button variant="secondary" className="px-3 py-1 text-xs" onClick={() => onOpenProgress(athlete.id)}>
+                Details
               </Button>
+              {onOpenInbox && (
+                <Button variant="ghost" className="px-3 py-1 text-xs" onClick={() => onOpenInbox(link.id)}>
+                  Message
+                </Button>
+              )}
               {!link.is_self_link && (
                 <Button variant="ghost" className="px-2 py-1 text-xs text-danger" onClick={() => setUnlinkTarget({ link, athlete })}>
                   Unlink

@@ -1,5 +1,18 @@
-import * as XLSX from "xlsx";
-import type { CustomField, Session, SetLog } from "./types";
+import { aoaToStyledSheet, getExportTheme, XLSX } from "./exportTheme";
+import { formatMetricValue, weekLabel, type ProgressionGridRow } from "./progression";
+import type {
+  AthleteProgram,
+  CheckIn,
+  CoachNote,
+  CustomField,
+  ProgressionMetric,
+  Session,
+  SetLog,
+  TrackerEntry,
+  TrackerTemplate,
+} from "./types";
+import type { ClientProfileData } from "./trackers";
+import { MEDICAL_FIELDS, RESTRICTION_FIELDS } from "./trackers";
 
 export interface ExportColumn {
   key: string;
@@ -30,6 +43,7 @@ export function buildColumns(customFields: CustomField[]): ExportColumn[] {
       value: (_s, l) => (l.weight_kg != null && l.reps != null ? l.weight_kg * l.reps : ""),
     },
     { key: "rpe", label: "RPE", value: (_s, l) => l.rpe ?? "" },
+    { key: "pain", label: "Pain", value: (_s, l) => l.pain ?? "" },
     { key: "distance_km", label: "Distance (km)", value: (_s, l) => l.distance_km ?? "" },
     {
       key: "duration",
@@ -105,9 +119,10 @@ function summaryRows(data: SessionExport[]): (string | number)[][] {
 }
 
 export function exportXlsx(data: SessionExport[], columns: ExportColumn[], filename: string) {
+  const theme = getExportTheme();
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryRows(data)), "Summary");
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(setsRows(data, columns)), "Sets");
+  XLSX.utils.book_append_sheet(wb, aoaToStyledSheet(summaryRows(data), theme), "Summary");
+  XLSX.utils.book_append_sheet(wb, aoaToStyledSheet(setsRows(data, columns), theme), "Sets");
   XLSX.writeFile(wb, `${filename}.xlsx`);
 }
 
@@ -121,4 +136,150 @@ export function exportCsv(data: SessionExport[], columns: ExportColumn[], filena
   a.download = `${filename}.csv`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+export interface WarriorExportData {
+  athleteName: string;
+  coachName: string;
+  program: Pick<AthleteProgram, "goals" | "duration_weeks" | "start_date" | "assessment_date">;
+  grid: ProgressionGridRow[];
+  checkIns: CheckIn[];
+  coachNotes: CoachNote[];
+  metric: ProgressionMetric;
+  clientProfile?: ClientProfileData;
+  templates?: TrackerTemplate[];
+  trackerEntries?: TrackerEntry[];
+}
+
+/** Full multi-sheet export matching the Warrior Training Systems workbook layout. */
+export function exportWarriorWorkbook(data: WarriorExportData) {
+  const theme = getExportTheme();
+  const wb = XLSX.utils.book_new();
+  const { athleteName, coachName, program } = data;
+
+  // Dashboard
+  XLSX.utils.book_append_sheet(
+    wb,
+    XLSX.utils.aoa_to_sheet([
+      ["Dashboard"],
+      [],
+      ["Client", athleteName],
+      ["Coach", coachName],
+      ["Duration", `${program.duration_weeks} Weeks`],
+      ["Goal", program.goals],
+      ["Assessment Date", program.assessment_date ?? ""],
+    ]),
+    "Dashboard",
+  );
+
+  // Client Profile
+  const cp = data.clientProfile ?? {};
+  const profileRows: (string | number)[][] = [["Client Profile"], [], ["Field", "Details"]];
+  if (cp.age) profileRows.push(["Age", cp.age]);
+  if (cp.height) profileRows.push(["Height", cp.height]);
+  if (cp.phone) profileRows.push(["Phone", cp.phone]);
+  if (cp.doctor_clearance) profileRows.push(["Doctor clearance", cp.doctor_clearance]);
+  profileRows.push([]);
+  profileRows.push(["MEDICAL HISTORY"]);
+  profileRows.push(["Condition", "Status"]);
+  for (const f of MEDICAL_FIELDS) {
+    const v = cp.medical_history?.[f.key];
+    if (v) profileRows.push([f.label, v]);
+  }
+  profileRows.push([]);
+  profileRows.push(["RESTRICTION"]);
+  for (const f of RESTRICTION_FIELDS) {
+    const v = cp.restrictions?.[f.key];
+    if (v) profileRows.push([f.label, v]);
+  }
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(profileRows), "Client Profile");
+
+  // Tracker sheets
+  const sheetNames: Record<string, string> = {
+    body_assessment: "Body Assessment",
+    mobility_pain: "Mobility & Pain",
+    flexibility: "Flexibility",
+    cardio: "Cardio Tracker",
+  };
+  for (const tpl of data.templates ?? []) {
+    const entryMap = new Map(
+      (data.trackerEntries ?? [])
+        .filter((e) => e.template_id === tpl.id)
+        .map((e) => [`${e.metric_key}::${e.column_index}`, e.value]),
+    );
+    const rows = tpl.metrics.map((m) => [
+      m.label,
+      ...tpl.column_labels.map((_, i) => entryMap.get(`${m.key}::${i + 1}`) ?? ""),
+    ]);
+    XLSX.utils.book_append_sheet(
+      wb,
+      aoaToStyledSheet(
+        [
+          ["Measurement", ...tpl.column_labels],
+          ...rows,
+        ],
+        theme,
+      ),
+      sheetNames[tpl.kind] ?? tpl.title,
+    );
+  }
+
+  // Progressive Overload
+  if (data.grid.length > 0) {
+    const weekCount = data.grid[0].cells.length;
+    const header = ["Exercise", ...Array.from({ length: weekCount }, (_, i) => weekLabel(i + 1))];
+    const rows = data.grid.map((r) => [
+      r.exerciseName,
+      ...r.cells.map((c) => formatMetricValue(c.value, data.metric)),
+    ]);
+    XLSX.utils.book_append_sheet(
+      wb,
+      aoaToStyledSheet([header, ...rows], theme),
+      "Progressive Overload",
+    );
+  }
+
+  // Check-Ins
+  XLSX.utils.book_append_sheet(
+    wb,
+    aoaToStyledSheet(
+      [
+        ["Week", "weight", "Sleep", "Energy", "Appetite", "Pain"],
+        ...data.checkIns.map((c) => [c.week_index, c.weight_kg ?? "", c.sleep, c.energy, c.appetite, c.pain]),
+      ],
+      theme,
+    ),
+    "Weekly Check-In",
+  );
+
+  // Coach Notes
+  XLSX.utils.book_append_sheet(
+    wb,
+    XLSX.utils.aoa_to_sheet([
+      ["Date", "Observation", "Adjustment", "Reason", "Next review"],
+      ...data.coachNotes.map((n) => [n.note_date, n.observation, n.adjustment, n.reason, n.next_review ?? ""]),
+    ]),
+    "Coach Notes",
+  );
+
+  XLSX.writeFile(wb, `warrior_${athleteName.replace(/\s+/g, "-")}.xlsx`);
+}
+
+/** @deprecated Use exportWarriorWorkbook for full workbook */
+export function exportProgressBundle(
+  athleteName: string,
+  grid: ProgressionGridRow[],
+  checkIns: CheckIn[],
+  coachNotes: CoachNote[],
+  metric: ProgressionMetric,
+) {
+  exportWarriorWorkbook({
+    athleteName,
+    coachName: "",
+    program: { goals: "", duration_weeks: grid[0]?.cells.length ?? 12, start_date: null, assessment_date: null },
+    grid,
+    checkIns,
+    coachNotes,
+    metric,
+  });
 }

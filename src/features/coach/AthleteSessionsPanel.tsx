@@ -5,16 +5,13 @@ import { applyLayout, buildColumns, exportCsv, exportXlsx, type SessionExport } 
 import { useRealtime } from "../../lib/useRealtime";
 import { Button, Card, EmptyState, Spinner } from "../../components/ui";
 import { useAuth } from "../auth/useAuth";
-import { AthletePicker, type LinkedAthlete } from "./CoachApp";
 
-export default function SessionsPage({
-  athletes,
-  selectedId,
-  onSelectAthlete,
+export default function AthleteSessionsPanel({
+  athleteId,
+  athleteName,
 }: {
-  athletes: LinkedAthlete[];
-  selectedId: string | null;
-  onSelectAthlete: (id: string) => void;
+  athleteId: string;
+  athleteName: string;
 }) {
   const { profile } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -30,15 +27,12 @@ export default function SessionsPage({
   const [toDate, setToDate] = useState(localDateString(new Date()));
 
   const load = useCallback(async (silent = false) => {
-    if (!selectedId || !profile) {
-      setLoading(false);
-      return;
-    }
+    if (!profile) return;
     if (!silent) setLoading(true);
     const { data: s } = await supabase
       .from("sessions")
       .select("*")
-      .eq("athlete_id", selectedId)
+      .eq("athlete_id", athleteId)
       .gte("date", fromDate)
       .lte("date", toDate)
       .order("date", { ascending: false });
@@ -66,14 +60,13 @@ export default function SessionsPage({
       .maybeSingle();
     setSettings((cs as CoachSettings) ?? null);
     setLoading(false);
-  }, [selectedId, profile, fromDate, toDate]);
+  }, [athleteId, profile, fromDate, toDate]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  // Live: new sets appear as the athlete logs them, no refresh needed.
-  useRealtime("coach-sessions", ["sessions", "set_logs"], () => load(true));
+  useRealtime(`athlete-sessions-${athleteId}`, ["sessions", "set_logs"], () => load(true));
 
   function columns() {
     return applyLayout(buildColumns(settings?.custom_fields ?? []), settings?.export_columns ?? []);
@@ -88,24 +81,12 @@ export default function SessionsPage({
     const data = sessions
       .map((s) => ({ session: s, sets: logsBySession.get(s.id) ?? [] }))
       .filter((d) => d.sets.length > 0)
-      .reverse(); // chronological in the file
-    const athleteName = athletes.find((a) => a.athlete.id === selectedId)?.athlete.display_name ?? "athlete";
+      .reverse();
     exportData(data, `antrep_${athleteName}_${fromDate}_${toDate}`.replace(/\s+/g, "-"), format);
-  }
-
-  if (athletes.length === 0) {
-    return (
-      <Card>
-        <EmptyState title="Link an athlete first" subtitle="Create an invite code on the Athletes tab." />
-      </Card>
-    );
   }
 
   return (
     <>
-      <h1 className="mb-3 text-2xl font-black">Sessions</h1>
-      <AthletePicker athletes={athletes} selectedId={selectedId} onSelect={onSelectAthlete} />
-
       <Card className="mb-3">
         <div className="flex flex-wrap items-end gap-3">
           <label className="text-xs font-extrabold text-chip">
@@ -166,15 +147,12 @@ export default function SessionsPage({
                     <p className="text-xs font-semibold text-chip">
                       {s.status === "complete" ? "✓ Complete" : "In progress"} · {sets.length} sets
                       {volume > 0 && ` · ${Math.round(volume)} kg volume`}
-                      {s.calories != null && ` · ${s.calories} kcal`}
-                      {s.plan_day_id === null && " · own session"}
                     </p>
                   </div>
                   <span className="text-chip">{open ? "▴" : "▾"}</span>
                 </button>
-
                 {open && (
-                  <div className="mt-2 border-t border-mint-pale pt-2">
+                  <div className="mt-2 border-t border-line pt-2">
                     {s.athlete_notes && (
                       <p className="mb-2 text-xs font-semibold text-accent">
                         <span className="font-extrabold">Athlete notes:</span> {s.athlete_notes}
@@ -183,31 +161,9 @@ export default function SessionsPage({
                     {groupSets(sets).map(([exercise, exSets]) => (
                       <p key={exercise} className="py-0.5 text-xs font-semibold">
                         <span className="font-extrabold">{exercise}:</span>{" "}
-                        {exSets
-                          .map((l) => {
-                            const base =
-                              l.weight_kg != null
-                                ? `${l.weight_kg}×${l.reps ?? 0}`
-                                : l.distance_km != null
-                                  ? `${l.distance_km} km/${Math.round((l.duration_sec ?? 0) / 60)} min`
-                                  : `${Math.round((l.duration_sec ?? 0) / 60)} min`;
-                            const extras = [
-                              l.rpe ? `RPE ${l.rpe}` : "",
-                              l.pain ? `pain ${l.pain}` : "",
-                              l.note ? `"${l.note}"` : "",
-                            ].filter(Boolean);
-                            return extras.length ? `${base} (${extras.join(", ")})` : base;
-                          })
-                          .join(" · ")}
+                        {exSets.map((l) => `${l.weight_kg ?? 0}×${l.reps ?? 0}`).join(" · ")}
                       </p>
                     ))}
-                    <Button
-                      variant="secondary"
-                      className="mt-2"
-                      onClick={() => exportData([{ session: s, sets }], `antrep_session_${s.date}`, "xlsx")}
-                    >
-                      Export this session
-                    </Button>
                   </div>
                 )}
               </Card>

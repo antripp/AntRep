@@ -33,7 +33,7 @@ interface DaySegment {
  * plan (merged automatically), viewable per day, week, month or quarter.
  * Any date can be tapped to see exactly what's planned.
  */
-export default function SchedulePage() {
+export default function SchedulePage({ embedded = false }: { embedded?: boolean }) {
   const { profile } = useAuth();
   const [loading, setLoading] = useState(true);
   const [plans, setPlans] = useState<AthletePlan[]>([]);
@@ -160,7 +160,7 @@ export default function SchedulePage() {
 
   return (
     <>
-      <h1 className="mb-3 text-2xl font-black">Schedule</h1>
+      {!embedded && <h1 className="mb-3 text-2xl font-black">Schedule</h1>}
 
       <div className="mb-3">
         <Segmented

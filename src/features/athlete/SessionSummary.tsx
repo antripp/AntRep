@@ -11,6 +11,7 @@ export default function SessionSummary({
   customFields,
   onReopen,
   onSaveCalories,
+  onSaveNotes,
 }: {
   session: Session;
   exercises: PlanExercise[];
@@ -18,6 +19,7 @@ export default function SessionSummary({
   customFields: CustomField[];
   onReopen?: () => void;
   onSaveCalories?: (calories: number | null) => void;
+  onSaveNotes?: (notes: string) => void;
 }) {
   const byExercise = new Map<string, SetLog[]>();
   for (const l of logs) {
@@ -35,6 +37,7 @@ export default function SessionSummary({
       : byExercise.size;
   const totalVolume = logs.reduce((acc, l) => acc + (l.weight_kg ?? 0) * (l.reps ?? 0), 0);
   const totalDistance = logs.reduce((acc, l) => acc + (l.distance_km ?? 0), 0);
+  const maxPain = logs.reduce((m, l) => Math.max(m, l.pain ?? 0), 0);
   const loggedCalories = logs.reduce((acc, l) => acc + (l.calories ?? 0), 0);
   const durationMin =
     session.ended_at != null
@@ -65,12 +68,23 @@ export default function SessionSummary({
         )}
       </div>
 
+      {maxPain > 0 && (
+        <Card className="border-danger/30 bg-inset">
+          <p className="text-sm font-extrabold text-danger">Pain reported (max {maxPain}/10)</p>
+          <p className="text-xs font-semibold text-muted">Your coach can see this on your session.</p>
+        </Card>
+      )}
+
       {onSaveCalories && (
         <CaloriesCard
           initial={session.calories}
           perExercise={loggedCalories}
           onSave={onSaveCalories}
         />
+      )}
+
+      {onSaveNotes && (
+        <SessionNotesCard initial={session.athlete_notes} onSave={onSaveNotes} />
       )}
 
       <Card>
@@ -166,6 +180,32 @@ function Stat({ label, value }: { label: string; value: string }) {
     <Card className="text-center">
       <p className="text-xl font-black">{value}</p>
       <p className="text-xs font-extrabold uppercase tracking-wide text-muted">{label}</p>
+    </Card>
+  );
+}
+
+function SessionNotesCard({ initial, onSave }: { initial: string; onSave: (notes: string) => void }) {
+  const [value, setValue] = useState(initial ?? "");
+  const [saved, setSaved] = useState(false);
+  return (
+    <Card>
+      <p className="mb-2 text-sm font-extrabold">Session notes for coach</p>
+      <TextInput
+        placeholder="How did it feel? Anything your coach should know?"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+      />
+      <Button
+        variant="secondary"
+        className="mt-2 w-full"
+        onClick={() => {
+          onSave(value.trim());
+          setSaved(true);
+          setTimeout(() => setSaved(false), 1500);
+        }}
+      >
+        {saved ? "Saved ✓" : "Save notes"}
+      </Button>
     </Card>
   );
 }

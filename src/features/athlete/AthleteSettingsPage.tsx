@@ -12,6 +12,7 @@ import {
   ThemeCard,
   UnlinkModal,
 } from "../../components/SettingsShared";
+import HealthMetricsForm from "./HealthMetricsForm";
 import { useAuth } from "../auth/useAuth";
 
 export default function AthleteSettingsPage() {
@@ -81,6 +82,7 @@ export default function AthleteSettingsPage() {
         </Card>
 
         <AvatarCard />
+        <HealthMetricsForm />
         <ThemeCard />
         <PatternLabCard />
         <RoleSwitchCard />
