@@ -13,7 +13,8 @@ import {
 import { Icon } from "../../ui/kit";
 
 const NAME_WIDTH = 190;
-const COL_WIDTH = 78;
+// Wide enough for the compact set cell — "102.5kg×12" is the worst realistic case.
+const COL_WIDTH = 88;
 
 export function LogTable({
   table,
@@ -239,7 +240,7 @@ function ExerciseRows({
                 }`}
                 style={{ width: COL_WIDTH, minWidth: COL_WIDTH }}
               >
-                {set ? formatSetCell(set, row.logType) : "--"}
+                {set ? formatSetCell(set, row.logType, true) : "--"}
               </td>
             ))}
           </tr>

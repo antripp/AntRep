@@ -1,24 +1,23 @@
-/** Athlete portal shell: Home · Plans · Progress · Exercises · Settings. */
+/** Athlete portal shell: Home · Plans · Progress · Library · Settings. */
 
 import { useState } from "react";
 import type { Profile, Role } from "../../data/types";
-import { Icon, LoadingScreen, Screen, SectionHeader, TabBar, Toast } from "../../ui/kit";
+import { Icon, LoadingScreen, Screen, TabBar, Toast } from "../../ui/kit";
 import SettingsScreen from "../shared/SettingsScreen";
-import { SessionList } from "../shared/SessionHistory";
+import ProgressScreen from "../progress/ProgressScreen";
 import { useWorkspace, WorkspaceProvider } from "../workspace";
 import CoachScreen from "./CoachScreen";
 import LibrarySection from "./LibrarySection";
 import ExercisesScreen from "./ExercisesScreen";
 import HomeScreen from "./HomeScreen";
 import PlansScreen from "./PlansScreen";
-import ProgressScreen from "./ProgressScreen";
 
 const TABS = [
   { key: "home", label: "Home", icon: Icon.home },
   { key: "plans", label: "Plans", icon: Icon.plan },
   { key: "coach", label: "Coach", icon: Icon.people },
   { key: "progress", label: "Progress", icon: Icon.progress },
-  { key: "exercises", label: "Exercises", icon: Icon.dumbbell },
+  { key: "exercises", label: "Library", icon: Icon.dumbbell },
   { key: "settings", label: "Settings", icon: Icon.settings },
 ];
 
@@ -37,7 +36,7 @@ export default function AthleteApp({
 }
 
 function AthleteShell({ onSwitchPortal }: { onSwitchPortal: (role: Role) => void }) {
-  const { loading, profile, workspace, sessions, logs, reload, toast, clearToast } = useWorkspace();
+  const { loading, profile, workspace, reload, toast, clearToast } = useWorkspace();
   const [tab, setTab] = useState("home");
 
   if (loading) return <LoadingScreen />;
@@ -48,13 +47,7 @@ function AthleteShell({ onSwitchPortal }: { onSwitchPortal: (role: Role) => void
         {tab === "home" && <HomeScreen onGoPlans={() => setTab("plans")} />}
         {tab === "plans" && <PlansScreen />}
         {tab === "coach" && <CoachScreen />}
-        {tab === "progress" && (
-          <>
-            <ProgressScreen />
-            <SectionHeader title="Recent sessions" />
-            <SessionList sessions={sessions} logs={logs} limit={12} />
-          </>
-        )}
+        {tab === "progress" && <ProgressScreen />}
         {tab === "exercises" && <ExercisesScreen />}
         {tab === "settings" && (
           <SettingsScreen

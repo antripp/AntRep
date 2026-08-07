@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "seed:demo": "node scripts/seed-demo.mjs"
+    "seed:demo": "node scripts/seed-demo.mjs",
+    "guide:pdf": "python3 scripts/build-guide-pdf.py"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",

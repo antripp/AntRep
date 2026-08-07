@@ -23,6 +23,8 @@ export interface ExerciseStat {
   logType: LogType;
   sessions: number;
   totalSets: number;
+  /** False for reps-only work, so `best` isn't reported as a weight. */
+  hasWeight: boolean;
   best: number;
   bestReps: number;
   best1RM: number;
@@ -85,6 +87,7 @@ export function exerciseStats(sessions: Session[], logs: SetLog[]): ExerciseStat
       logType,
       sessions: byDate.size,
       totalSets: sets.length,
+      hasWeight: sets.some((s) => (s.weight_kg ?? 0) > 0),
       best,
       bestReps: sets.reduce((m, s) => Math.max(m, s.reps ?? 0), 0),
       best1RM,

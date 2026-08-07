@@ -72,8 +72,24 @@ export function unitFor(logType: LogType): string {
   }
 }
 
-/** One set as a compact cell: "60×10", "5 km", "45s", "12 reps". */
-export function formatSetCell(set: SetLog, logType: LogType): string {
+/**
+ * The unit for a `sessionBest` value.
+ *
+ * Reps-only work — push-ups, or a strength slot logged without a weight —
+ * falls back to a rep count, so it must not be labelled in kg.
+ */
+export function bestUnit(logType: LogType, hasWeight: boolean): string {
+  if (!hasWeight && (logType === "strength" || logType === "bodyweight")) return "reps";
+  return unitFor(logType);
+}
+
+/**
+ * One set as a compact cell: "60 kg × 10", "5 km", "45s", "12 reps".
+ *
+ * Every number carries its unit. A bare "25 × 12" reads either way round —
+ * the load and the rep count have to be told apart at a glance.
+ */
+export function formatSetCell(set: SetLog, logType: LogType, compact = false): string {
   const parts: string[] = [];
 
   if (logType === "cardio") {
@@ -82,10 +98,17 @@ export function formatSetCell(set: SetLog, logType: LogType): string {
   } else if (logType === "timed") {
     if (set.duration_sec) parts.push(formatSeconds(set.duration_sec));
   } else if (logType === "interval") {
-    if (set.reps) parts.push(`${set.reps}×`);
+    if (set.reps) parts.push(compact ? `${set.reps}r` : `${set.reps} rounds`);
     if (set.duration_sec) parts.push(formatSeconds(set.duration_sec));
   } else {
-    if (set.weight_kg && set.reps) parts.push(`${round(set.weight_kg)}×${set.reps}`);
+    // The grid has 78px a column, so `compact` keeps the unit on the load only —
+    // enough to tell the two numbers apart without a line break.
+    if (set.weight_kg && set.reps)
+      parts.push(
+        compact
+          ? `${round(set.weight_kg)}kg×${set.reps}`
+          : `${round(set.weight_kg)} kg × ${set.reps} reps`,
+      );
     else if (set.weight_kg) parts.push(`${round(set.weight_kg)} kg`);
     else if (set.reps) parts.push(`${set.reps} reps`);
   }
@@ -109,7 +132,7 @@ function formatSeconds(total: number): string {
   return s === 0 ? `${m}m` : `${m}m ${s}s`;
 }
 
-function inferLogType(sets: SetLog[]): LogType {
+export function inferLogType(sets: SetLog[]): LogType {
   if (sets.some((s) => (s.distance_km ?? 0) > 0)) return "cardio";
   if (sets.some((s) => (s.duration_sec ?? 0) > 0 && !(s.reps ?? 0))) return "timed";
   if (sets.some((s) => (s.weight_kg ?? 0) > 0 || (s.reps ?? 0) > 0)) return "strength";

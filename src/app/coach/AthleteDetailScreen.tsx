@@ -28,7 +28,7 @@ import {
   Spinner,
   StatTile,
 } from "../../ui/kit";
-import { ProgressBody } from "../athlete/ProgressScreen";
+import { ProgressBody } from "../progress/ProgressScreen";
 import { WeekStrip } from "../athlete/PlansScreen";
 import { SessionList } from "../shared/SessionHistory";
 import { PlanDetail } from "../plans/PlanDetail";
@@ -59,7 +59,9 @@ export default function AthleteDetailScreen({
   onToast: (message: string) => void;
 }) {
   const [training, setTraining] = useState<AthleteTraining | null>(null);
-  const [view, setView] = useState<"overview" | "sessions" | "progress" | "plans" | "coaching">("overview");
+  // Sessions and per-plan analytics live inside Progress now — "assign" is plan
+  // management (send a plan, take one back), not another read on their numbers.
+  const [view, setView] = useState<"overview" | "progress" | "assign" | "coaching">("overview");
   const [coachingView, setCoachingView] = useState<"chat" | "checkin" | "notes" | "trackers">("chat");
   const [viewingPlan, setViewingPlan] = useState<PlanBundle | null>(null);
   const [showExport, setShowExport] = useState(false);
@@ -147,9 +149,8 @@ export default function AthleteDetailScreen({
           onChange={setView}
           options={[
             { value: "overview", label: "Overview" },
-            { value: "sessions", label: "Sessions" },
             { value: "progress", label: "Progress" },
-            { value: "plans", label: "Plans" },
+            { value: "assign", label: "Assign" },
             { value: "coaching", label: "Coaching" },
           ]}
         />
@@ -204,22 +205,13 @@ export default function AthleteDetailScreen({
             </>
           )}
 
-          {view === "sessions" && (
-            <SessionList
-              sessions={training.sessions}
-              logs={training.logs}
-              limit={20}
-              showTotal
-              emptyTitle="No shared sessions yet"
-            />
-          )}
-
           {view === "progress" && (
             <ProgressBody
               sessions={training.sessions}
               logs={training.logs}
               plans={training.plans}
               weeklyGymGoal={athlete.profile.weekly_gym_goal}
+              title={null}
             />
           )}
 
@@ -271,7 +263,7 @@ export default function AthleteDetailScreen({
             </>
           )}
 
-          {view === "plans" && (
+          {view === "assign" && (
             <>
               <SectionHeader title="Assigned by you" />
               {assignmentsForAthlete.length === 0 ? (

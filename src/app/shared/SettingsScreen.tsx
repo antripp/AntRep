@@ -9,6 +9,7 @@ import {
   Card,
   Field,
   Icon,
+  IconTile,
   NumberField,
   Pill,
   ScreenTitle,
@@ -20,6 +21,7 @@ import {
   Toggle,
 } from "../../ui/kit";
 import { useAuth } from "../auth";
+import GuideScreen from "./GuideScreen";
 
 export default function SettingsScreen({
   profile,
@@ -43,6 +45,7 @@ export default function SettingsScreen({
   const [linking, setLinking] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [showTheme, setShowTheme] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
 
   const otherRole: Role = profile.role === "athlete" ? "coach" : "athlete";
   const hasOtherRole = profiles.some((p) => p.role === otherRole);
@@ -77,9 +80,24 @@ export default function SettingsScreen({
     onSwitchPortal(otherRole);
   }
 
+  if (showGuide) return <GuideScreen onBack={() => setShowGuide(false)} />;
+
   return (
     <>
       <ScreenTitle title="Settings" />
+
+      <Card className="mb-3" onClick={() => setShowGuide(true)}>
+        <div className="flex items-center gap-3">
+          <IconTile emoji="📖" tint="var(--t-accent)" size={38} />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-black text-ink">How to use AntRep</p>
+            <p className="mt-0.5 text-xs font-semibold leading-snug text-muted">
+              The full guide — getting started, every screen, and what the numbers mean.
+            </p>
+          </div>
+          <Icon.chevron className="h-4 w-4 shrink-0 text-muted" />
+        </div>
+      </Card>
 
       {isDemoMode && (
         <Card className="mb-3" tint="var(--color-gold)">

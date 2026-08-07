@@ -13,14 +13,11 @@ export function SessionList({
   logs,
   limit = 10,
   emptyTitle = "No sessions yet",
-  showTotal,
 }: {
   sessions: Session[];
   logs: SetLog[];
   limit?: number;
   emptyTitle?: string;
-  /** Show "N sessions since <date>" above the list — the athlete's whole history. */
-  showTotal?: boolean;
 }) {
   const [open, setOpen] = useState<Session | null>(null);
   const [visible, setVisible] = useState(limit);
@@ -37,13 +34,6 @@ export function SessionList({
 
   return (
     <>
-      {showTotal && (
-        <p className="mb-2 text-xs font-bold text-muted">
-          {sorted.length} session{sorted.length === 1 ? "" : "s"} since{" "}
-          {formatShortDate(sorted[sorted.length - 1].date)} — everything they've logged, including
-          before you linked.
-        </p>
-      )}
       <div className="space-y-2">
         {ordered.map((session) => {
           const sessionLogs = logs.filter((l) => l.session_id === session.id && setHasData(l));

@@ -285,9 +285,16 @@ export function NumberField({
   // prop yet, so steppers work off the last value this field emitted.
   const latest = useRef(value);
   latest.current = value;
+
+  // What's being typed, kept verbatim until the field is left. Without this the
+  // controlled value round-trips through Number() on every keystroke, so "52."
+  // renders back as "52" and the decimal point can never be followed by digits.
+  const [draft, setDraft] = useState<string | null>(null);
+
   const bump = (delta: number) => {
     const next = clamp((latest.current ?? 0) + delta);
     latest.current = next;
+    setDraft(null);
     onChange(next);
   };
 
@@ -303,20 +310,26 @@ export function NumberField({
       </button>
       <input
         inputMode="decimal"
-        value={value ?? ""}
+        value={draft ?? (value === null ? "" : String(value))}
         placeholder={placeholder ?? "0"}
         onChange={(e) => {
           const raw = e.target.value.replace(",", ".");
           if (raw === "") {
+            setDraft("");
             latest.current = null;
             return onChange(null);
           }
+          // Digits with at most one decimal point — anything else is a typo, and
+          // rejecting it leaves the previous draft on screen.
+          if (!/^\d*\.?\d*$/.test(raw)) return;
+          setDraft(raw);
           const n = Number(raw);
           if (Number.isFinite(n)) {
             latest.current = n;
             onChange(n);
           }
         }}
+        onBlur={() => setDraft(null)}
         className="h-full w-full min-w-0 bg-transparent text-center text-[15px] font-black text-ink outline-none"
       />
       {suffix && <span className="pr-1 text-xs font-bold text-muted">{suffix}</span>}
