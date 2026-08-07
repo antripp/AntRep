@@ -1,11 +1,17 @@
 /** Sign in / create an account for one portal, plus the offline demo entry. */
 
 import { useState } from "react";
-import { api, DEMO_ACCOUNTS, isDemoMode } from "../data";
+import {
+  api,
+  DEMO_ACCOUNTS,
+  enableDemoMode,
+  isDemoMode,
+  isMissingBackend,
+  showDemoUi,
+} from "../data";
 import type { Role } from "../data/types";
 import { MASCOTS } from "../lib/brand";
 import { Button, Card, Field, Icon, Segmented, TextField } from "../ui/kit";
-import { enableDemoMode } from "../data";
 
 export default function AuthPage({ role }: { role: Role }) {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
@@ -93,6 +99,24 @@ export default function AuthPage({ role }: { role: Role }) {
           </form>
         </Card>
 
+        {isMissingBackend && (
+          <Card className="mt-3" tint="var(--color-danger)">
+            <p className="text-sm font-black text-ink">No database configured</p>
+            <p className="mt-1 text-xs font-semibold leading-snug text-muted">
+              This build has no Supabase credentials, so it can only run on offline demo data —
+              real accounts can't sign in and new sign-ups are saved to this browser only. Set{" "}
+              <code className="rounded bg-inset px-1">VITE_SUPABASE_URL</code> and{" "}
+              <code className="rounded bg-inset px-1">VITE_SUPABASE_ANON_KEY</code> in the hosting
+              environment and deploy again.
+            </p>
+          </Card>
+        )}
+
+        {/*
+          Safe to show whenever the demo is actually running: since the switch
+          moved to sessionStorage, production only gets here via an explicit
+          ?demo=1 (or a build with no credentials, which says so above).
+        */}
         {isDemoMode ? (
           <Card className="mt-3">
             <p className="text-sm font-black text-ink">Demo accounts</p>
@@ -120,12 +144,14 @@ export default function AuthPage({ role }: { role: Role }) {
             </div>
           </Card>
         ) : (
-          <button
-            onClick={enableDemoMode}
-            className="mt-4 w-full text-center text-xs font-black text-muted underline"
-          >
-            Explore the demo without an account
-          </button>
+          showDemoUi && (
+            <button
+              onClick={enableDemoMode}
+              className="mt-4 w-full text-center text-xs font-black text-muted underline"
+            >
+              Explore the demo without an account
+            </button>
+          )
         )}
 
         <p className="mt-5 text-center text-[11px] font-bold text-muted">

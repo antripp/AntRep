@@ -7,7 +7,6 @@ import SettingsScreen from "../shared/SettingsScreen";
 import ProgressScreen from "../progress/ProgressScreen";
 import { useWorkspace, WorkspaceProvider } from "../workspace";
 import CoachScreen from "./CoachScreen";
-import LibrarySection from "./LibrarySection";
 import ExercisesScreen from "./ExercisesScreen";
 import HomeScreen from "./HomeScreen";
 import PlansScreen from "./PlansScreen";
@@ -55,7 +54,6 @@ function AthleteShell({ onSwitchPortal }: { onSwitchPortal: (role: Role) => void
             coaches={workspace.coaches}
             onReload={reload}
             onSwitchPortal={onSwitchPortal}
-            extra={<LibrarySection />}
           />
         )}
       </Screen>

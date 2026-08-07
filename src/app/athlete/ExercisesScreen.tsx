@@ -1,5 +1,8 @@
 /**
- * Library — the movements available to log, yours and the built-in catalogue.
+ * Library — the movements available to log, in two views.
+ *
+ *   Mine     what you've saved, and how each one is logged
+ *   Browse   the built-in catalogue, to save more from
  *
  * Your own history, trends and per-exercise pages live under Progress →
  * Exercises; this screen is about what you *can* log, not what you have.
@@ -10,11 +13,22 @@ import { api } from "../../data";
 import { CATALOG, categoryFor } from "../../data/catalog";
 import { makePreset } from "../../data/factories";
 import { CATEGORY_EMOJI } from "../progress/ExercisesTab";
-import { Button, EmptyState, Icon, IconTile, ScreenTitle, SectionHeader, TextField } from "../../ui/kit";
+import {
+  Button,
+  EmptyState,
+  Icon,
+  IconTile,
+  ScreenTitle,
+  SectionHeader,
+  Segmented,
+  TextField,
+} from "../../ui/kit";
 import { useWorkspace } from "../workspace";
+import LibrarySection from "./LibrarySection";
 
 export default function ExercisesScreen() {
   const { profile, sessions, logs, presets, reload, showToast } = useWorkspace();
+  const [view, setView] = useState<"mine" | "browse">("mine");
   const [query, setQuery] = useState("");
 
   // Names the athlete has actually logged, so the library can flag them.
@@ -55,11 +69,52 @@ export default function ExercisesScreen() {
     <>
       <ScreenTitle title="Library" />
 
+      <div className="mb-4">
+        <Segmented
+          value={view}
+          onChange={setView}
+          options={[
+            { value: "mine", label: `Mine (${presets.length})` },
+            { value: "browse", label: "Browse all" },
+          ]}
+        />
+      </div>
+
+      {view === "mine" && <LibrarySection />}
+
+      {view === "browse" && (
+        <BrowseList
+          library={library}
+          logged={logged}
+          query={query}
+          onQuery={setQuery}
+          onToggle={toggleSaved}
+        />
+      )}
+    </>
+  );
+}
+
+function BrowseList({
+  library,
+  logged,
+  query,
+  onQuery,
+  onToggle,
+}: {
+  library: { name: string; category: string; saved: boolean }[];
+  logged: Set<string>;
+  query: string;
+  onQuery: (q: string) => void;
+  onToggle: (name: string, saved: boolean) => void;
+}) {
+  return (
+    <>
       <div className="mb-3">
         <TextField
           placeholder="Search exercises"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => onQuery(e.target.value)}
         />
       </div>
 
@@ -89,7 +144,7 @@ export default function ExercisesScreen() {
               <Button
                 size="sm"
                 variant={entry.saved ? "secondary" : "ghost"}
-                onClick={() => toggleSaved(entry.name, entry.saved)}
+                onClick={() => onToggle(entry.name, entry.saved)}
               >
                 {entry.saved ? <Icon.check className="h-4 w-4" /> : <Icon.plus className="h-4 w-4" />}
                 {entry.saved ? "Saved" : "Save"}

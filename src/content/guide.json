@@ -217,8 +217,8 @@
         {
           "title": "Library",
           "body": [
-            "Every exercise you can log — the built-in catalogue plus anything you've saved. Search it, and tap Save to keep one in your own list.",
-            "Saving an exercise also lets you set how it's logged (weight and reps, reps only, distance, time, or your own fields). Whatever you set there is what you'll be asked for every time you log it. That setting lives in Settings under Exercise library."
+            "Everything you can log, in two views. \"Mine\" is what you've saved, and it's where you set how each one is logged — weight and reps, reps only, distance, time, or your own fields. Whatever you set there is what you'll be asked for every time you log that exercise, in or out of a plan.",
+            "\"Browse all\" is the built-in catalogue. Search it and tap Save to add something to your own list."
           ]
         },
         {
@@ -229,7 +229,6 @@
               ["Profile", "Your display name, how many sessions a week you're aiming for, and a weekly distance goal."],
               ["Appearance", "Light, dark or automatic, plus an accent colour."],
               ["Coaches", "Link a coach with their invite code, and choose whether each one can see your logs."],
-              ["Exercise library", "Set how each saved exercise is logged, and add your own per-set fields."],
               ["Account", "Switch to the coach side (or create it), and sign out."],
               ["Guide", "This guide."]
             ]
@@ -401,7 +400,7 @@
               ["See if my bench press is improving", "Progress, Exercises tab, tap Flat bench press"],
               ["See everything I did in one session", "Progress, Plans tab, pick the plan, pick the session"],
               ["Compare two plans", "Progress, then switch the chip at the top between them"],
-              ["Change how an exercise is logged", "Settings, Exercise library, tap the exercise"],
+              ["Change how an exercise is logged", "Library, Mine tab, tap the exercise"],
               ["Stop my coach seeing my logs", "Settings, Coaches, switch off Share logs"],
               ["Get my data out", "Coach side: open the athlete and tap the share icon"],
               ["Train and coach on one account", "Settings, Account, top row"]
@@ -433,7 +432,7 @@
             "Charts are empty: you need at least two sessions before a trend line can be drawn.",
             "A plan shows nothing on Home: check its start date — a plan schedules nothing before the day it begins.",
             "Your coach can't see a session: check that it isn't marked private, and that Share logs is on for that coach in Settings.",
-            "An exercise asks for the wrong boxes: change its logging method in Settings, under Exercise library."
+            "An exercise asks for the wrong boxes: change its logging method on the Library tab, under Mine."
           ]
         }
       ]

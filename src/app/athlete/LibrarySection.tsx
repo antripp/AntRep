@@ -30,7 +30,7 @@ export default function LibrarySection() {
   return (
     <>
       <SectionHeader
-        title="Exercise library"
+        title="Saved exercises"
         action={
           <Button
             size="sm"

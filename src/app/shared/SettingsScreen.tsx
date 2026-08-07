@@ -1,7 +1,7 @@
 /** Settings — profile, goals, theme, coach linking, account. Shared by both portals. */
 
 import { useState } from "react";
-import { api, DEMO_ACCOUNTS, isDemoMode, resetDemoStore } from "../../data";
+import { api, DEMO_ACCOUNTS, disableDemoMode, isDemoMode, resetDemoStore } from "../../data";
 import type { CoachLink, Profile, Role } from "../../data/types";
 import { ACCENTS, BACKGROUNDS, useTheme } from "../../lib/theme";
 import {
@@ -108,17 +108,21 @@ export default function SettingsScreen({
             {DEMO_ACCOUNTS.map((a) => a.email).join(" or ")} with password{" "}
             <code className="rounded bg-inset px-1">demo1234</code>.
           </p>
-          <Button
-            size="sm"
-            variant="secondary"
-            className="mt-2"
-            onClick={() => {
-              resetDemoStore();
-              window.location.reload();
-            }}
-          >
-            Reset demo data
-          </Button>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                resetDemoStore();
+                window.location.reload();
+              }}
+            >
+              Reset demo data
+            </Button>
+            <Button size="sm" onClick={disableDemoMode}>
+              Leave demo
+            </Button>
+          </div>
         </Card>
       )}
 
