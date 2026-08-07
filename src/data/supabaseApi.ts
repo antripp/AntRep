@@ -55,11 +55,14 @@ const obj = <T extends object>(v: unknown): T => (v && typeof v === "object" ? (
  * console for whoever is debugging.
  */
 function authError(error: { message?: string; status?: number } | null, action: string): string {
-  console.error(`[auth] ${action} failed`, error);
+  const status = error?.status ?? 0;
+  console.error(`[auth] ${action} failed (status ${status})`, error);
   const message = (error?.message ?? "").trim();
 
-  if (!message || message === "{}" || message === "null") {
-    return `Couldn't ${action}. The server accepted the request but the email didn't go out — check SMTP settings and the Auth logs in Supabase.`;
+  // A 5xx here is Supabase's own mailer failing. supabase-js stringifies the
+  // Response object for these, which is where the useless "{}" comes from.
+  if (status >= 500 || !message || message === "{}" || message === "null") {
+    return `Couldn't ${action} — Supabase couldn't send the email (server error ${status || "5xx"}). Check Authentication → Logs for the SMTP rejection.`;
   }
   if (/rate|too many|429/i.test(message)) {
     return "Too many emails just went out from this project. Wait a few minutes and try again.";
