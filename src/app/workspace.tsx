@@ -10,6 +10,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -97,9 +98,15 @@ export function WorkspaceProvider({ profile, children }: { profile: Profile; chi
     setLoading(false);
   }, [profile]);
 
+  // Only the very first load blanks the screen. Later reloads keep the current
+  // data on screen and swap it when the new data lands — otherwise any refresh
+  // flashes a full-page spinner and unmounts whatever the user was reading.
+  const loadedOnce = useRef(false);
   useEffect(() => {
-    setLoading(true);
-    reload();
+    if (!loadedOnce.current) setLoading(true);
+    reload().finally(() => {
+      loadedOnce.current = true;
+    });
   }, [reload]);
 
   /** Own active plan + coach plans the athlete has synced, with their start dates. */

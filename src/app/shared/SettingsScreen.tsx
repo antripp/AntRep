@@ -287,7 +287,7 @@ export default function SettingsScreen({
  * take effect — at which point the old address stops working for sign-in.
  */
 function EmailCard() {
-  const { user, refresh } = useAuth();
+  const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [next, setNext] = useState("");
   const [busy, setBusy] = useState(false);
@@ -314,7 +314,9 @@ function EmailCard() {
     );
     if (!result.error) setNext("");
     setBusy(false);
-    await refresh();
+    // Deliberately no refresh here: the address doesn't change until the link
+    // in the email is opened, and reloading would unmount this card — taking
+    // the message, including any error, off the screen before it can be read.
   }
 
   return (
