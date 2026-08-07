@@ -13,11 +13,17 @@ import {
   type ExerciseStat,
 } from "../../domain/analytics";
 import { formatShortDate, startOfWeek } from "../../domain/dates";
-import { weeklyGymCount } from "../../domain/gamification";
+import {
+  currentStreak,
+  levelProgress,
+  recentDays,
+  streakCopy,
+  weeklyGymCount,
+} from "../../domain/gamification";
 import { nameKey } from "../../domain/logging";
 import { compactKg } from "../../domain/text";
-import { LineChart, ShareBar, type Point } from "../../ui/charts";
-import { Card, Icon, Pill, ProgressRing, SectionHeader, StatTile } from "../../ui/kit";
+import { DotRow, LineChart, ShareBar, type Point } from "../../ui/charts";
+import { Card, Icon, IconTile, Pill, ProgressRing, SectionHeader, StatTile } from "../../ui/kit";
 
 const CATEGORY_COLORS: Record<string, string> = {
   push: DAY_TYPE_COLORS.push,
@@ -47,12 +53,17 @@ export function OverviewTab({
   logs,
   stats,
   weeklyGymGoal,
+  totalXp,
+  restWeekdays,
   onOpenExercise,
 }: {
   sessions: Session[];
   logs: SetLog[];
   stats: ExerciseStat[];
   weeklyGymGoal: number;
+  /** Streak and level moved here off the Home screen. */
+  totalXp: number;
+  restWeekdays: number[];
   onOpenExercise: (key: string) => void;
 }) {
   const [rangeKey, setRangeKey] = useState<(typeof RANGES)[number]["key"]>("8");
@@ -92,8 +103,36 @@ export function OverviewTab({
   const previousTotal = previous.reduce((t, p) => t + valueOf(p), 0);
   const delta = previousTotal > 0 ? (currentTotal - previousTotal) / previousTotal : 0;
 
+  const streak = currentStreak(sessions, restWeekdays);
+  const copy = streakCopy(streak);
+  const dots = recentDays(sessions, 10);
+  const level = levelProgress(totalXp);
+
   return (
     <>
+      <Card className="mb-3">
+        <div className="flex items-center gap-3">
+          <IconTile emoji="🔥" tint="var(--t-accent)" size={44} />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[15px] font-black text-ink">{copy.headline}</p>
+            <p className="truncate text-xs font-bold text-muted">{copy.subtitle}</p>
+          </div>
+          <DotRow dots={dots} />
+        </div>
+        <div className="mt-3 flex items-center gap-2">
+          <Pill tint="var(--t-accent)">LVL {level.level}</Pill>
+          <div className="h-2 flex-1 overflow-hidden rounded-full bg-inset">
+            <div
+              className="h-full rounded-full bg-accent transition-[width] duration-500"
+              style={{ width: `${Math.min(100, (level.current / level.needed) * 100)}%` }}
+            />
+          </div>
+          <span className="text-[11px] font-black text-muted">
+            {level.current}/{level.needed} XP
+          </span>
+        </div>
+      </Card>
+
       <Card className="mb-3">
         <div className="flex items-center gap-4">
           <ProgressRing

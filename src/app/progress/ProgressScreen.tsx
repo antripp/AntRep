@@ -39,6 +39,7 @@ export default function ProgressScreen() {
       logs={logs}
       plans={allBundles}
       weeklyGymGoal={profile.weekly_gym_goal}
+      totalXp={profile.total_xp}
     />
   );
 }
@@ -49,6 +50,7 @@ export function ProgressBody({
   logs: allLogs,
   plans = [],
   weeklyGymGoal,
+  totalXp = 0,
   title = "Progress",
   initialTab = "overview",
 }: {
@@ -57,6 +59,8 @@ export function ProgressBody({
   /** Every plan the athlete has followed; those with sessions become scopes. */
   plans?: PlanBundle[];
   weeklyGymGoal: number;
+  /** Drives the level bar that used to sit on Home. */
+  totalXp?: number;
   /** Omit the heading when the host screen already has one. */
   title?: string | null;
   initialTab?: ProgressTab;
@@ -74,6 +78,15 @@ export function ProgressBody({
   // The one derivation every tab needs — the exercise detail page reads it too,
   // so it lives above the tabs rather than inside each of them.
   const stats = useMemo(() => exerciseStats(sessions, logs), [sessions, logs]);
+
+  // Rest days the plans schedule bridge a streak rather than breaking it.
+  const restWeekdays = useMemo(
+    () =>
+      plans.flatMap((bundle) =>
+        bundle.days.filter((d) => d.day_type === "rest" || d.is_optional).map((d) => d.weekday),
+      ),
+    [plans],
+  );
 
   const openStat = openKey ? (stats.find((s) => s.key === openKey) ?? null) : null;
   const openSession = openSessionId
@@ -188,6 +201,8 @@ export function ProgressBody({
               logs={logs}
               stats={stats}
               weeklyGymGoal={weeklyGymGoal}
+              totalXp={totalXp}
+              restWeekdays={restWeekdays}
               onOpenExercise={setOpenKey}
             />
           )}

@@ -211,6 +211,7 @@ export default function AthleteDetailScreen({
               logs={training.logs}
               plans={training.plans}
               weeklyGymGoal={athlete.profile.weekly_gym_goal}
+              totalXp={athlete.profile.total_xp}
               title={null}
             />
           )}

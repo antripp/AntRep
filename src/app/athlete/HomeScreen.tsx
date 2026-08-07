@@ -18,11 +18,8 @@ import {
   isoWeekday,
   localDate,
   parseDate,
-  startOfWeek,
   weekdayLabel,
 } from "../../domain/dates";
-import { lifetimeTotals, weeklySeries } from "../../domain/analytics";
-import { currentStreak, levelProgress, recentDays, streakCopy, weeklyGymCount } from "../../domain/gamification";
 import {
   canResumeTimer,
   canStartTimer,
@@ -41,7 +38,6 @@ import {
 import { dayForDate, resolveSegments, typeIcon, type ResolvedSegment } from "../../domain/plan";
 import { nameKey } from "../../domain/logging";
 import { plural } from "../../domain/text";
-import { DotRow } from "../../ui/charts";
 import {
   ActionDialog,
   Button,
@@ -56,7 +52,6 @@ import {
   ScreenTitle,
   SectionHeader,
   Sheet,
-  StatTile,
   TextField,
 } from "../../ui/kit";
 import { ExercisePicker } from "../plans/PlanEditor";
@@ -70,7 +65,6 @@ export default function HomeScreen({ onGoPlans }: { onGoPlans: () => void }) {
     planViews,
     allBundles,
     sessions,
-    logs,
     sessionForSegment,
     ensureSession,
     startTimer,
@@ -133,30 +127,8 @@ export default function HomeScreen({ onGoPlans }: { onGoPlans: () => void }) {
     [sessions],
   );
 
-  const restWeekdays = useMemo(() => {
-    const rest: number[] = [];
-    for (const bundle of bundles) {
-      for (const day of bundle.days) {
-        if (day.day_type === "rest" || day.is_optional) rest.push(day.weekday);
-      }
-    }
-    return rest;
-  }, [bundles]);
-
-  const streak = currentStreak(sessions, restWeekdays, today);
-  const copy = streakCopy(streak);
-  const dots = recentDays(sessions, 10, today);
-  const level = levelProgress(profile.total_xp);
-  const week = weeklySeries(sessions, logs, 1, today)[0];
-  const gymDays = weeklyGymCount(sessions, startOfWeek(today));
-  const totals = lifetimeTotals(sessions, logs);
-
   const plannedTotal = daySegments.reduce(
     (t, s) => t + progressFor(s, date, sessionForSegment(s, dateStr)).total,
-    0,
-  );
-  const plannedDone = daySegments.reduce(
-    (t, s) => t + progressFor(s, date, sessionForSegment(s, dateStr)).completed,
     0,
   );
 
@@ -201,39 +173,9 @@ export default function HomeScreen({ onGoPlans }: { onGoPlans: () => void }) {
         quote={dailyQuote(todayStr)}
       />
 
-      {/* Streak + level */}
-      <Card className="mb-3">
-        <div className="flex items-center gap-3">
-          <IconTile emoji="🔥" tint="var(--t-accent)" size={44} />
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-[15px] font-black text-ink">{copy.headline}</p>
-            <p className="truncate text-xs font-bold text-muted">{copy.subtitle}</p>
-          </div>
-          <DotRow dots={dots} />
-        </div>
-        <div className="mt-3 flex items-center gap-2">
-          <Pill tint="var(--t-accent)">LVL {level.level}</Pill>
-          <div className="h-2 flex-1 overflow-hidden rounded-full bg-inset">
-            <div
-              className="h-full rounded-full bg-accent transition-[width] duration-500"
-              style={{ width: `${Math.min(100, (level.current / level.needed) * 100)}%` }}
-            />
-          </div>
-          <span className="text-[11px] font-black text-muted">
-            {level.current}/{level.needed} XP
-          </span>
-        </div>
-      </Card>
-
-      {/* Daily goals */}
-      <Card className="mb-3">
-        <div className="flex gap-2">
-          <StatTile value={`${plannedDone}/${plannedTotal || 0}`} label="exercises" />
-          <StatTile value={`${gymDays}/${profile.weekly_gym_goal}`} label="week goal" />
-          <StatTile value={`${(week?.volume ?? 0).toLocaleString()}`} label="kg this week" />
-          <StatTile value={`${totals.sessions}`} label="sessions" />
-        </div>
-      </Card>
+      {/* Streak, level and the weekly tiles now live on Progress → Overview.
+          Home stays about the one question it should answer: what am I doing
+          today, and how do I start it? */}
 
       {liveSession && isToday && (
         <LiveWorkoutPanel session={liveSession} segments={[...daySegments, ...offSchedule]} />

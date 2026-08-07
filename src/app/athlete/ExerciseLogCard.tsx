@@ -6,6 +6,7 @@ import type { PlanExercise, Session, SetLog } from "../../data/types";
 import { formatDuration } from "../../domain/dates";
 import { namesMatch, setHasData } from "../../domain/logging";
 import { typeColor } from "../../domain/plan";
+import { plural } from "../../domain/text";
 import { Icon, IconTile, NumberField, Pill } from "../../ui/kit";
 import { setsForExercise, useWorkspace } from "../workspace";
 import type { ResolvedSegment } from "../../domain/plan";
@@ -110,15 +111,8 @@ export function ExerciseLogCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dirty, draft]);
 
-  async function addSet() {
-    setOpen(true);
-    // An empty row is already waiting — fill that one instead of adding another.
-    const lastEmpty = draft.length > 0 && !setHasData(draft[draft.length - 1]);
-    if (lastEmpty) {
-      setHint(`Fill set ${draft.length} first`);
-      return;
-    }
-    const active = session ?? (await onNeedSession());
+  /** A fresh row, carrying forward whatever the last real set used. */
+  function seedSet(active: Session) {
     const previous = [...draft].reverse().find(setHasData);
     const seeded = makeSet(active.id, exercise.name, draft.length + 1, {
       weight_kg: previous?.weight_kg ?? (exercise.target_weight_kg || null),
@@ -128,8 +122,21 @@ export function ExerciseLogCard({
           ? exercise.target_reps
           : null),
     });
-    setDraft([...draft, seeded]);
+    setDraft((current) => [...current, seeded]);
     setDirty(true);
+  }
+
+  async function addSet() {
+    setOpen(true);
+    setHint(null);
+    // An empty row is already waiting — fill that one instead of adding another.
+    const lastEmpty = draft.length > 0 && !setHasData(draft[draft.length - 1]);
+    if (lastEmpty) {
+      setHint(`Fill set ${draft.length} first`);
+      return;
+    }
+    const active = session ?? (await onNeedSession());
+    seedSet(active);
   }
 
   /**
@@ -156,6 +163,20 @@ export function ExerciseLogCard({
     await commit(draft.filter((_, i) => i !== index));
   }
 
+  /**
+   * Blank rows are dropped on save, so pressing Save with nothing filled in
+   * used to look like the button was broken. Say what happened instead.
+   */
+  async function saveNow() {
+    const withData = draft.filter(setHasData).length;
+    if (withData === 0) {
+      setHint("Nothing to save yet — put a number in a set first.");
+      return;
+    }
+    await commit(draft);
+    setHint(`${plural(withData, "set")} saved.`);
+  }
+
   async function toggleDone() {
     if (busy) return;
     setBusy(true);
@@ -166,7 +187,16 @@ export function ExerciseLogCard({
         setDirty(false);
         await saveSets(active, exercise.name, draft);
       }
-      await setExerciseDone(active, exercise, !done, segment);
+      const nowDone = !done;
+      await setExerciseDone(active, exercise, nowDone, segment);
+
+      // Ticking an exercise you haven't logged yet opens it with a row ready,
+      // so the numbers can go in rather than the tick being the whole story.
+      if (nowDone && draft.filter(setHasData).length === 0) {
+        setOpen(true);
+        if (draft.length === 0) seedSet(active);
+        setHint("Add your numbers — the tick alone doesn't record any sets.");
+      }
     } finally {
       setBusy(false);
     }
@@ -360,7 +390,7 @@ export function ExerciseLogCard({
             </button>
             {draft.length > 0 && (
               <button
-                onClick={() => commit(draft)}
+                onClick={saveNow}
                 className="inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-black text-white"
                 style={{ background: tint }}
               >
