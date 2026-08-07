@@ -31,6 +31,7 @@ import type {
 type Row = Record<string, unknown>;
 
 const str = (v: unknown, fallback = ""): string => (typeof v === "string" ? v : fallback);
+
 const num = (v: unknown, fallback = 0): number => {
   const n = typeof v === "string" ? Number(v) : v;
   return typeof n === "number" && Number.isFinite(n) ? n : fallback;
@@ -43,6 +44,31 @@ const numOrNull = (v: unknown): number | null => {
 const bool = (v: unknown, fallback = false): boolean => (typeof v === "boolean" ? v : fallback);
 const arr = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
 const obj = <T extends object>(v: unknown): T => (v && typeof v === "object" ? (v as T) : ({} as T));
+
+/**
+ * Turn an auth error into something a person can act on.
+ *
+ * supabase-js falls back to `JSON.stringify(body)` when GoTrue answers with no
+ * message, so a failed send surfaces as the literal string "{}". That tells the
+ * user nothing, and it always means the server broke rather than the input did
+ * — nearly always the SMTP send. Say that, and put the real error in the
+ * console for whoever is debugging.
+ */
+function authError(error: { message?: string; status?: number } | null, action: string): string {
+  console.error(`[auth] ${action} failed`, error);
+  const message = (error?.message ?? "").trim();
+
+  if (!message || message === "{}" || message === "null") {
+    return `Couldn't ${action}. The server accepted the request but the email didn't go out — check SMTP settings and the Auth logs in Supabase.`;
+  }
+  if (/rate|too many|429/i.test(message)) {
+    return "Too many emails just went out from this project. Wait a few minutes and try again.";
+  }
+  if (/redirect|not allowed|invalid.*url/i.test(message)) {
+    return "The link's return address isn't on Supabase's allow-list. Add this site under Authentication → URL Configuration.";
+  }
+  return message;
+}
 
 // ---------- row normalizers (rows predating the migration keep working) ----------
 
@@ -446,7 +472,7 @@ export const supabaseApi: Api = {
       email: email.trim(),
       options: { emailRedirectTo: window.location.origin + window.location.pathname },
     });
-    return error ? { error: error.message } : { sent: true };
+    return error ? { error: authError(error, "send that sign-in link") } : { sent: true };
   },
 
   async resendVerification(email): Promise<AuthResult> {
@@ -455,7 +481,7 @@ export const supabaseApi: Api = {
       email: email.trim(),
       options: { emailRedirectTo: window.location.origin + window.location.pathname },
     });
-    return error ? { error: error.message } : { sent: true };
+    return error ? { error: authError(error, "resend that confirmation") } : { sent: true };
   },
 
   async changeEmail(newEmail): Promise<AuthResult> {
@@ -463,7 +489,7 @@ export const supabaseApi: Api = {
       { email: newEmail.trim() },
       { emailRedirectTo: window.location.origin + window.location.pathname },
     );
-    return error ? { error: error.message } : { sent: true };
+    return error ? { error: authError(error, "change your email") } : { sent: true };
   },
 
   async markEmailVerified() {
