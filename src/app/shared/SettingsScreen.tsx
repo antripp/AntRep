@@ -21,6 +21,7 @@ import {
   Toggle,
 } from "../../ui/kit";
 import { useAuth } from "../auth";
+import AdminApprovalCard from "./AdminApprovalCard";
 import GuideScreen from "./GuideScreen";
 
 export default function SettingsScreen({
@@ -207,6 +208,9 @@ export default function SettingsScreen({
       )}
 
       {extra}
+
+      {/* Renders nothing unless the signed-in account is the admin. */}
+      <AdminApprovalCard />
 
       <SectionHeader title="Account" />
       <Card className="p-0">
