@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { ACCENTS, BACKGROUNDS, PATTERN_STYLES, useTheme, type PatternStyle } from "../lib/theme";
-import type { AvatarPref, Profile, Role } from "../lib/types";
+import type { AvatarPref, Role } from "../lib/types";
 import { enableRole, useAuth } from "../features/auth/useAuth";
 import { Avatar, AVATAR_COLORS, AVATAR_SYMBOLS, Button, Card, Modal, Segmented, TextInput } from "./ui";
 
@@ -400,13 +400,7 @@ export function PendingApprovalScreen({ role }: { role: Role }) {
           <Button variant="ghost" onClick={signOut} className="mt-2 w-full">
             Sign out
           </Button>
-          {import.meta.env.DEV && (
-            <a href="/admin" className="mt-3 block text-center text-xs font-bold text-accent underline">
-              Admin console → /admin
-            </a>
-          )}
         </Card>
-        {import.meta.env.DEV && isAdmin && <AdminApprovalCard />}
       </div>
     </div>
   );
@@ -493,82 +487,6 @@ export function RoleSwitchCard() {
 }
 
 /** Admin-only: approve pending coach/athlete profiles (no emails shown). */
-export function AdminApprovalCard() {
-  const { isAdmin } = useAuth();
-  const [pending, setPending] = useState<Pick<Profile, "id" | "role" | "display_name" | "created_at">[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [feedback, setFeedback] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    if (!isAdmin) return;
-    setLoading(true);
-    const { data, error } = await supabase.rpc("list_pending_profiles");
-    if (!error) setPending((data as typeof pending) ?? []);
-    setLoading(false);
-  }, [isAdmin]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  if (!isAdmin) return null;
-
-  async function approve(id: string, role: string, name: string) {
-    setFeedback(null);
-    const { data, error } = await supabase.rpc("approve_profile", { p_profile_id: id });
-    if (error) {
-      setFeedback(`Failed: ${error.message}`);
-      return;
-    }
-    if (!data) {
-      setFeedback("Approve returned false — check admin setup in Supabase.");
-      return;
-    }
-    setFeedback(`Approved ${name} (${role}). They should open ${role === "coach" ? "/coach" : "/"}.`);
-    await load();
-  }
-
-  async function reject(id: string) {
-    await supabase.rpc("reject_profile", { p_profile_id: id });
-    await load();
-  }
-
-  return (
-    <Card className="border-gold">
-      <h2 className="mb-1 font-black">Admin — pending accounts</h2>
-      <p className="mb-3 text-xs font-semibold text-muted">
-        Approve or reject new signups. Emails are never shown here. After approving, tell users
-        which link to open: coaches → <code className="rounded bg-inset px-1">/coach</code>, athletes →{" "}
-        <code className="rounded bg-inset px-1">/</code>.
-      </p>
-      {feedback && <p className="mb-2 text-xs font-bold text-accent">{feedback}</p>}
-      {loading && <p className="text-xs font-bold text-muted">Loading…</p>}
-      {!loading && pending.length === 0 && (
-        <p className="text-sm font-semibold text-muted">No pending accounts 🎉</p>
-      )}
-      {pending.map((p) => (
-        <div key={p.id} className="mb-2 flex items-center gap-2 rounded-xl bg-inset px-3 py-2">
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-extrabold">{p.display_name}</p>
-            <p className="text-xs font-semibold text-muted">
-              {p.role} · {new Date(p.created_at!).toLocaleString()}
-            </p>
-          </div>
-          <Button className="px-3 py-1 text-xs" onClick={() => approve(p.id, p.role, p.display_name)}>
-            Approve
-          </Button>
-          <Button variant="danger" className="px-3 py-1 text-xs" onClick={() => reject(p.id)}>
-            Reject
-          </Button>
-        </div>
-      ))}
-      <Button variant="secondary" onClick={load} className="mt-2 w-full">
-        Refresh
-      </Button>
-    </Card>
-  );
-}
-
 /** Safeguarded unlink — athlete or coach side. */
 export function UnlinkModal({
   title,

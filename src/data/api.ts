@@ -28,11 +28,16 @@ import type {
 export interface AuthUser {
   id: string;
   email: string;
+  /** Supabase has seen this address confirmed. Always true in demo mode. */
+  emailConfirmed: boolean;
 }
 
 export interface AuthResult {
   error?: string;
+  /** Signed up, but the address has to be confirmed before signing in. */
   needsConfirm?: boolean;
+  /** A magic link or verification mail just went out. */
+  sent?: boolean;
 }
 
 export interface AthleteWorkspace {
@@ -71,6 +76,24 @@ export interface Api {
   onAuthChange(cb: (user: AuthUser | null) => void): () => void;
   signIn(email: string, password: string): Promise<AuthResult>;
   signUp(email: string, password: string, role: Role, displayName: string): Promise<AuthResult>;
+  /** Password-free sign-in: emails a one-tap link. */
+  sendMagicLink(email: string): Promise<AuthResult>;
+  /** Re-send the confirmation mail for an address that never got verified. */
+  resendVerification(email: string): Promise<AuthResult>;
+  /**
+   * Move the account to a new address. Supabase mails it a confirmation; the
+   * change only takes effect once that link is followed, and from then on the
+   * old address can no longer sign in.
+   */
+  changeEmail(newEmail: string): Promise<AuthResult>;
+  /** Clear the verification requirement once Supabase reports it confirmed. */
+  markEmailVerified(): Promise<boolean>;
+  /**
+   * Create the profile for a confirmed account if it doesn't exist yet. With
+   * email confirmation on there is no session at sign-up time, so the row can
+   * only be written once the user comes back through the link.
+   */
+  ensureProfile(role: Role, displayName: string): Promise<AuthResult>;
   signOut(): Promise<void>;
 
   // ---- profiles ----

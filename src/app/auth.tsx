@@ -44,11 +44,35 @@ export function AuthProvider({ role, children }: { role: Role; children: ReactNo
 
   useEffect(() => setActiveRole(role), [role]);
 
-  const load = useCallback(async (nextUser: AuthUser | null) => {
-    setUser(nextUser);
-    setProfiles(nextUser ? await api.myProfiles() : []);
-    setLoading(false);
-  }, []);
+  const load = useCallback(
+    async (nextUser: AuthUser | null) => {
+      setUser(nextUser);
+      if (!nextUser) {
+        setProfiles([]);
+        setLoading(false);
+        return;
+      }
+
+      let mine = await api.myProfiles();
+
+      if (nextUser.emailConfirmed) {
+        // Sign-up can't write the profile — with confirmation on there's no
+        // session yet — so the first confirmed load creates it.
+        if (mine.length === 0) {
+          await api.ensureProfile(role, "");
+          mine = await api.myProfiles();
+        }
+        // And clear the verification requirement now that it's satisfied.
+        if (mine.some((p) => p.requires_email_verification)) {
+          if (await api.markEmailVerified()) mine = await api.myProfiles();
+        }
+      }
+
+      setProfiles(mine);
+      setLoading(false);
+    },
+    [role],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -72,7 +96,7 @@ export function AuthProvider({ role, children }: { role: Role; children: ReactNo
       profile: profiles.find((p) => p.role === activeRole) ?? null,
       role: activeRole,
       setRole: setActiveRole,
-      refresh: async () => setProfiles(user ? await api.myProfiles() : []),
+      refresh: async () => load(await api.currentUser()),
       signOut: async () => {
         await api.signOut();
         setProfiles([]);

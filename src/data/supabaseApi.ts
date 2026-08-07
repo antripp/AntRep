@@ -54,6 +54,7 @@ function toProfile(r: Row): Profile {
     display_name: str(r.display_name),
     avatar: obj(r.avatar),
     approved_at: (r.approved_at as string) ?? null,
+    requires_email_verification: Boolean(r.requires_email_verification ?? false),
     created_at: (r.created_at as string) ?? undefined,
     total_xp: num(r.total_xp),
     level: num(r.level, 1),
@@ -374,12 +375,19 @@ export const supabaseApi: Api = {
   async currentUser() {
     const { data } = await supabase.auth.getUser();
     const user = data.user;
-    return user ? { id: user.id, email: user.email ?? "" } : null;
+    return user
+      ? { id: user.id, email: user.email ?? "", emailConfirmed: Boolean(user.email_confirmed_at) }
+      : null;
   },
 
   onAuthChange(cb) {
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-      cb(session?.user ? { id: session.user.id, email: session.user.email ?? "" } : null);
+      const user = session?.user;
+      cb(
+        user
+          ? { id: user.id, email: user.email ?? "", emailConfirmed: Boolean(user.email_confirmed_at) }
+          : null,
+      );
     });
     return () => data.subscription.unsubscribe();
   },
@@ -389,14 +397,78 @@ export const supabaseApi: Api = {
     return error ? { error: error.message } : {};
   },
 
+  /**
+   * The profile row is written on the first signed-in load, not here — with
+   * email confirmation on there is no session yet at this point, so an insert
+   * would be rejected by RLS. See `ensureProfile`.
+   */
   async signUp(email, password, role, displayName): Promise<AuthResult> {
-    const { data, error } = await supabase.auth.signUp({ email: email.trim(), password });
+    const { data, error } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
+      options: {
+        emailRedirectTo: `${window.location.origin}${role === "coach" ? "/coach" : "/"}`,
+        data: { pending_role: role, pending_name: displayName },
+      },
+    });
     if (error) return { error: error.message };
     if (!data.session) return { needsConfirm: true };
-    const { error: profileError } = await supabase
+    return await this.ensureProfile(role, displayName);
+  },
+
+  /**
+   * Create the profile for a freshly confirmed account. Safe to call on every
+   * load: it does nothing when the role already exists.
+   */
+  async ensureProfile(role: Role, displayName: string): Promise<AuthResult> {
+    const { data: auth } = await supabase.auth.getUser();
+    const user = auth.user;
+    if (!user) return { error: "Not signed in." };
+
+    const { data: existing } = await supabase
       .from("profiles")
-      .insert({ user_id: data.user?.id, role, display_name: displayName });
-    return profileError ? { error: profileError.message } : {};
+      .select("id")
+      .eq("user_id", user.id)
+      .eq("role", role);
+    if (existing && existing.length > 0) return {};
+
+    const meta = user.user_metadata ?? {};
+    const { error } = await supabase.from("profiles").insert({
+      user_id: user.id,
+      role,
+      display_name: displayName || (meta.pending_name as string) || (user.email ?? "").split("@")[0],
+    });
+    return error ? { error: error.message } : {};
+  },
+
+  async sendMagicLink(email): Promise<AuthResult> {
+    const { error } = await supabase.auth.signInWithOtp({
+      email: email.trim(),
+      options: { emailRedirectTo: window.location.origin + window.location.pathname },
+    });
+    return error ? { error: error.message } : { sent: true };
+  },
+
+  async resendVerification(email): Promise<AuthResult> {
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email: email.trim(),
+      options: { emailRedirectTo: window.location.origin + window.location.pathname },
+    });
+    return error ? { error: error.message } : { sent: true };
+  },
+
+  async changeEmail(newEmail): Promise<AuthResult> {
+    const { error } = await supabase.auth.updateUser(
+      { email: newEmail.trim() },
+      { emailRedirectTo: window.location.origin + window.location.pathname },
+    );
+    return error ? { error: error.message } : { sent: true };
+  },
+
+  async markEmailVerified() {
+    const { data, error } = await supabase.rpc("mark_email_verified");
+    return !error && data === true;
   },
 
   async signOut() {

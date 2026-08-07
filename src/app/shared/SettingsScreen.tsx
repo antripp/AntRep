@@ -21,7 +21,6 @@ import {
   Toggle,
 } from "../../ui/kit";
 import { useAuth } from "../auth";
-import AdminApprovalCard from "./AdminApprovalCard";
 import GuideScreen from "./GuideScreen";
 
 export default function SettingsScreen({
@@ -213,10 +212,8 @@ export default function SettingsScreen({
 
       {extra}
 
-      {/* Renders nothing unless the signed-in account is the admin. */}
-      <AdminApprovalCard />
-
       <SectionHeader title="Account" />
+      {!isDemoMode && <EmailCard />}
       <Card className="p-0">
         <SettingRow
           title={hasOtherRole ? `Switch to ${otherRole} portal` : `Become a ${otherRole} too`}
@@ -281,6 +278,103 @@ export default function SettingsScreen({
 }
 
 /** Toggle used by the coach portal to control what athletes may see. */
+/**
+ * The address the account signs in with, and how to move it.
+ *
+ * Accounts made before verification existed often carry a placeholder address
+ * that can't receive mail. Swapping it is the point of this card: Supabase
+ * emails the new address, and only once that link is opened does the change
+ * take effect — at which point the old address stops working for sign-in.
+ */
+function EmailCard() {
+  const { user, refresh } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [next, setNext] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  if (!user) return null;
+  const verified = user.emailConfirmed;
+
+  async function submit() {
+    const value = next.trim();
+    if (!value || !value.includes("@")) {
+      setFailed(true);
+      setNote("That doesn't look like an email address.");
+      return;
+    }
+    setBusy(true);
+    setNote(null);
+    const result = await api.changeEmail(value);
+    setFailed(Boolean(result.error));
+    setNote(
+      result.error ??
+        `Confirmation sent to ${value}. Open the link there to finish — until you do, you keep signing in with your current address.`,
+    );
+    if (!result.error) setNext("");
+    setBusy(false);
+    await refresh();
+  }
+
+  return (
+    <Card className="mb-3">
+      <div className="flex items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-black uppercase tracking-wide text-muted">Email</p>
+          <p className="truncate text-sm font-black text-ink">{user.email}</p>
+        </div>
+        <Pill tint={verified ? "var(--color-done)" : "var(--color-gold)"}>
+          {verified ? "Verified" : "Unverified"}
+        </Pill>
+      </div>
+
+      {!verified && (
+        <p className="mt-2 text-xs font-semibold leading-snug text-muted">
+          This address hasn't been confirmed. If it's a placeholder that can't receive mail, change
+          it below — you'll need a working address to reset your password or sign in by link.
+        </p>
+      )}
+
+      {note && (
+        <p className={`mt-2 text-xs font-bold ${failed ? "text-danger" : "text-accent"}`}>{note}</p>
+      )}
+
+      {open ? (
+        <div className="mt-3 space-y-2">
+          <Field label="New email">
+            <TextField
+              type="email"
+              autoComplete="email"
+              placeholder="you@example.com"
+              value={next}
+              onChange={(e) => setNext(e.target.value)}
+            />
+          </Field>
+          <div className="flex gap-2">
+            <Button disabled={busy} onClick={submit}>
+              {busy ? "Sending…" : "Send confirmation"}
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setOpen(false);
+                setNote(null);
+              }}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <Button size="sm" variant="secondary" className="mt-3" onClick={() => setOpen(true)}>
+          Change email
+        </Button>
+      )}
+    </Card>
+  );
+}
+
 export function ShareToggleRow({
   value,
   onChange,

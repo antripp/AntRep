@@ -3,7 +3,7 @@ import { supabase } from "../../lib/supabase";
 import type { CoachSettings, CustomField } from "../../lib/types";
 import { buildColumns } from "../../lib/exportXlsx";
 import { Button, Card, Select, Spinner, TextInput } from "../../components/ui";
-import { AvatarCard, DeleteAccountCard, PatternLabCard, RoleSwitchCard, ThemeCard, AdminApprovalCard } from "../../components/SettingsShared";
+import { AvatarCard, DeleteAccountCard, PatternLabCard, RoleSwitchCard, ThemeCard } from "../../components/SettingsShared";
 import { useAuth } from "../auth/useAuth";
 
 /**
@@ -120,7 +120,6 @@ export default function CoachSettingsPage() {
         <PatternLabCard />
 
         <RoleSwitchCard />
-        <AdminApprovalCard />
 
         <Card>
           <h2 className="mb-1 font-black">Custom logging fields</h2>

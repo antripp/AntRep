@@ -975,7 +975,8 @@ function setSession(userId: string | null) {
 
 function toAuthUser(userId: string): AuthUser | null {
   const u = load().users.find((x) => x.id === userId);
-  return u ? { id: u.id, email: u.email } : null;
+  // The demo store has no mail, so nothing is ever waiting on a link.
+  return u ? { id: u.id, email: u.email, emailConfirmed: true } : null;
 }
 
 function bundleFor(db: DemoStore, plan: Plan): PlanBundle {
@@ -1022,6 +1023,38 @@ export const demoApi: Api = {
     db.profiles.push(makeProfile(user.id, role, displayName || email.split("@")[0]));
     persist();
     setSession(user.id);
+    return {};
+  },
+
+  // Email flows need a mail server; the demo store has none. Each returns the
+  // shape the UI expects and says plainly that it did nothing.
+  async sendMagicLink(): Promise<AuthResult> {
+    return { error: "Magic links need a real account — the demo has no email." };
+  },
+
+  async resendVerification(): Promise<AuthResult> {
+    return { error: "Demo accounts are already verified." };
+  },
+
+  async changeEmail(newEmail): Promise<AuthResult> {
+    const db = load();
+    if (!currentUserId) return { error: "Not signed in." };
+    const taken = db.users.some(
+      (u) => u.id !== currentUserId && u.email.toLowerCase() === newEmail.trim().toLowerCase(),
+    );
+    if (taken) return { error: "That email already has a demo account." };
+    const user = db.users.find((u) => u.id === currentUserId);
+    if (user) user.email = newEmail.trim();
+    persist();
+    setSession(currentUserId);
+    return {};
+  },
+
+  async markEmailVerified() {
+    return true;
+  },
+
+  async ensureProfile(): Promise<AuthResult> {
     return {};
   },
 

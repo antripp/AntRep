@@ -4,7 +4,6 @@ import type { CoachLink, Profile } from "../../lib/types";
 import { useRealtime } from "../../lib/useRealtime";
 import { Avatar, Button, Card, TextInput } from "../../components/ui";
 import {
-  AdminApprovalCard,
   AvatarCard,
   DeleteAccountCard,
   PatternLabCard,
@@ -86,7 +85,6 @@ export default function AthleteSettingsPage() {
         <ThemeCard />
         <PatternLabCard />
         <RoleSwitchCard />
-        <AdminApprovalCard />
 
         <Card>
           <h2 className="mb-1 font-black">Your coaches</h2>

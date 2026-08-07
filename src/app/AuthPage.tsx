@@ -33,10 +33,27 @@ export default function AuthPage({ role }: { role: Role }) {
           ? await api.signIn(email, password)
           : await api.signUp(email, password, role, name);
       if (result.error) setError(result.error);
-      else if (result.needsConfirm) setNotice("Check your email to confirm the account, then sign in.");
+      else if (result.needsConfirm)
+        setNotice(
+          `We've emailed a confirmation link to ${email.trim()}. Open it to finish setting up — check spam if it's not there.`,
+        );
     } finally {
       setBusy(false);
     }
+  }
+
+  async function magicLink() {
+    if (!email.trim()) {
+      setError("Enter your email first.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    const result = await api.sendMagicLink(email);
+    if (result.error) setError(result.error);
+    else setNotice(`Link sent to ${email.trim()}. Open it on this device to sign in.`);
+    setBusy(false);
   }
 
   return (
@@ -97,6 +114,22 @@ export default function AuthPage({ role }: { role: Role }) {
               {busy ? "Working…" : mode === "signin" ? "Sign in" : `Create ${role} account`}
             </Button>
           </form>
+
+          {mode === "signin" && (
+            <>
+              <div className="my-3 flex items-center gap-2">
+                <span className="h-px flex-1 bg-line" />
+                <span className="text-[11px] font-black uppercase tracking-wide text-muted">or</span>
+                <span className="h-px flex-1 bg-line" />
+              </div>
+              <Button variant="secondary" full disabled={busy} onClick={magicLink}>
+                <Icon.send className="h-4 w-4" /> Email me a sign-in link
+              </Button>
+              <p className="mt-2 text-center text-[11px] font-semibold text-muted">
+                No password needed — the link signs you straight in.
+              </p>
+            </>
+          )}
         </Card>
 
         {isMissingBackend && (

@@ -257,6 +257,7 @@ export function makeProfile(userId: string, role: Profile["role"], displayName: 
     display_name: displayName,
     avatar: {},
     approved_at: new Date().toISOString(),
+    requires_email_verification: false,
     created_at: new Date().toISOString(),
     total_xp: 0,
     level: 1,

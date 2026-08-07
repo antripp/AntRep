@@ -142,6 +142,8 @@ export interface Profile {
   display_name: string;
   avatar?: AvatarPref;
   approved_at: string | null;
+  /** False for accounts that predate email verification — they are not gated. */
+  requires_email_verification: boolean;
   created_at?: string;
   total_xp: number;
   level: number;

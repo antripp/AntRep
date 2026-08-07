@@ -1,5 +1,6 @@
 /** One portal (athlete or coach): auth gate → role gate → the app. */
 
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, isDemoMode } from "../data";
 import type { Role } from "../data/types";
@@ -64,23 +65,53 @@ function PortalBody({ role }: { role: Role }) {
     );
   }
 
-  // Supabase deployments require an admin to approve a new profile.
-  if (!forRole.approved_at && !isDemoMode) {
-    return (
-      <div className="pattern-bg flex min-h-dvh items-center justify-center bg-bg px-5">
-        <Card className="max-w-sm text-center">
-          <h1 className="text-xl font-black text-ink">Waiting for approval</h1>
-          <p className="mt-1 text-sm font-semibold leading-snug text-muted">
-            Your {role} profile has been created. An admin needs to approve it before you can start.
-          </p>
-        </Card>
-      </div>
-    );
+  // New accounts confirm their address before they can use the app. Accounts
+  // that existed before verification arrived carry `requires_email_verification`
+  // false, so nobody who was already training gets locked out.
+  if (!isDemoMode && forRole.requires_email_verification && !user.emailConfirmed) {
+    return <VerifyEmailWall email={user.email} />;
   }
 
   return role === "athlete" ? (
     <AthleteApp profile={forRole} onSwitchPortal={switchPortal} />
   ) : (
     <CoachApp profile={forRole} onSwitchPortal={switchPortal} />
+  );
+}
+
+/** Shown until Supabase reports the address confirmed. */
+function VerifyEmailWall({ email }: { email: string }) {
+  const { refresh, signOut } = useAuth();
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+
+  async function resend() {
+    setBusy(true);
+    setNote(null);
+    const result = await api.resendVerification(email);
+    setNote(result.error ?? "Sent — check your inbox, and your spam folder.");
+    setBusy(false);
+  }
+
+  return (
+    <div className="pattern-bg flex min-h-dvh items-center justify-center bg-bg px-5">
+      <Card className="max-w-sm text-center">
+        <h1 className="text-xl font-black text-ink">Confirm your email</h1>
+        <p className="mt-1 text-sm font-semibold leading-snug text-muted">
+          We sent a link to <span className="font-black text-ink">{email}</span>. Open it and you're
+          in — nothing else to do.
+        </p>
+        {note && <p className="mt-3 text-xs font-bold text-accent">{note}</p>}
+        <Button className="mt-4" full disabled={busy} onClick={refresh}>
+          I've confirmed it
+        </Button>
+        <Button className="mt-2" variant="secondary" full disabled={busy} onClick={resend}>
+          Send it again
+        </Button>
+        <Button className="mt-2" variant="ghost" full onClick={signOut}>
+          Use a different account
+        </Button>
+      </Card>
+    </div>
   );
 }
