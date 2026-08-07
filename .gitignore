@@ -12,6 +12,11 @@ dist
 .claude/
 .cursor/
 
-# Database SQL — local only; run manually in Supabase SQL Editor (not versioned).
+# Database SQL — run manually in Supabase SQL Editor.
+# Migrations are versioned so schema changes travel with the code; the rest
+# (schema.sql, hotfixes, seed data) stays local.
 supabase/*
 !supabase/.gitkeep
+!supabase/migrations/
+supabase/migrations/*
+!supabase/migrations/*.sql
