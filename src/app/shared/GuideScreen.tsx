@@ -22,6 +22,8 @@ interface GuideSection {
   /** Paragraphs that read after the table. */
   body2?: string[];
   tip?: string;
+  /** Screenshot basenames in public/guide, captured by `npm run guide:shots`. */
+  shots?: string[];
 }
 
 interface GuidePart {
@@ -183,6 +185,14 @@ function Section({ section }: { section: GuideSection }) {
         </Card>
       )}
 
+      {section.shots && section.shots.length > 0 && (
+        <div className="mb-2 space-y-2">
+          {section.shots.map((shot) => (
+            <Shot key={shot} name={shot} alt={`${section.title} — screenshot`} />
+          ))}
+        </div>
+      )}
+
       {section.tip && (
         <div
           className="mb-2 flex gap-2.5 rounded-card px-3 py-2.5"
@@ -193,6 +203,29 @@ function Section({ section }: { section: GuideSection }) {
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * A captured screen. Phone-shaped shots are held to phone width; the wider
+ * analytics captures take the full column, or their tables end up unreadable.
+ */
+function Shot({ name, alt }: { name: string; alt: string }) {
+  const [portrait, setPortrait] = useState(true);
+
+  return (
+    <figure className="overflow-hidden rounded-card border border-line bg-inset p-2">
+      <img
+        src={`${import.meta.env.BASE_URL}guide/${name}.png`}
+        alt={alt}
+        loading="lazy"
+        onLoad={(e) => {
+          const img = e.currentTarget;
+          setPortrait(img.naturalHeight / img.naturalWidth > 1.4);
+        }}
+        className={`mx-auto block w-full rounded-2xl ${portrait ? "max-w-sm" : ""}`}
+      />
+    </figure>
   );
 }
 

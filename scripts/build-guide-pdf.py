@@ -11,10 +11,12 @@ and the app can never say different things.
 Writes docs/AntRep-Guide.pdf.
 """
 
+import io
 import json
 import pathlib
 import re
 
+from PIL import Image as PILImage
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_LEFT
 from reportlab.lib.pagesizes import A4
@@ -24,6 +26,7 @@ from reportlab.platypus import (
     BaseDocTemplate,
     CondPageBreak,
     Frame,
+    Image,
     KeepTogether,
     ListFlowable,
     ListItem,
@@ -37,8 +40,15 @@ from reportlab.platypus import (
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SOURCE = ROOT / "src" / "content" / "guide.json"
+SHOTS = ROOT / "public" / "guide"
 OUT_DIR = ROOT / "docs"
 OUT = OUT_DIR / "AntRep-Guide.pdf"
+
+# Screenshots are captured at 2x for the app; the PDF only needs enough pixels
+# to stay sharp in print, and downscaling keeps the file a sane size.
+SHOT_MAX_PX = 900
+PHONE_SHOT_MM = 80
+WIDE_SHOT_MM = 150
 
 INK = colors.HexColor("#16181D")
 MUTED = colors.HexColor("#6B7280")
@@ -143,6 +153,48 @@ def build_table(spec, st, width):
             style.append(("BACKGROUND", (0, i), (-1, i), ZEBRA))
     table.setStyle(TableStyle(style))
     return table
+
+
+def build_shot(name, width):
+    """One screenshot, scaled to fit and framed so it reads as a screen."""
+    source = SHOTS / f"{name}.png"
+    if not source.exists():
+        print(f"  ! missing screenshot: {name}.png")
+        return None
+
+    with PILImage.open(source) as img:
+        img = img.convert("RGB")
+        if max(img.size) > SHOT_MAX_PX:
+            ratio = SHOT_MAX_PX / max(img.size)
+            img = img.resize(
+                (round(img.width * ratio), round(img.height * ratio)), PILImage.LANCZOS
+            )
+        buffer = io.BytesIO()
+        img.save(buffer, format="JPEG", quality=82, optimize=True)
+        buffer.seek(0)
+        aspect = img.height / img.width
+
+    # Phone-width captures stay phone-sized; the wide analytics ones get the
+    # full column, or their tables would be unreadable.
+    target = PHONE_SHOT_MM if aspect > 1.4 else WIDE_SHOT_MM
+    draw_w = min(target * mm, width)
+    flowable = Image(buffer, width=draw_w, height=draw_w * aspect)
+    flowable.hAlign = "CENTER"
+
+    frame = Table([[flowable]], hAlign="CENTER")
+    frame.setStyle(
+        TableStyle(
+            [
+                ("BOX", (0, 0), (-1, -1), 0.7, LINE),
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#FAFBFC")),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+            ]
+        )
+    )
+    return frame, draw_w * aspect + 16
 
 
 def build_tip(text, st, width):
@@ -253,11 +305,23 @@ def main():
             for line in section.get("body2", []):
                 block.append(Paragraph(esc(line), st["body"]))
 
+            for shot in section.get("shots", []):
+                built = build_shot(shot, width)
+                if built is not None:
+                    flowable, needed = built
+                    # Move the screenshot to the next page only when it truly
+                    # won't fit, so its own text still fills the page it left.
+                    block.append(Spacer(1, 4))
+                    block.append(CondPageBreak(needed))
+                    block.append(flowable)
+                    block.append(Spacer(1, 10))
+
             if section.get("tip"):
                 block.append(build_tip(section["tip"], st, width))
                 block.append(Spacer(1, 8))
 
-            # Keep a heading with at least the start of its content.
+            # Keep a heading with at least the start of its content; the
+            # CondPageBreak above handles the screenshots.
             story.append(KeepTogether(block[:2]) if len(block) > 1 else block[0])
             story.extend(block[2:])
 

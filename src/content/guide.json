@@ -16,10 +16,22 @@
             "The coach portal is the same app with /coach on the end of the address. It has its own sign-in and its own tabs."
           ],
           "table": {
-            "head": ["Side", "Where", "What it's for"],
+            "head": [
+              "Side",
+              "Where",
+              "What it's for"
+            ],
             "rows": [
-              ["Athlete", "the plain address", "Following a plan, logging sets, watching your numbers"],
-              ["Coach", "add /coach", "Building plans, inviting athletes, reading their training"]
+              [
+                "Athlete",
+                "the plain address",
+                "Following a plan, logging sets, watching your numbers"
+              ],
+              [
+                "Coach",
+                "add /coach",
+                "Building plans, inviting athletes, reading their training"
+              ]
             ]
           }
         },
@@ -29,7 +41,10 @@
             "On the sign-in screen there's a button that says \"Explore the demo without an account\". Tap it and you get a fully stocked practice account with months of fake training already in it.",
             "The demo lives only in your browser. Nothing is sent anywhere, and nothing you do there touches a real account. It's the best way to click around before you commit."
           ],
-          "tip": "The demo also has a ready-made coach account, so you can see both sides."
+          "tip": "The demo also has a ready-made coach account, so you can see both sides.",
+          "shots": [
+            "auth-signin"
+          ]
         },
         {
           "title": "Making your account",
@@ -80,19 +95,39 @@
           "body": [
             "The Home tab always opens on today. Under the greeting you'll see a card for each block of work scheduled for today — for example a \"Push day\" card and a \"Walk, run or jog\" card.",
             "Each card shows how far through it you are, like 0/5 exercises."
+          ],
+          "shots": [
+            "athlete-home"
           ]
         },
         {
           "title": "Step 3 — start the workout",
-          "body": ["Tap \"Start now\" on the day card. You get three choices."],
+          "body": [
+            "Tap \"Start now\" on the day card. You get three choices."
+          ],
           "table": {
-            "head": ["Choice", "What happens"],
+            "head": [
+              "Choice",
+              "What happens"
+            ],
             "rows": [
-              ["Start workout", "A timer runs while you train. Best for a normal session."],
-              ["Start another day's workout", "Pick a different day of your plan to do today."],
-              ["Just log without a timer", "No clock. Best when you're writing up a session afterwards."]
+              [
+                "Start workout",
+                "A timer runs while you train. Best for a normal session."
+              ],
+              [
+                "Start another day's workout",
+                "Pick a different day of your plan to do today."
+              ],
+              [
+                "Just log without a timer",
+                "No clock. Best when you're writing up a session afterwards."
+              ]
             ]
-          }
+          },
+          "shots": [
+            "athlete-start-dialog"
+          ]
         },
         {
           "title": "Step 4 — log your sets",
@@ -105,6 +140,9 @@
           "body2": [
             "The boxes change to suit the exercise. A barbell lift asks for kilograms and reps; a run asks for kilometres and minutes; a plank asks for seconds.",
             "Decimals are fine. Type 52.5 for a 52.5 kg lift or 3.2 for 3.2 km — just type the dot as part of the number."
+          ],
+          "shots": [
+            "athlete-logging"
           ]
         },
         {
@@ -120,6 +158,9 @@
             "Nothing is lost. Two ways to catch up:",
             "Train it today: on Home, tap \"Train another day\" and pick the session you missed. It gets logged against today.",
             "Fill it in for the day it happened: use the arrows either side of the date bar on Home to walk back to that day, then log as normal. It saves as a late log, and your streak still counts it."
+          ],
+          "shots": [
+            "athlete-date-search"
           ]
         },
         {
@@ -139,20 +180,52 @@
       "sections": [
         {
           "title": "Home",
-          "body": ["Today's training, and everything you need to log it."],
+          "body": [
+            "Today's training, and everything you need to log it."
+          ],
           "table": {
-            "head": ["On the screen", "What it does"],
+            "head": [
+              "On the screen",
+              "What it does"
+            ],
             "rows": [
-              ["Streak card", "How many days in a row you've trained. Rest days in your plan don't break it."],
-              ["Level bar", "Your level and XP. Everything you log adds to it."],
-              ["Four tiles", "Exercises done today, sessions this week against your goal, kilograms lifted this week, sessions all time."],
-              ["Date bar", "Arrows step one day back or forward. Tap the middle to search for a date, or pick from days you've already trained."],
-              ["Day cards", "One per block of work scheduled that day, with a progress ring."],
-              ["Timer bar", "Appears once a workout is running. Pause, resume, or stop."],
-              ["Rest countdown", "Starts after you finish a set, if the exercise has a rest time."],
-              ["Extra work", "Log anything outside the plan."]
+              [
+                "Streak card",
+                "How many days in a row you've trained. Rest days in your plan don't break it."
+              ],
+              [
+                "Level bar",
+                "Your level and XP. Everything you log adds to it."
+              ],
+              [
+                "Four tiles",
+                "Exercises done today, sessions this week against your goal, kilograms lifted this week, sessions all time."
+              ],
+              [
+                "Date bar",
+                "Arrows step one day back or forward. Tap the middle to search for a date, or pick from days you've already trained."
+              ],
+              [
+                "Day cards",
+                "One per block of work scheduled that day, with a progress ring."
+              ],
+              [
+                "Timer bar",
+                "Appears once a workout is running. Pause, resume, or stop."
+              ],
+              [
+                "Rest countdown",
+                "Starts after you finish a set, if the exercise has a rest time."
+              ],
+              [
+                "Extra work",
+                "Log anything outside the plan."
+              ]
             ]
-          }
+          },
+          "shots": [
+            "athlete-home"
+          ]
         },
         {
           "title": "Plans",
@@ -167,22 +240,45 @@
             "Add exercises to each day: name, sets, reps, weight, rest, and any notes.",
             "Save."
           ],
-          "tip": "Building a big plan? Copy the rows out of a spreadsheet and use \"Paste from Excel\" instead of typing them one by one."
+          "tip": "Building a big plan? Copy the rows out of a spreadsheet and use \"Paste from Excel\" instead of typing them one by one.",
+          "shots": [
+            "athlete-plans"
+          ]
         },
         {
           "title": "Coach",
-          "body": ["Everything between you and your coach, in four tabs."],
+          "body": [
+            "Everything between you and your coach, in four tabs."
+          ],
           "table": {
-            "head": ["Tab", "What it's for"],
+            "head": [
+              "Tab",
+              "What it's for"
+            ],
             "rows": [
-              ["Chat", "Plain messages, back and forth."],
-              ["Check-in", "A short weekly form: body weight, sleep, energy, appetite, and any aches."],
-              ["Trackers", "Numbers your coach wants you to keep — waist, resting heart rate, anything they set up."],
-              ["Notes", "What your coach wrote after looking at your training. Read-only for you."]
+              [
+                "Chat",
+                "Plain messages, back and forth."
+              ],
+              [
+                "Check-in",
+                "A short weekly form: body weight, sleep, energy, appetite, and any aches."
+              ],
+              [
+                "Trackers",
+                "Numbers your coach wants you to keep — waist, resting heart rate, anything they set up."
+              ],
+              [
+                "Notes",
+                "What your coach wrote after looking at your training. Read-only for you."
+              ]
             ]
           },
           "body2": [
             "If you don't have a coach yet, this tab tells you how to link one."
+          ],
+          "shots": [
+            "athlete-coach"
           ]
         },
         {
@@ -191,19 +287,39 @@
             "Your numbers, in three tabs. Above the tabs there's a row of chips — leave it on \"Overall\" to see everything, or pick a plan to narrow every chart and table below to just that plan."
           ],
           "table": {
-            "head": ["Tab", "What you get"],
+            "head": [
+              "Tab",
+              "What you get"
+            ],
             "rows": [
-              ["Overview", "Weekly goal ring, lifetime totals, a trend chart you can switch between volume, sessions and sets over 4 weeks to 6 months, short read-outs on what changed, muscle balance, and recent records."],
-              ["Plans", "Your training as tables. Starts with a card per plan; tap one for its sessions; tap a session for every exercise and every set."],
-              ["Exercises", "A card per movement you've logged, with a mini trend line, your best, and whether it's going up or down. Search and sort them, then tap one for its full page."]
+              [
+                "Overview",
+                "Weekly goal ring, lifetime totals, a trend chart you can switch between volume, sessions and sets over 4 weeks to 6 months, short read-outs on what changed, muscle balance, and recent records."
+              ],
+              [
+                "Plans",
+                "Your training as tables. Starts with a card per plan; tap one for its sessions; tap a session for every exercise and every set."
+              ],
+              [
+                "Exercises",
+                "A card per movement you've logged, with a mini trend line, your best, and whether it's going up or down. Search and sort them, then tap one for its full page."
+              ]
             ]
-          }
+          },
+          "shots": [
+            "athlete-progress-overview",
+            "athlete-progress-plans"
+          ]
         },
         {
           "title": "Progress — the exercise page",
           "body": [
             "Tap any exercise anywhere in Progress and you get its own page: your best, your estimated one-rep max, how many sessions and sets, total volume, a chart you can switch between best, volume and reps, and a full history table.",
             "Tap any row in that history to see the actual sets you did that day."
+          ],
+          "shots": [
+            "athlete-progress-exercises",
+            "athlete-exercise-detail"
           ]
         },
         {
@@ -212,6 +328,10 @@
             "Tap any session and you get the whole workout: how many exercises, sets, volume and time, your notes, then a table with one row per exercise.",
             "Each row shows your best that day and how it compares to the last time you did that movement. Tap a row to open its individual sets, with RPE if you logged it. Anything the plan asked for that you didn't do is listed too, greyed out.",
             "Use the arrows at the top to step to the session before or after, or tap the middle to jump to a date or pick from the list."
+          ],
+          "shots": [
+            "athlete-progress-sessions",
+            "athlete-session-detail"
           ]
         },
         {
@@ -219,21 +339,45 @@
           "body": [
             "Everything you can log, in two views. \"Mine\" is what you've saved, and it's where you set how each one is logged — weight and reps, reps only, distance, time, or your own fields. Whatever you set there is what you'll be asked for every time you log that exercise, in or out of a plan.",
             "\"Browse all\" is the built-in catalogue. Search it and tap Save to add something to your own list."
+          ],
+          "shots": [
+            "athlete-library"
           ]
         },
         {
           "title": "Settings",
           "table": {
-            "head": ["Section", "What's in it"],
+            "head": [
+              "Section",
+              "What's in it"
+            ],
             "rows": [
-              ["Profile", "Your display name, how many sessions a week you're aiming for, and a weekly distance goal."],
-              ["Appearance", "Light, dark or automatic, plus an accent colour."],
-              ["Coaches", "Link a coach with their invite code, and choose whether each one can see your logs."],
-              ["Account", "Switch to the coach side (or create it), and sign out."],
-              ["Guide", "This guide."]
+              [
+                "Profile",
+                "Your display name, how many sessions a week you're aiming for, and a weekly distance goal."
+              ],
+              [
+                "Appearance",
+                "Light, dark or automatic, plus an accent colour."
+              ],
+              [
+                "Coaches",
+                "Link a coach with their invite code, and choose whether each one can see your logs."
+              ],
+              [
+                "Account",
+                "Switch to the coach side (or create it), and sign out."
+              ],
+              [
+                "Guide",
+                "This guide."
+              ]
             ]
           },
-          "tip": "The \"Share logs with my coach\" switch is per coach. Turn it off and they keep the plan connection but stop seeing what you log."
+          "tip": "The \"Share logs with my coach\" switch is per coach. Turn it off and they keep the plan connection but stop seeing what you log.",
+          "shots": [
+            "athlete-settings"
+          ]
         }
       ]
     },
@@ -272,6 +416,9 @@
             "Open the athlete from the Athletes tab, go to the Assign tab, and tap Assign next to the plan.",
             "It doesn't take effect until they sync it from their Plans tab — you'll see the status change from waiting to synced when they do.",
             "You can remove an assignment at any time."
+          ],
+          "shots": [
+            "coach-assign"
           ]
         },
         {
@@ -280,6 +427,9 @@
             "Open the athlete and use the Overview tab for the quick read: how much of the plan they've done this week, their streak, plan adherence over the last few weeks, lifetime totals, and any records they've set.",
             "Coloured flags at the top call out anything worth a message — missed work, a jump in volume, a movement going backwards.",
             "For the detail, go to the Progress tab. It's the same three tabs the athlete sees, over their data."
+          ],
+          "shots": [
+            "coach-athlete-overview"
           ]
         },
         {
@@ -301,21 +451,42 @@
           "body": [
             "Your roster. At the top you can make an invite code and see any that haven't been claimed yet. Below that is everyone linked to you, with when they last trained and how many sessions they've done this week.",
             "Tap anyone to open their page."
+          ],
+          "shots": [
+            "coach-athletes"
           ]
         },
         {
           "title": "The athlete page",
           "table": {
-            "head": ["Tab", "What's in it"],
+            "head": [
+              "Tab",
+              "What's in it"
+            ],
             "rows": [
-              ["Overview", "This week at a glance, flags worth acting on, plan adherence, lifetime totals, recent records, today's scheduled work, and their latest sessions."],
-              ["Progress", "The full analytics — Overview, Plans and Exercises, exactly as the athlete sees them."],
-              ["Assign", "Plans you've sent, plans you can send, and any plans the athlete built themselves."],
-              ["Coaching", "Chat, check-ins, notes and trackers."]
+              [
+                "Overview",
+                "This week at a glance, flags worth acting on, plan adherence, lifetime totals, recent records, today's scheduled work, and their latest sessions."
+              ],
+              [
+                "Progress",
+                "The full analytics — Overview, Plans and Exercises, exactly as the athlete sees them."
+              ],
+              [
+                "Assign",
+                "Plans you've sent, plans you can send, and any plans the athlete built themselves."
+              ],
+              [
+                "Coaching",
+                "Chat, check-ins, notes and trackers."
+              ]
             ]
           },
           "body2": [
             "The share icon at the top right exports everything they've shared."
+          ],
+          "shots": [
+            "coach-athlete-progress"
           ]
         },
         {
@@ -323,6 +494,9 @@
           "body": [
             "Every plan you've built, and who it's assigned to. Build here once and send the same plan to as many athletes as you like — each of them follows it from their own start date.",
             "Editing a plan changes it for everyone following it."
+          ],
+          "shots": [
+            "coach-plans"
           ]
         },
         {
@@ -333,15 +507,29 @@
         },
         {
           "title": "Exporting",
-          "body": ["Open an athlete and tap the share icon at the top right. Two formats."],
+          "body": [
+            "Open an athlete and tap the share icon at the top right. Two formats."
+          ],
           "table": {
-            "head": ["Format", "What's in it"],
+            "head": [
+              "Format",
+              "What's in it"
+            ],
             "rows": [
-              ["Excel workbook (.xlsx)", "Six sheets: Sessions, Set log, Exercises, Check-ins, Trackers and Notes."],
-              ["Set-by-set CSV", "One flat file, one row per set — the same data as the Set log sheet."]
+              [
+                "Excel workbook (.xlsx)",
+                "Six sheets: Sessions, Set log, Exercises, Check-ins, Trackers and Notes."
+              ],
+              [
+                "Set-by-set CSV",
+                "One flat file, one row per set — the same data as the Set log sheet."
+              ]
             ]
           },
-          "tip": "Custom per-set fields you've defined become their own columns in both formats."
+          "tip": "Custom per-set fields you've defined become their own columns in both formats.",
+          "shots": [
+            "coach-export"
+          ]
         },
         {
           "title": "Settings",
@@ -359,16 +547,39 @@
       "sections": [
         {
           "title": "XP, levels, streaks and quests",
-          "body": ["Everything you log earns XP, and XP raises your level. Nothing here changes your training — it's just there to make showing up feel like it counts."],
+          "body": [
+            "Everything you log earns XP, and XP raises your level. Nothing here changes your training — it's just there to make showing up feel like it counts."
+          ],
           "table": {
-            "head": ["What you did", "XP"],
+            "head": [
+              "What you did",
+              "XP"
+            ],
             "rows": [
-              ["Start a session", "25"],
-              ["Finish a session", "30"],
-              ["Each exercise", "8 plus 2 a set"],
-              ["Hit your weekly session goal", "100"],
-              ["Finish a weekly quest", "25 each, plus 75 for all of them"],
-              ["Set a personal record", "20"]
+              [
+                "Start a session",
+                "25"
+              ],
+              [
+                "Finish a session",
+                "30"
+              ],
+              [
+                "Each exercise",
+                "8 plus 2 a set"
+              ],
+              [
+                "Hit your weekly session goal",
+                "100"
+              ],
+              [
+                "Finish a weekly quest",
+                "25 each, plus 75 for all of them"
+              ],
+              [
+                "Set a personal record",
+                "20"
+              ]
             ]
           },
           "body2": [
@@ -393,36 +604,102 @@
         {
           "title": "I want to…",
           "table": {
-            "head": ["Goal", "Where to go"],
+            "head": [
+              "Goal",
+              "Where to go"
+            ],
             "rows": [
-              ["Log a workout from last Tuesday", "Home, then the back arrow on the date bar until you reach it"],
-              ["Log something not in my plan", "Home, bottom of the screen, Extra work"],
-              ["See if my bench press is improving", "Progress, Exercises tab, tap Flat bench press"],
-              ["See everything I did in one session", "Progress, Plans tab, pick the plan, pick the session"],
-              ["Compare two plans", "Progress, then switch the chip at the top between them"],
-              ["Change how an exercise is logged", "Library, Mine tab, tap the exercise"],
-              ["Stop my coach seeing my logs", "Settings, Coaches, switch off Share logs"],
-              ["Get my data out", "Coach side: open the athlete and tap the share icon"],
-              ["Train and coach on one account", "Settings, Account, top row"]
+              [
+                "Log a workout from last Tuesday",
+                "Home, then the back arrow on the date bar until you reach it"
+              ],
+              [
+                "Log something not in my plan",
+                "Home, bottom of the screen, Extra work"
+              ],
+              [
+                "See if my bench press is improving",
+                "Progress, Exercises tab, tap Flat bench press"
+              ],
+              [
+                "See everything I did in one session",
+                "Progress, Plans tab, pick the plan, pick the session"
+              ],
+              [
+                "Compare two plans",
+                "Progress, then switch the chip at the top between them"
+              ],
+              [
+                "Change how an exercise is logged",
+                "Library, Mine tab, tap the exercise"
+              ],
+              [
+                "Stop my coach seeing my logs",
+                "Settings, Coaches, switch off Share logs"
+              ],
+              [
+                "Get my data out",
+                "Coach side: open the athlete and tap the share icon"
+              ],
+              [
+                "Train and coach on one account",
+                "Settings, Account, top row"
+              ]
             ]
           }
         },
         {
           "title": "Words used in the app",
           "table": {
-            "head": ["Word", "Means"],
+            "head": [
+              "Word",
+              "Means"
+            ],
             "rows": [
-              ["Plan", "Your training week — which days, and what's on each."],
-              ["Week block", "One week of a plan. A 4-week plan cycles back to week 1 after week 4."],
-              ["Session", "One workout on one day."],
-              ["Set", "One round of an exercise — for example 60 kg for 10 reps."],
-              ["Volume", "Weight times reps, added up. The usual measure of how much work you did."],
-              ["Best", "Your top number for an exercise that day — heaviest weight, longest distance, or longest hold."],
-              ["Estimated 1RM", "A guess at the most you could lift once, worked out from your weight and reps."],
-              ["RPE", "How hard a set felt, 1 to 10."],
-              ["Adherence", "How much of the planned work actually got done."],
-              ["Free work", "Anything logged outside a plan."],
-              ["Late log", "A session written up after the day it happened. It still counts."]
+              [
+                "Plan",
+                "Your training week — which days, and what's on each."
+              ],
+              [
+                "Week block",
+                "One week of a plan. A 4-week plan cycles back to week 1 after week 4."
+              ],
+              [
+                "Session",
+                "One workout on one day."
+              ],
+              [
+                "Set",
+                "One round of an exercise — for example 60 kg for 10 reps."
+              ],
+              [
+                "Volume",
+                "Weight times reps, added up. The usual measure of how much work you did."
+              ],
+              [
+                "Best",
+                "Your top number for an exercise that day — heaviest weight, longest distance, or longest hold."
+              ],
+              [
+                "Estimated 1RM",
+                "A guess at the most you could lift once, worked out from your weight and reps."
+              ],
+              [
+                "RPE",
+                "How hard a set felt, 1 to 10."
+              ],
+              [
+                "Adherence",
+                "How much of the planned work actually got done."
+              ],
+              [
+                "Free work",
+                "Anything logged outside a plan."
+              ],
+              [
+                "Late log",
+                "A session written up after the day it happened. It still counts."
+              ]
             ]
           }
         },
