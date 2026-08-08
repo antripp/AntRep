@@ -121,6 +121,7 @@ export function ExerciseLogCard({
         (exercise.log_type === "strength" || exercise.log_type === "bodyweight"
           ? exercise.target_reps
           : null),
+      rpe: previous?.rpe ?? (exercise.rpe_target || null),
     });
     setDraft((current) => [...current, seeded]);
     setDirty(true);
@@ -346,6 +347,18 @@ export function ExerciseLogCard({
                     />
                   </>
                 )}
+
+                {/* Effort. Applies to every logging method, and the plan's
+                    target seeds it so the usual case is one tap to confirm. */}
+                <NumberField
+                  value={set.rpe}
+                  step={0.5}
+                  min={0}
+                  max={10}
+                  suffix="RPE"
+                  placeholder={exercise.rpe_target > 0 ? String(exercise.rpe_target) : "—"}
+                  onChange={(v) => updateSet(index, { rpe: v })}
+                />
 
                 {/* Whatever the coach (or you) defined for this exercise */}
                 {exercise.custom_fields.map((field) =>

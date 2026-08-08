@@ -137,6 +137,43 @@ html[data-pattern="diag"] .checker-bg {
   );
   background-size: auto;
 }
+html[data-pattern="cross"] .pattern-bg,
+html[data-pattern="cross"] .checker-bg {
+  background-image:
+    linear-gradient(var(--t-checker) 1.5px, transparent 1.5px),
+    linear-gradient(90deg, var(--t-checker) 1.5px, transparent 1.5px);
+  background-size:
+    var(--pattern-size, 32px) 2px,
+    2px var(--pattern-size, 32px);
+}
+html[data-pattern="weave"] .pattern-bg,
+html[data-pattern="weave"] .checker-bg {
+  background-image:
+    repeating-linear-gradient(45deg, var(--t-checker) 0 1px, transparent 1px 50%),
+    repeating-linear-gradient(-45deg, var(--t-checker) 0 1px, transparent 1px 50%);
+}
+html[data-pattern="scales"] .pattern-bg,
+html[data-pattern="scales"] .checker-bg {
+  background-image:
+    radial-gradient(circle at 50% 100%, transparent 45%, var(--t-checker) 46%, transparent 47%);
+}
+html[data-pattern="rings"] .pattern-bg,
+html[data-pattern="rings"] .checker-bg {
+  background-image:
+    radial-gradient(circle, transparent 30%, var(--t-checker) 31%, transparent 33%);
+}
+html[data-pattern="plus"] .pattern-bg,
+html[data-pattern="plus"] .checker-bg {
+  background-image:
+    linear-gradient(var(--t-checker) 1.5px, transparent 1.5px),
+    linear-gradient(90deg, var(--t-checker) 1.5px, transparent 1.5px);
+  background-size:
+    var(--pattern-size, 32px) var(--pattern-size, 32px),
+    var(--pattern-size, 32px) var(--pattern-size, 32px);
+  background-position:
+    calc(var(--pattern-size, 32px) / 2) 0,
+    0 calc(var(--pattern-size, 32px) / 2);
+}
 html[data-pattern="none"] .pattern-bg,
 html[data-pattern="none"] .checker-bg {
   background-image: none;

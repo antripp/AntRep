@@ -48,7 +48,18 @@ export const BACKGROUNDS: BackgroundPalette[] = [
 ];
 
 /* Background texture (item: dev-tunable pattern lab). */
-export const PATTERN_STYLES = ["checker", "dots", "grid", "diag", "none"] as const;
+export const PATTERN_STYLES = [
+  "checker",
+  "dots",
+  "grid",
+  "diag",
+  "cross",
+  "weave",
+  "scales",
+  "rings",
+  "plus",
+  "none",
+] as const;
 export type PatternStyle = (typeof PATTERN_STYLES)[number];
 
 export interface PatternPref {

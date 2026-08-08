@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { api, DEMO_ACCOUNTS, disableDemoMode, isDemoMode, resetDemoStore } from "../../data";
 import type { CoachLink, Profile, Role } from "../../data/types";
-import { ACCENTS, BACKGROUNDS, useTheme } from "../../lib/theme";
+import { ACCENTS, BACKGROUNDS, PATTERN_STYLES, useTheme } from "../../lib/theme";
 import {
   Button,
   Card,
@@ -22,6 +22,23 @@ import {
 } from "../../ui/kit";
 import { useAuth } from "../auth";
 import GuideScreen from "./GuideScreen";
+
+/** Miniature versions of the index.css patterns, for the picker swatches. */
+const PATTERN_SWATCHES: Record<string, string> = {
+  checker:
+    "linear-gradient(45deg, currentColor 25%, transparent 25% 75%, currentColor 75%), linear-gradient(45deg, currentColor 25%, transparent 25% 75%, currentColor 75%)",
+  dots: "radial-gradient(currentColor 1px, transparent 1.2px)",
+  grid: "linear-gradient(currentColor 1px, transparent 1px), linear-gradient(90deg, currentColor 1px, transparent 1px)",
+  diag: "repeating-linear-gradient(45deg, currentColor 0 1px, transparent 1px 6px)",
+  cross:
+    "linear-gradient(currentColor 1px, transparent 1px), linear-gradient(90deg, currentColor 1px, transparent 1px)",
+  weave:
+    "repeating-linear-gradient(45deg, currentColor 0 1px, transparent 1px 50%), repeating-linear-gradient(-45deg, currentColor 0 1px, transparent 1px 50%)",
+  scales: "radial-gradient(circle at 50% 100%, transparent 45%, currentColor 46%, transparent 47%)",
+  rings: "radial-gradient(circle, transparent 30%, currentColor 31%, transparent 33%)",
+  plus: "linear-gradient(currentColor 1px, transparent 1px), linear-gradient(90deg, currentColor 1px, transparent 1px)",
+  none: "none",
+};
 
 export default function SettingsScreen({
   profile,
@@ -271,6 +288,69 @@ export default function SettingsScreen({
               {accent.label}
             </button>
           ))}
+        </div>
+
+        <SectionHeader title="Background texture" />
+        <div className="grid grid-cols-5 gap-2">
+          {PATTERN_STYLES.map((style) => (
+            <button
+              key={style}
+              onClick={() => theme.setPattern({ ...theme.pattern, style })}
+              aria-pressed={theme.pattern.style === style}
+              className={`rounded-2xl border p-1 text-[10px] font-black capitalize ${
+                theme.pattern.style === style ? "border-accent text-accent" : "border-line text-muted"
+              }`}
+            >
+              {/* A live swatch of the pattern itself, so the name isn't a guess. */}
+              <span
+                data-pattern={style}
+                className="mb-1 block h-9 w-full rounded-xl bg-inset"
+                style={{ backgroundImage: PATTERN_SWATCHES[style], backgroundSize: "12px 12px" }}
+              />
+              {style}
+            </button>
+          ))}
+        </div>
+
+        <SectionHeader title="Texture strength" />
+        <div className="flex items-center gap-3">
+          <input
+            type="range"
+            min={0}
+            max={12}
+            value={theme.mode === "dark" ? theme.pattern.opacityDark : theme.pattern.opacityLight}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              theme.setPattern(
+                theme.mode === "dark"
+                  ? { ...theme.pattern, opacityDark: v }
+                  : { ...theme.pattern, opacityLight: v },
+              );
+            }}
+            className="h-2 flex-1 accent-accent"
+            aria-label="Texture strength"
+          />
+          <span className="w-16 text-right text-[11px] font-bold text-muted">
+            {theme.mode === "dark" ? theme.pattern.opacityDark : theme.pattern.opacityLight}% ·{" "}
+            {theme.mode}
+          </span>
+        </div>
+
+        <SectionHeader title="Texture scale" />
+        <div className="flex items-center gap-3">
+          <input
+            type="range"
+            min={16}
+            max={64}
+            step={2}
+            value={theme.pattern.size}
+            onChange={(e) => theme.setPattern({ ...theme.pattern, size: Number(e.target.value) })}
+            className="h-2 flex-1 accent-accent"
+            aria-label="Texture scale"
+          />
+          <span className="w-16 text-right text-[11px] font-bold text-muted">
+            {theme.pattern.size}px
+          </span>
         </div>
       </Sheet>
     </>
