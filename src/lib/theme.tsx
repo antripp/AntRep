@@ -20,39 +20,74 @@ export type AccentKey = (typeof ACCENTS)[number]["key"];
 export interface BackgroundPalette {
   key: string;
   label: string;
+  /** Groups the picker so like sits with like. */
+  family: string;
   light: { bg: string; accent: string; deep: string };
   dark: { bg: string; accent: string; deep: string };
 }
 
+/**
+ * The app's own colours, as a palette. Making "Default" a real entry lets it
+ * take part in gradient and duotone like any other choice, instead of being a
+ * special case that switches those options off.
+ */
+export const DEFAULT_PALETTE: BackgroundPalette = {
+  key: "default",
+  label: "Default",
+  family: "Neutral",
+  light: { bg: "#f5f7f2", accent: "#58cc02", deep: "#46a302" },
+  dark: { bg: "#131f24", accent: "#58cc02", deep: "#46a302" },
+};
+
+/** Picker order — like sits with like. */
+export const BACKGROUND_FAMILIES = [
+  "Neutral",
+  "Green",
+  "Blue",
+  "Purple & pink",
+  "Red & orange",
+  "Yellow & brown",
+] as const;
+
 export const BACKGROUNDS: BackgroundPalette[] = [
-  { key: "sage",     label: "Sage",     light: { bg: "#eef2e9", accent: "#6a994e", deep: "#588240" }, dark: { bg: "#1a231b", accent: "#8ab17d", deep: "#6f975f" } },
-  { key: "forest",   label: "Forest",   light: { bg: "#e9f1ea", accent: "#2e7d4f", deep: "#256741" }, dark: { bg: "#12211a", accent: "#57a877", deep: "#448a61" } },
-  { key: "mint",     label: "Mint",     light: { bg: "#e9f5ec", accent: "#38a169", deep: "#2d8656" }, dark: { bg: "#142219", accent: "#5fc98d", deep: "#4bab75" } },
-  { key: "olive",    label: "Olive",    light: { bg: "#f0f1e0", accent: "#7f8c2b", deep: "#697524" }, dark: { bg: "#20220f", accent: "#a3b04a", deep: "#88943c" } },
-  { key: "teal",     label: "Teal",     light: { bg: "#e5f2f0", accent: "#1f8a7d", deep: "#197267" }, dark: { bg: "#10231f", accent: "#4bb3a4", deep: "#3b9789" } },
-  { key: "ocean",    label: "Ocean",    light: { bg: "#e8f1f5", accent: "#1f7a99", deep: "#196680" }, dark: { bg: "#12222b", accent: "#4aa3c4", deep: "#3a89a7" } },
-  { key: "sky",      label: "Sky",      light: { bg: "#e9f2fb", accent: "#2f80c3", deep: "#276ba4" }, dark: { bg: "#131f2b", accent: "#58a6e8", deep: "#458cc7" } },
-  { key: "denim",    label: "Denim",    light: { bg: "#e8eef6", accent: "#3a6ea5", deep: "#305c8a" }, dark: { bg: "#131c26", accent: "#6d9fd4", deep: "#5885b6" } },
-  { key: "indigo",   label: "Indigo",   light: { bg: "#eaecf8", accent: "#4a55b2", deep: "#3d4796" }, dark: { bg: "#151827", accent: "#7d88e0", deep: "#6570c2" } },
-  { key: "lavender", label: "Lavender", light: { bg: "#efecf9", accent: "#7b61c9", deep: "#6750ab" }, dark: { bg: "#1c1928", accent: "#a08ae0", deep: "#8671c2" } },
-  { key: "plum",     label: "Plum",     light: { bg: "#f3eaf4", accent: "#9c4f96", deep: "#83417e" }, dark: { bg: "#241726", accent: "#c47cbd", deep: "#a763a0" } },
-  { key: "rose",     label: "Rose",     light: { bg: "#faecef", accent: "#c94f6d", deep: "#ab415b" }, dark: { bg: "#291418", accent: "#e07a92", deep: "#c1637a" } },
-  { key: "blush",    label: "Blush",    light: { bg: "#fbeee9", accent: "#d1704f", deep: "#b25d40" }, dark: { bg: "#2a1a14", accent: "#e89a7a", deep: "#c98063" } },
-  { key: "peach",    label: "Peach",    light: { bg: "#fdeee3", accent: "#e07b39", deep: "#bf672e" }, dark: { bg: "#2a1c11", accent: "#f09b5e", deep: "#d1824a" } },
-  { key: "clay",     label: "Clay",     light: { bg: "#f4ebe4", accent: "#a8663b", deep: "#8d5430" }, dark: { bg: "#271c15", accent: "#c98b5e", deep: "#ab724b" } },
-  { key: "sand",     label: "Sand",     light: { bg: "#f7f1e4", accent: "#b98a2f", deep: "#9c7326" }, dark: { bg: "#262014", accent: "#d4a94e", deep: "#b58e3d" } },
-  { key: "butter",   label: "Butter",   light: { bg: "#faf3dd", accent: "#b3922e", deep: "#967a25" }, dark: { bg: "#26210f", accent: "#d4b854", deep: "#b59b42" } },
-  { key: "mocha",    label: "Mocha",    light: { bg: "#f1ebe6", accent: "#7d5a44", deep: "#684a38" }, dark: { bg: "#211a15", accent: "#a98268", deep: "#8e6b54" } },
-  { key: "slate",    label: "Slate",    light: { bg: "#eceff3", accent: "#5a6c85", deep: "#4a596e" }, dark: { bg: "#181d24", accent: "#8ba0bd", deep: "#71869f" } },
-  { key: "mist",     label: "Mist",     light: { bg: "#edf1f2", accent: "#5f8794", deep: "#4e707b" }, dark: { bg: "#171e20", accent: "#8ab3c0", deep: "#7096a2" } },
-  { key: "crimson",  label: "Crimson",  light: { bg: "#fbe9ec", accent: "#c02f4a", deep: "#a3283e" }, dark: { bg: "#2a1216", accent: "#e56a80", deep: "#c4576b" } },
-  { key: "amber",    label: "Amber",    light: { bg: "#fdf1de", accent: "#c98a12", deep: "#ab740f" }, dark: { bg: "#2b2110", accent: "#e5b04a", deep: "#c4953e" } },
-  { key: "jade",     label: "Jade",     light: { bg: "#e6f4ee", accent: "#1f8a5f", deep: "#197250" }, dark: { bg: "#10231c", accent: "#4cb68a", deep: "#3c9a73" } },
-  { key: "violet",   label: "Violet",   light: { bg: "#f0eafa", accent: "#7a45c4", deep: "#6639a6" }, dark: { bg: "#1d1529", accent: "#a67ae4", deep: "#8d64c4" } },
-  { key: "cobalt",   label: "Cobalt",   light: { bg: "#e7edfa", accent: "#2b5fd0", deep: "#244fb0" }, dark: { bg: "#121a2d", accent: "#6b92ec", deep: "#567bc9" } },
-  { key: "coral",    label: "Coral",    light: { bg: "#fdece9", accent: "#d95f4a", deep: "#b8503e" }, dark: { bg: "#2b1714", accent: "#f0897a", deep: "#cf7166" } },
-  { key: "moss",     label: "Moss",     light: { bg: "#edf1e5", accent: "#5d7c33", deep: "#4d682a" }, dark: { bg: "#1b2113", accent: "#8fa95f", deep: "#77904d" } },
-  { key: "charcoal", label: "Charcoal", light: { bg: "#ecedee", accent: "#52585f", deep: "#43484e" }, dark: { bg: "#17191b", accent: "#9aa2ab", deep: "#7f8790" } },
+  { key: "paper",    label: "Paper",    family: "Neutral", light: { bg: "#fafafa", accent: "#6b7280", deep: "#565d68" }, dark: { bg: "#1a1a1c", accent: "#b8bcc4", deep: "#9aa0a8" } },
+  { key: "linen",    label: "Linen",    family: "Neutral", light: { bg: "#faf7f2", accent: "#8a7a63", deep: "#736550" }, dark: { bg: "#201d18", accent: "#bfae94", deep: "#a3927a" } },
+  { key: "mist",     label: "Mist",     family: "Neutral", light: { bg: "#edf1f2", accent: "#5f8794", deep: "#4e707b" }, dark: { bg: "#171e20", accent: "#8ab3c0", deep: "#7096a2" } },
+  { key: "slate",    label: "Slate",    family: "Neutral", light: { bg: "#eceff3", accent: "#5a6c85", deep: "#4a596e" }, dark: { bg: "#181d24", accent: "#8ba0bd", deep: "#71869f" } },
+  { key: "charcoal", label: "Charcoal", family: "Neutral", light: { bg: "#ecedee", accent: "#52585f", deep: "#43484e" }, dark: { bg: "#17191b", accent: "#9aa2ab", deep: "#7f8790" } },
+
+  { key: "mint",     label: "Mint",     family: "Green", light: { bg: "#e9f5ec", accent: "#38a169", deep: "#2d8656" }, dark: { bg: "#142219", accent: "#5fc98d", deep: "#4bab75" } },
+  { key: "sage",     label: "Sage",     family: "Green", light: { bg: "#eef2e9", accent: "#6a994e", deep: "#588240" }, dark: { bg: "#1a231b", accent: "#8ab17d", deep: "#6f975f" } },
+  { key: "jade",     label: "Jade",     family: "Green", light: { bg: "#e6f4ee", accent: "#1f8a5f", deep: "#197250" }, dark: { bg: "#10231c", accent: "#4cb68a", deep: "#3c9a73" } },
+  { key: "forest",   label: "Forest",   family: "Green", light: { bg: "#e9f1ea", accent: "#2e7d4f", deep: "#256741" }, dark: { bg: "#12211a", accent: "#57a877", deep: "#448a61" } },
+  { key: "moss",     label: "Moss",     family: "Green", light: { bg: "#edf1e5", accent: "#5d7c33", deep: "#4d682a" }, dark: { bg: "#1b2113", accent: "#8fa95f", deep: "#77904d" } },
+  { key: "olive",    label: "Olive",    family: "Green", light: { bg: "#f0f1e0", accent: "#7f8c2b", deep: "#697524" }, dark: { bg: "#20220f", accent: "#a3b04a", deep: "#88943c" } },
+
+  { key: "sky",      label: "Sky",      family: "Blue", light: { bg: "#e9f2fb", accent: "#2f80c3", deep: "#276ba4" }, dark: { bg: "#131f2b", accent: "#58a6e8", deep: "#458cc7" } },
+  { key: "teal",     label: "Teal",     family: "Blue", light: { bg: "#e5f2f0", accent: "#1f8a7d", deep: "#197267" }, dark: { bg: "#10231f", accent: "#4bb3a4", deep: "#3b9789" } },
+  { key: "ocean",    label: "Ocean",    family: "Blue", light: { bg: "#e8f1f5", accent: "#1f7a99", deep: "#196680" }, dark: { bg: "#12222b", accent: "#4aa3c4", deep: "#3a89a7" } },
+  { key: "denim",    label: "Denim",    family: "Blue", light: { bg: "#e8eef6", accent: "#3a6ea5", deep: "#305c8a" }, dark: { bg: "#131c26", accent: "#6d9fd4", deep: "#5885b6" } },
+  { key: "cobalt",   label: "Cobalt",   family: "Blue", light: { bg: "#e7edfa", accent: "#2b5fd0", deep: "#244fb0" }, dark: { bg: "#121a2d", accent: "#6b92ec", deep: "#567bc9" } },
+  { key: "indigo",   label: "Indigo",   family: "Blue", light: { bg: "#eaecf8", accent: "#4a55b2", deep: "#3d4796" }, dark: { bg: "#151827", accent: "#7d88e0", deep: "#6570c2" } },
+
+  { key: "lavender", label: "Lavender", family: "Purple & pink", light: { bg: "#efecf9", accent: "#7b61c9", deep: "#6750ab" }, dark: { bg: "#1c1928", accent: "#a08ae0", deep: "#8671c2" } },
+  { key: "violet",   label: "Violet",   family: "Purple & pink", light: { bg: "#f0eafa", accent: "#7a45c4", deep: "#6639a6" }, dark: { bg: "#1d1529", accent: "#a67ae4", deep: "#8d64c4" } },
+  { key: "plum",     label: "Plum",     family: "Purple & pink", light: { bg: "#f3eaf4", accent: "#9c4f96", deep: "#83417e" }, dark: { bg: "#241726", accent: "#c47cbd", deep: "#a763a0" } },
+  { key: "fuchsia",  label: "Fuchsia",  family: "Purple & pink", light: { bg: "#f9e9f7", accent: "#b13fa8", deep: "#96348e" }, dark: { bg: "#27142a", accent: "#d976cf", deep: "#b962b0" } },
+  { key: "pink",     label: "Pink",     family: "Purple & pink", light: { bg: "#fdecf3", accent: "#d94f8c", deep: "#b94175" }, dark: { bg: "#2b1420", accent: "#f07fb0", deep: "#cf6996" } },
+  { key: "rose",     label: "Rose",     family: "Purple & pink", light: { bg: "#faecef", accent: "#c94f6d", deep: "#ab415b" }, dark: { bg: "#291418", accent: "#e07a92", deep: "#c1637a" } },
+
+  { key: "crimson",  label: "Crimson",  family: "Red & orange", light: { bg: "#fbe9ec", accent: "#c02f4a", deep: "#a3283e" }, dark: { bg: "#2a1216", accent: "#e56a80", deep: "#c4576b" } },
+  { key: "coral",    label: "Coral",    family: "Red & orange", light: { bg: "#fdece9", accent: "#d95f4a", deep: "#b8503e" }, dark: { bg: "#2b1714", accent: "#f0897a", deep: "#cf7166" } },
+  { key: "blush",    label: "Blush",    family: "Red & orange", light: { bg: "#fbeee9", accent: "#d1704f", deep: "#b25d40" }, dark: { bg: "#2a1a14", accent: "#e89a7a", deep: "#c98063" } },
+  { key: "peach",    label: "Peach",    family: "Red & orange", light: { bg: "#fdeee3", accent: "#e07b39", deep: "#bf672e" }, dark: { bg: "#2a1c11", accent: "#f09b5e", deep: "#d1824a" } },
+  { key: "clay",     label: "Clay",     family: "Red & orange", light: { bg: "#f4ebe4", accent: "#a8663b", deep: "#8d5430" }, dark: { bg: "#271c15", accent: "#c98b5e", deep: "#ab724b" } },
+
+  { key: "lemon",    label: "Lemon",    family: "Yellow & brown", light: { bg: "#fdfae0", accent: "#a89a1e", deep: "#8d8119" }, dark: { bg: "#262413", accent: "#cfc04a", deep: "#b0a33e" } },
+  { key: "butter",   label: "Butter",   family: "Yellow & brown", light: { bg: "#faf3dd", accent: "#b3922e", deep: "#967a25" }, dark: { bg: "#26210f", accent: "#d4b854", deep: "#b59b42" } },
+  { key: "amber",    label: "Amber",    family: "Yellow & brown", light: { bg: "#fdf1de", accent: "#c98a12", deep: "#ab740f" }, dark: { bg: "#2b2110", accent: "#e5b04a", deep: "#c4953e" } },
+  { key: "sand",     label: "Sand",     family: "Yellow & brown", light: { bg: "#f7f1e4", accent: "#b98a2f", deep: "#9c7326" }, dark: { bg: "#262014", accent: "#d4a94e", deep: "#b58e3d" } },
+  { key: "mocha",    label: "Mocha",    family: "Yellow & brown", light: { bg: "#f1ebe6", accent: "#7d5a44", deep: "#684a38" }, dark: { bg: "#211a15", accent: "#a98268", deep: "#8e6b54" } },
 ];
 
 /**
@@ -117,7 +152,8 @@ function loadPref(): ThemePref {
     return {
       mode: p.mode === "dark" || p.mode === "light" ? p.mode : fallback.mode,
       accent: ACCENTS.some((a) => a.key === p.accent) ? p.accent : "mint",
-      bg: BACKGROUNDS.some((b) => b.key === p.bg) ? p.bg : fallback.bg,
+      // null is a real choice (Default), distinct from a missing/unknown key.
+      bg: p.bg === null ? null : BACKGROUNDS.some((b) => b.key === p.bg) ? p.bg : fallback.bg,
       style: THEME_STYLES.includes(p.style) ? p.style : "solid",
       bg2: BACKGROUNDS.some((b) => b.key === p.bg2) ? p.bg2 : null,
       // The texture picker is gone; everyone gets the standard dotted default.
@@ -155,8 +191,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
     // Background palette overrides bg + accent inline (inline wins over the
     // data-accent CSS); clearing it falls back to the plain theme.
-    const palette = BACKGROUNDS.find((b) => b.key === pref.bg);
-    if (palette) {
+    // `bg: null` means the app's own colours — which are a palette too, so
+    // gradient and duotone work from Default exactly as from anything else.
+    const chosen = BACKGROUNDS.find((b) => b.key === pref.bg) ?? null;
+    const palette = chosen ?? DEFAULT_PALETTE;
+    if (chosen) {
       const c = palette[pref.mode];
       root.style.setProperty("--t-bg", c.bg);
       root.style.setProperty("--t-accent", c.accent);
@@ -170,9 +209,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     // The second colour only means something once a first one is chosen and the
     // two actually differ; otherwise both styles collapse back to solid.
     const second = BACKGROUNDS.find((b) => b.key === pref.bg2);
-    const paired = palette && second && second.key !== palette.key ? second : null;
+    const paired = second && second.key !== palette.key ? second : null;
 
-    if (palette && paired && pref.style === "gradient") {
+    if (paired && pref.style === "gradient") {
       root.dataset.bgstyle = "gradient";
       root.style.setProperty(
         "--t-bg-gradient",

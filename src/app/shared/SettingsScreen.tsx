@@ -3,7 +3,14 @@
 import { useState } from "react";
 import { api, DEMO_ACCOUNTS, disableDemoMode, isDemoMode, resetDemoStore } from "../../data";
 import type { CoachLink, Profile, Role } from "../../data/types";
-import { ACCENTS, BACKGROUNDS, useTheme } from "../../lib/theme";
+import {
+  ACCENTS,
+  BACKGROUND_FAMILIES,
+  BACKGROUNDS,
+  DEFAULT_PALETTE,
+  useTheme,
+  type BackgroundPalette,
+} from "../../lib/theme";
 import {
   Button,
   Card,
@@ -342,18 +349,20 @@ function EmailCard() {
 
 /**
  * Colour, in the order the decision is actually made: pick a colour, pick a
- * style, and only then — if you chose duotone — pick what it blends into.
- * The second step is hidden until it's relevant, so solid stays a two-tap job.
+ * style, and only then — if the style needs one — pick the second colour.
+ *
+ * "Default" is a palette like any other here, so the app's own colours can be
+ * gradiented or duotoned too rather than switching those options off.
  */
 function ColourPicker({ theme }: { theme: ReturnType<typeof useTheme> }) {
-  const primary = BACKGROUNDS.find((b) => b.key === theme.bg) ?? null;
+  const chosen = BACKGROUNDS.find((b) => b.key === theme.bg) ?? null;
+  const primary = chosen ?? DEFAULT_PALETTE;
   const second = BACKGROUNDS.find((b) => b.key === theme.bg2) ?? null;
-  const paired = primary && second && second.key !== primary.key ? second : null;
+  const paired = second && second.key !== primary.key ? second : null;
   const needsSecond = theme.style === "gradient" || theme.style === "duotone";
 
-  const page = !primary
-    ? "var(--t-bg)"
-    : paired && theme.style === "gradient"
+  const page =
+    paired && theme.style === "gradient"
       ? `linear-gradient(160deg, ${primary[theme.mode].bg} 0%, ${paired[theme.mode].bg} 100%)`
       : primary[theme.mode].bg;
 
@@ -362,9 +371,38 @@ function ColourPicker({ theme }: { theme: ReturnType<typeof useTheme> }) {
   const cardBg =
     paired && theme.style === "duotone" ? paired[theme.mode].bg : "var(--t-surface)";
   const cardInk =
-    paired && theme.style === "duotone"
-      ? paired[theme.mode].accent
-      : (primary?.[theme.mode].accent ?? "var(--t-accent)");
+    paired && theme.style === "duotone" ? paired[theme.mode].accent : primary[theme.mode].accent;
+
+  const swatch = (bg: BackgroundPalette, selected: boolean, onPick: () => void, blend = false) => (
+    <button
+      key={bg.key}
+      onClick={onPick}
+      aria-pressed={selected}
+      className={`rounded-2xl border p-2 text-[11px] font-black ${
+        selected ? "border-accent" : "border-line"
+      }`}
+      style={{
+        background: blend
+          ? `linear-gradient(160deg, ${primary[theme.mode].bg} 0%, ${bg[theme.mode].bg} 100%)`
+          : bg[theme.mode].bg,
+        color: bg[theme.mode].accent,
+      }}
+    >
+      {bg.label}
+    </button>
+  );
+
+  const grouped = (render: (bg: BackgroundPalette) => React.ReactNode, skipKey?: string) =>
+    BACKGROUND_FAMILIES.map((family) => {
+      const inFamily = BACKGROUNDS.filter((b) => b.family === family && b.key !== skipKey);
+      if (inFamily.length === 0) return null;
+      return (
+        <div key={family} className="mb-3">
+          <p className="mb-1.5 text-[10px] font-black uppercase tracking-wide text-muted">{family}</p>
+          <div className="grid grid-cols-4 gap-2">{inFamily.map(render)}</div>
+        </div>
+      );
+    });
 
   return (
     <>
@@ -377,100 +415,71 @@ function ColourPicker({ theme }: { theme: ReturnType<typeof useTheme> }) {
           className="rounded-2xl border border-line px-4 py-2 text-xs font-black"
           style={{ background: cardBg, color: cardInk }}
         >
-          {primary ? primary.label : "Default"}
+          {primary.label}
           {paired && needsSecond && (theme.style === "gradient" ? " → " : " + ") + paired.label}
         </div>
       </div>
 
       <SectionHeader title="1 · Colour" />
-      <div className="grid grid-cols-4 gap-2">
+      <div className="mb-3 grid grid-cols-4 gap-2">
         <button
           onClick={() => theme.setBg(null)}
+          aria-pressed={theme.bg === null}
           className={`rounded-2xl border p-2 text-[11px] font-black ${
-            theme.bg === null ? "border-accent text-accent" : "border-line text-muted"
+            theme.bg === null ? "border-accent" : "border-line"
           }`}
+          style={{
+            background: DEFAULT_PALETTE[theme.mode].bg,
+            color: DEFAULT_PALETTE[theme.mode].accent,
+          }}
         >
           Default
         </button>
-        {BACKGROUNDS.map((bg) => (
-          <button
-            key={bg.key}
-            onClick={() => theme.setBg(bg.key)}
-            aria-pressed={theme.bg === bg.key}
-            className={`rounded-2xl border p-2 text-[11px] font-black ${
-              theme.bg === bg.key ? "border-accent" : "border-line"
-            }`}
-            style={{ background: bg[theme.mode].bg, color: bg[theme.mode].accent }}
-          >
-            {bg.label}
-          </button>
-        ))}
       </div>
+      {grouped((bg) => swatch(bg, theme.bg === bg.key, () => theme.setBg(bg.key)))}
 
-      {primary && (
+      <SectionHeader title="2 · Style" />
+      <Segmented
+        value={theme.style}
+        onChange={(style) => {
+          theme.setStyle(style);
+          // Pick a sensible partner so the second colour shows something
+          // immediately rather than silently behaving like solid.
+          if (style !== "solid" && !theme.bg2) {
+            const suggestion = BACKGROUNDS.find((b) => b.key !== primary.key);
+            if (suggestion) theme.setBg2(suggestion.key);
+          }
+        }}
+        options={[
+          { value: "solid", label: "Solid" },
+          { value: "gradient", label: "Gradient" },
+          { value: "duotone", label: "Duotone" },
+        ]}
+      />
+      <p className="mt-2 text-[11px] font-semibold text-muted">
+        {theme.style === "solid" && "One colour for the background and the app."}
+        {theme.style === "gradient" && "The background fades from your colour into a second."}
+        {theme.style === "duotone" &&
+          "Your colour stays on the background; a second one paints the cards and buttons."}
+      </p>
+
+      {needsSecond && (
         <>
-          <SectionHeader title="2 · Style" />
-          <Segmented
-            value={theme.style}
-            onChange={(style) => {
-              theme.setStyle(style);
-              // Pick a sensible partner so the second colour shows something
-              // immediately rather than silently behaving like solid.
-              if (style !== "solid" && !theme.bg2) {
-                const suggestion = BACKGROUNDS.find((b) => b.key !== primary.key);
-                if (suggestion) theme.setBg2(suggestion.key);
-              }
-            }}
-            options={[
-              { value: "solid", label: "Solid" },
-              { value: "gradient", label: "Gradient" },
-              { value: "duotone", label: "Duotone" },
-            ]}
-          />
-          <p className="mt-2 text-[11px] font-semibold text-muted">
-            {theme.style === "solid" && "One colour for the background and the app."}
-            {theme.style === "gradient" && "The background fades from your colour into a second."}
-            {theme.style === "duotone" &&
-              "Your colour stays on the background; a second one paints the cards and buttons."}
-          </p>
-
-          {needsSecond && (
-            <>
-              <SectionHeader
-                title={theme.style === "gradient" ? "3 · Fades into" : "3 · App colour"}
-              />
-              <div className="grid grid-cols-4 gap-2">
-                {BACKGROUNDS.filter((b) => b.key !== primary.key).map((bg) => (
-                  <button
-                    key={bg.key}
-                    onClick={() => theme.setBg2(bg.key)}
-                    aria-pressed={theme.bg2 === bg.key}
-                    className={`rounded-2xl border p-2 text-[11px] font-black ${
-                      theme.bg2 === bg.key ? "border-accent" : "border-line"
-                    }`}
-                    style={{
-                      background:
-                        theme.style === "gradient"
-                          ? `linear-gradient(160deg, ${primary[theme.mode].bg} 0%, ${bg[theme.mode].bg} 100%)`
-                          : bg[theme.mode].bg,
-                      color: bg[theme.mode].accent,
-                    }}
-                  >
-                    {bg.label}
-                  </button>
-                ))}
-              </div>
-              <p className="mt-2 text-[11px] font-semibold text-muted">
-                {theme.style === "gradient"
-                  ? "The accent still comes from your first colour, so text stays readable whichever pair you choose."
-                  : "This colour drives the cards, insets and buttons — pick one that stands away from your background."}
-              </p>
-            </>
+          <SectionHeader title={theme.style === "gradient" ? "3 · Fades into" : "3 · App colour"} />
+          {grouped(
+            (bg) =>
+              swatch(bg, theme.bg2 === bg.key, () => theme.setBg2(bg.key), theme.style === "gradient"),
+            primary.key,
           )}
+          <p className="text-[11px] font-semibold text-muted">
+            {theme.style === "gradient"
+              ? "The accent still comes from your first colour, so text stays readable whichever pair you choose."
+              : "This colour drives the cards, insets and buttons — pick one that stands away from your background."}
+          </p>
         </>
       )}
 
-      {!primary && (
+      {theme.bg === null && theme.style === "solid" && (
         <>
           <SectionHeader title="Accent" />
           <div className="flex flex-wrap gap-2">
