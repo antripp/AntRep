@@ -539,6 +539,7 @@ export function Sheet({
   children,
   footer,
   wide,
+  panelStyle,
 }: {
   open: boolean;
   onClose: () => void;
@@ -546,6 +547,8 @@ export function Sheet({
   children: ReactNode;
   footer?: ReactNode;
   wide?: boolean;
+  /** Theme variable overrides for the panel — lets a sheet preview another mode. */
+  panelStyle?: CSSProperties;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -565,6 +568,7 @@ export function Sheet({
         className={`max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl bg-surface p-4 sm:rounded-3xl ${
           wide ? "sm:max-w-2xl" : "sm:max-w-md"
         }`}
+        style={panelStyle}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-3 flex items-center justify-between gap-3">

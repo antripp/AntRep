@@ -2,15 +2,20 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 
 export type ThemeMode = "light" | "dark";
 
-/* Accent choices used when NO background colour is selected. */
+/**
+ * Accent presets. "auto" (the default) derives the accent from whichever
+ * colours are picked; choosing a preset pins it, and that applies to every
+ * style rather than only to Default + solid as it used to.
+ */
 export const ACCENTS = [
-  { key: "mint", label: "Mint", swatch: "#58cc02" },
-  { key: "sky", label: "Sky", swatch: "#1cb0f6" },
-  { key: "grape", label: "Grape", swatch: "#a560f8" },
-  { key: "punch", label: "Punch", swatch: "#ff4b8b" },
-  { key: "sunset", label: "Sunset", swatch: "#ff9600" },
+  { key: "mint", label: "Mint", swatch: "#58cc02", deep: "#46a302" },
+  { key: "sky", label: "Sky", swatch: "#1cb0f6", deep: "#1899d6" },
+  { key: "grape", label: "Grape", swatch: "#a560f8", deep: "#8a48d8" },
+  { key: "punch", label: "Punch", swatch: "#ff4b8b", deep: "#d63771" },
+  { key: "sunset", label: "Sunset", swatch: "#ff9600", deep: "#db8100" },
 ] as const;
 export type AccentKey = (typeof ACCENTS)[number]["key"];
+export type AccentChoice = AccentKey | "auto";
 
 /**
  * 20 curated background tints — bold-but-subtle, easy on the eyes, with a
@@ -38,6 +43,12 @@ export const DEFAULT_PALETTE: BackgroundPalette = {
   light: { bg: "#f5f7f2", accent: "#58cc02", deep: "#46a302" },
   dark: { bg: "#131f24", accent: "#58cc02", deep: "#46a302" },
 };
+
+/** Base surfaces per mode, so a preview can render another mode's chrome. */
+export const MODE_SURFACES = {
+  light: { bg: "#f5f7f2", surface: "#ffffff", inset: "#f2f4f0", ink: "#3c3c3c", muted: "#82898f", line: "#e5e5e5" },
+  dark: { bg: "#131f24", surface: "#202f36", inset: "#17262d", ink: "#f1f7fb", muted: "#8ba5b0", line: "#37464f" },
+} as const;
 
 /** Picker order — like sits with like. */
 export const BACKGROUND_FAMILIES = [
@@ -116,7 +127,7 @@ const DEFAULT_PATTERN: PatternPref = { style: "dots", size: 28, opacityLight: 10
 
 interface ThemePref {
   mode: ThemeMode;
-  accent: AccentKey;
+  accent: AccentChoice;
   bg: string | null; // BackgroundPalette key, or null = default surface
   style: ThemeStyle;
   /** Second BackgroundPalette key — only read when style is "duotone". */
@@ -126,7 +137,7 @@ interface ThemePref {
 
 interface ThemeState extends ThemePref {
   setMode: (m: ThemeMode) => void;
-  setAccent: (a: AccentKey) => void;
+  setAccent: (a: AccentChoice) => void;
   setBg: (b: string | null) => void;
   setStyle: (s: ThemeStyle) => void;
   setBg2: (b: string | null) => void;
@@ -139,7 +150,7 @@ function loadPref(): ThemePref {
   const prefersDark = window.matchMedia?.("(prefers-color-scheme: dark)").matches;
   const fallback: ThemePref = {
     mode: prefersDark ? "dark" : "light",
-    accent: "mint",
+    accent: "auto",
     bg: "denim",
     style: "solid",
     bg2: null,
@@ -151,7 +162,11 @@ function loadPref(): ThemePref {
     const p = JSON.parse(raw);
     return {
       mode: p.mode === "dark" || p.mode === "light" ? p.mode : fallback.mode,
-      accent: ACCENTS.some((a) => a.key === p.accent) ? p.accent : "mint",
+      // The old accent only took effect with no background colour, so honour a
+      // stored one only in that case; otherwise everyone would suddenly have
+      // the default pinned across every style.
+      accent:
+        p.bg === null && ACCENTS.some((a) => a.key === p.accent) ? p.accent : "auto",
       // null is a real choice (Default), distinct from a missing/unknown key.
       bg: p.bg === null ? null : BACKGROUNDS.some((b) => b.key === p.bg) ? p.bg : fallback.bg,
       style: THEME_STYLES.includes(p.style) ? p.style : "solid",
@@ -167,7 +182,7 @@ function loadPref(): ThemePref {
 
 const ThemeContext = createContext<ThemeState>({
   mode: "light",
-  accent: "mint",
+  accent: "auto",
   bg: null,
   style: "solid",
   bg2: null,
@@ -186,7 +201,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const root = document.documentElement;
     root.dataset.theme = pref.mode;
-    root.dataset.accent = pref.accent;
+    if (pref.accent === "auto") delete root.dataset.accent;
+    else root.dataset.accent = pref.accent;
     root.dataset.pattern = pref.pattern.style;
 
     // Background palette overrides bg + accent inline (inline wins over the
@@ -242,6 +258,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       "--t-checker",
       pref.mode === "dark" ? `rgba(255,255,255,${alpha})` : `rgba(40,40,40,${alpha})`,
     );
+
+    // Last word: a pinned accent overrides whatever the palette or duotone
+    // pairing decided, for every style.
+    const accent = ACCENTS.find((a) => a.key === pref.accent);
+    if (accent) {
+      root.style.setProperty("--t-accent", accent.swatch);
+      root.style.setProperty("--t-accent-deep", accent.deep);
+    }
 
     localStorage.setItem(STORAGE_KEY, JSON.stringify(pref));
   }, [pref]);

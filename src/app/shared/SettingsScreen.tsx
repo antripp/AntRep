@@ -7,6 +7,7 @@ import {
   ACCENTS,
   BACKGROUNDS,
   DEFAULT_PALETTE,
+  MODE_SURFACES,
   useTheme,
   type BackgroundPalette,
 } from "../../lib/theme";
@@ -51,6 +52,8 @@ export default function SettingsScreen({
   const [linking, setLinking] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [showTheme, setShowTheme] = useState(false);
+  /** Preview only — lets you audition a pairing in the other mode. */
+  const [previewMode, setPreviewMode] = useState<"light" | "dark">(theme.mode);
   const [showGuide, setShowGuide] = useState(false);
 
   const otherRole: Role = profile.role === "athlete" ? "coach" : "athlete";
@@ -239,8 +242,23 @@ export default function SettingsScreen({
         AntRep · {profile.role === "coach" ? "Coach" : "Athlete"} portal
       </p>
 
-      <Sheet open={showTheme} onClose={() => setShowTheme(false)} title="Colour">
-        <ColourPicker theme={theme} />
+      <Sheet
+        open={showTheme}
+        onClose={() => setShowTheme(false)}
+        title="Colour"
+        // The sheet follows the preview, not the app: judging a dark pairing
+        // through a light panel tells you very little.
+        panelStyle={
+          {
+            "--t-surface": MODE_SURFACES[previewMode].surface,
+            "--t-inset": MODE_SURFACES[previewMode].inset,
+            "--t-ink": MODE_SURFACES[previewMode].ink,
+            "--t-muted": MODE_SURFACES[previewMode].muted,
+            "--t-line": MODE_SURFACES[previewMode].line,
+          } as React.CSSProperties
+        }
+      >
+        <ColourPicker theme={theme} previewMode={previewMode} onPreviewMode={setPreviewMode} />
       </Sheet>
     </>
   );
@@ -352,10 +370,16 @@ function EmailCard() {
  * light/dark toggle — you can check a pairing in the other mode without
  * actually switching the app into it.
  */
-function ColourPicker({ theme }: { theme: ReturnType<typeof useTheme> }) {
-  const [tab, setTab] = useState<"colours" | "style">("colours");
-  /** Preview only. Deliberately separate from theme.mode. */
-  const [previewMode, setPreviewMode] = useState<"light" | "dark">(theme.mode);
+function ColourPicker({
+  theme,
+  previewMode,
+  onPreviewMode,
+}: {
+  theme: ReturnType<typeof useTheme>;
+  previewMode: "light" | "dark";
+  onPreviewMode: (m: "light" | "dark") => void;
+}) {
+  const [tab, setTab] = useState<"colours" | "style" | "accent">("colours");
 
   const chosen = BACKGROUNDS.find((b) => b.key === theme.bg) ?? null;
   const primary = chosen ?? DEFAULT_PALETTE;
@@ -371,6 +395,8 @@ function ColourPicker({ theme }: { theme: ReturnType<typeof useTheme> }) {
   // Duotone puts the second colour on the card, not the background, so the
   // preview needs a card on it to show any difference at all.
   const ui = paired && theme.style === "duotone" ? paired : primary;
+  const pinned = ACCENTS.find((a) => a.key === theme.accent);
+  const previewAccent = pinned ? pinned.swatch : ui[previewMode].accent;
   const cardBg =
     paired && theme.style === "duotone" ? ui[previewMode].bg : previewMode === "dark" ? "#202f36" : "#ffffff";
 
@@ -402,7 +428,7 @@ function ColourPicker({ theme }: { theme: ReturnType<typeof useTheme> }) {
       >
         <div
           className="rounded-2xl border border-line px-4 py-2 text-xs font-black"
-          style={{ background: cardBg, color: ui[previewMode].accent }}
+          style={{ background: cardBg, color: previewAccent }}
         >
           {primary.label}
           {paired && needsSecond && (theme.style === "gradient" ? " → " : " + ") + paired.label}
@@ -416,7 +442,7 @@ function ColourPicker({ theme }: { theme: ReturnType<typeof useTheme> }) {
         <div className="w-32">
           <Segmented
             value={previewMode}
-            onChange={setPreviewMode}
+            onChange={onPreviewMode}
             options={[
               { value: "light", label: "Light" },
               { value: "dark", label: "Dark" },
@@ -432,6 +458,7 @@ function ColourPicker({ theme }: { theme: ReturnType<typeof useTheme> }) {
           options={[
             { value: "colours", label: "Colours" },
             { value: "style", label: "Style" },
+            { value: "accent", label: "Accent" },
           ]}
         />
       </div>
@@ -502,26 +529,44 @@ function ColourPicker({ theme }: { theme: ReturnType<typeof useTheme> }) {
             </>
           )}
 
-          {theme.bg === null && theme.style === "solid" && (
-            <>
-              <SectionHeader title="Accent" />
-              <div className="flex flex-wrap gap-2">
-                {ACCENTS.map((accent) => (
-                  <button
-                    key={accent.key}
-                    onClick={() => theme.setAccent(accent.key)}
-                    aria-pressed={theme.accent === accent.key}
-                    className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-black ${
-                      theme.accent === accent.key ? "border-accent" : "border-line"
-                    }`}
-                  >
-                    <span className="h-3 w-3 rounded-full" style={{ background: accent.swatch }} />
-                    {accent.label}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
+        </>
+      )}
+
+      {tab === "accent" && (
+        <>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => theme.setAccent("auto")}
+              aria-pressed={theme.accent === "auto"}
+              className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-black ${
+                theme.accent === "auto" ? "border-accent" : "border-line"
+              }`}
+            >
+              <span
+                className="h-3 w-3 rounded-full"
+                style={{ background: ui[previewMode].accent }}
+              />
+              Auto
+            </button>
+            {ACCENTS.map((accent) => (
+              <button
+                key={accent.key}
+                onClick={() => theme.setAccent(accent.key)}
+                aria-pressed={theme.accent === accent.key}
+                className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-black ${
+                  theme.accent === accent.key ? "border-accent" : "border-line"
+                }`}
+              >
+                <span className="h-3 w-3 rounded-full" style={{ background: accent.swatch }} />
+                {accent.label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-2 text-[11px] font-semibold text-muted">
+            {theme.accent === "auto"
+              ? "Auto takes the accent from the colours you picked — the app colour under duotone, your main colour otherwise."
+              : "Pinned. This accent applies whichever colours and style you choose."}
+          </p>
         </>
       )}
     </>
