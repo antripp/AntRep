@@ -65,6 +65,26 @@ export function setHasData(set: SetLog): boolean {
 }
 
 /** Biggest number recorded in a set's custom fields — the headline for `custom`. */
+/** Session ids that have at least one set carrying real numbers. */
+export function loggedSessionIds(logs: SetLog[]): Set<string> {
+  const ids = new Set<string>();
+  for (const log of logs) if (setHasData(log)) ids.add(log.session_id);
+  return ids;
+}
+
+/**
+ * Did this session involve training?
+ *
+ * `completed_names` only fills when an exercise is ticked off, which is an
+ * optional gesture — plenty of sessions have real sets logged against them and
+ * nothing ticked. Counting those as untrained made a half-finished workout
+ * vanish from the coach's totals, adherence and feed. Recorded sets are the
+ * stronger evidence, so either one counts.
+ */
+export function wasTrained(session: Session, logged?: Set<string>): boolean {
+  return session.completed_names.length > 0 || Boolean(logged?.has(session.id));
+}
+
 export function customBest(sets: SetLog[]): number {
   let best = 0;
   for (const set of sets) {

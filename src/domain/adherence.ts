@@ -6,7 +6,7 @@
 import type { PlanBundle, Session, SetLog } from "../data/types";
 import { addDays, formatShortDate, localDate, startOfWeek } from "./dates";
 import { dayForDate, hasTrainableContent, resolveSegments } from "./plan";
-import { sessionFor } from "./logging";
+import { loggedSessionIds, sessionFor, wasTrained } from "./logging";
 import { weeklySeries } from "./analytics";
 
 export interface PlanView {
@@ -30,6 +30,8 @@ export function planAdherence(
   sessions: Session[],
   weeks = 4,
   today = new Date(),
+  /** Sessions with recorded sets — they count even with nothing ticked off. */
+  logged?: Set<string>,
 ): AdherenceWeek[] {
   const thisWeek = startOfWeek(today);
   const todayStr = localDate(today);
@@ -55,7 +57,7 @@ export function planAdherence(
           if (segment.exercises.length === 0 && segment.dayType !== "run") continue;
           planned += 1;
           const session = sessionFor(sessions, segment, dateStr);
-          if (session && session.completed_names.length > 0) {
+          if (session && wasTrained(session, logged)) {
             completed += 1;
             countedSessions.add(session.id);
           }
@@ -69,7 +71,7 @@ export function planAdherence(
       (s) =>
         s.date >= weekStartStr &&
         s.date <= weekEndStr &&
-        s.completed_names.length > 0 &&
+        wasTrained(s, logged) &&
         !countedSessions.has(s.id),
     ).length;
 
@@ -109,8 +111,9 @@ export function coachFlags({
   const flags: CoachFlag[] = [];
   const todayStr = localDate(today);
 
+  const loggedIds = loggedSessionIds(logs);
   const lastDate = sessions
-    .filter((s) => s.completed_names.length > 0 || s.timer_segments.length > 0)
+    .filter((s) => wasTrained(s, loggedIds) || s.timer_segments.length > 0)
     .reduce<string | null>((newest, s) => (!newest || s.date > newest ? s.date : newest), null);
 
   if (!lastDate) {
@@ -184,6 +187,6 @@ export function coachFlags({
 }
 
 /** Extra work logged with no plan behind it — useful context for a new coach. */
-export function offPlanCount(sessions: Session[]): number {
-  return sessions.filter((s) => !s.plan_day_id && s.completed_names.length > 0).length;
+export function offPlanCount(sessions: Session[], logged?: Set<string>): number {
+  return sessions.filter((s) => !s.plan_day_id && wasTrained(s, logged)).length;
 }

@@ -2,6 +2,7 @@
 
 import type { Profile, Quest, Session } from "../data/types";
 import { addDays, localDate, parseDate, startOfWeek } from "./dates";
+import { wasTrained } from "./logging";
 
 export const XP = {
   sessionStart: 25,
@@ -41,12 +42,12 @@ export function exerciseXp(setCount: number, priority = 1): number {
 }
 
 /** Dates with real training activity. */
-export function activeDates(sessions: Session[]): Set<string> {
+export function activeDates(sessions: Session[], logged?: Set<string>): Set<string> {
   const dates = new Set<string>();
   for (const s of sessions) {
     const active =
       s.status === "complete" ||
-      s.completed_names.length > 0 ||
+      wasTrained(s, logged) ||
       s.timer_segments.length > 0 ||
       s.xp_awarded > 0;
     if (active) dates.add(s.date);
@@ -58,8 +59,13 @@ export function activeDates(sessions: Session[]): Set<string> {
  * Consecutive-day streak ending today (or yesterday, so an untrained morning
  * doesn't wipe a streak). Rest days in the plan bridge the chain.
  */
-export function currentStreak(sessions: Session[], restWeekdays: number[] = [], today = new Date()): number {
-  const active = activeDates(sessions);
+export function currentStreak(
+  sessions: Session[],
+  restWeekdays: number[] = [],
+  today = new Date(),
+  logged?: Set<string>,
+): number {
+  const active = activeDates(sessions, logged);
   if (active.size === 0) return 0;
 
   const todayStr = localDate(today);
@@ -94,20 +100,29 @@ export interface DayDot {
 }
 
 /** Last `count` days as dots for the Home streak chip. */
-export function recentDays(sessions: Session[], count = 10, today = new Date()): DayDot[] {
-  const active = activeDates(sessions);
+export function recentDays(
+  sessions: Session[],
+  count = 10,
+  today = new Date(),
+  logged?: Set<string>,
+): DayDot[] {
+  const active = activeDates(sessions, logged);
   return Array.from({ length: count }, (_, i) => {
     const date = localDate(addDays(today, -(count - 1 - i)));
     return { date, level: (active.has(date) ? 2 : 0) as 0 | 1 | 2 };
   });
 }
 
-export function weeklyGymCount(sessions: Session[], weekStart: Date = startOfWeek()): number {
+export function weeklyGymCount(
+  sessions: Session[],
+  weekStart: Date = startOfWeek(),
+  logged?: Set<string>,
+): number {
   const start = localDate(weekStart);
   const end = localDate(addDays(weekStart, 6));
   const days = new Set(
     sessions
-      .filter((s) => s.date >= start && s.date <= end && s.counts_as_gym && s.completed_names.length > 0)
+      .filter((s) => s.date >= start && s.date <= end && s.counts_as_gym && wasTrained(s, logged))
       .map((s) => s.date),
   );
   return days.size;
@@ -125,11 +140,12 @@ export function buildQuests(
   sessions: Session[],
   volumeThisWeek: number,
   weekStart: Date = startOfWeek(),
+  logged?: Set<string>,
 ): Quest[] {
   const start = localDate(weekStart);
   const end = localDate(addDays(weekStart, 6));
   const inWeek = sessions.filter((s) => s.date >= start && s.date <= end);
-  const trainedDays = new Set(inWeek.filter((s) => s.completed_names.length > 0).map((s) => s.date)).size;
+  const trainedDays = new Set(inWeek.filter((s) => wasTrained(s, logged)).map((s) => s.date)).size;
   const exercises = inWeek.reduce((t, s) => t + s.completed_names.length, 0);
 
   const values: Record<string, number> = {

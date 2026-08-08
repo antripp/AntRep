@@ -20,7 +20,7 @@ import {
   streakCopy,
   weeklyGymCount,
 } from "../../domain/gamification";
-import { nameKey } from "../../domain/logging";
+import { loggedSessionIds, nameKey } from "../../domain/logging";
 import { compactKg } from "../../domain/text";
 import { DotRow, LineChart, ShareBar, type Point } from "../../ui/charts";
 import { Card, Icon, IconTile, Pill, ProgressRing, SectionHeader, StatTile } from "../../ui/kit";
@@ -86,7 +86,10 @@ export function OverviewTab({
   );
   const balance = useMemo(() => categoryBalance(logs, categoryFor), [logs]);
   const records = useMemo(() => recentRecords(stats), [stats]);
-  const gymDays = weeklyGymCount(sessions, startOfWeek());
+  // Sets recorded without ticking anything off still count as a session, here
+  // and on the coach's side — the two views must not disagree.
+  const logged = useMemo(() => loggedSessionIds(logs), [logs]);
+  const gymDays = weeklyGymCount(sessions, startOfWeek(), logged);
 
   const valueOf = (point: (typeof series)[number]) =>
     metric === "volume" ? point.volume : metric === "sessions" ? point.sessions : point.sets;
@@ -103,9 +106,9 @@ export function OverviewTab({
   const previousTotal = previous.reduce((t, p) => t + valueOf(p), 0);
   const delta = previousTotal > 0 ? (currentTotal - previousTotal) / previousTotal : 0;
 
-  const streak = currentStreak(sessions, restWeekdays);
+  const streak = currentStreak(sessions, restWeekdays, new Date(), logged);
   const copy = streakCopy(streak);
-  const dots = recentDays(sessions, 10);
+  const dots = recentDays(sessions, 10, new Date(), logged);
   const level = levelProgress(totalXp);
 
   return (

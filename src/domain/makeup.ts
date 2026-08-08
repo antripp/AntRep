@@ -7,7 +7,7 @@
 import type { PlanBundle, PlanDay, Session } from "../data/types";
 import { addDays, isoWeekday, localDate, relativeDayLabel } from "./dates";
 import { daysForDate, hasTrainableContent, resolveSegments, type ResolvedSegment } from "./plan";
-import { canStartTimer, sessionFor } from "./logging";
+import { canStartTimer, sessionFor, wasTrained } from "./logging";
 
 export interface MakeupCandidate {
   day: PlanDay;
@@ -27,6 +27,8 @@ export function makeupCandidates(
   bundles: PlanBundle[],
   sessions: Session[],
   today = new Date(),
+  /** Sessions with recorded sets — already trained, even if nothing was ticked. */
+  logged?: Set<string>,
 ): MakeupCandidate[] {
   const todayStr = localDate(today);
   const todayWeekday = isoWeekday(today);
@@ -44,7 +46,7 @@ export function makeupCandidates(
 
       const trainedOnItsDay = segments.some((seg) => {
         const s = sessionFor(sessions, seg, scheduledDate);
-        return Boolean(s && (s.completed_names.length > 0 || s.timer_segments.length > 0));
+        return Boolean(s && (wasTrained(s, logged) || s.timer_segments.length > 0));
       });
       const trainedToday = segments.some((seg) => Boolean(sessionFor(sessions, seg, todayStr)));
       const startable = segments.find((seg) => canStartTimer(sessionFor(sessions, seg, todayStr)));

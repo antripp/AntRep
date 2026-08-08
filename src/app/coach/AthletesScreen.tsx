@@ -6,6 +6,7 @@ import type { CoachWorkspace } from "../../data/api";
 import type { Session, SetLog } from "../../data/types";
 import { formatShortDate, localDate, startOfWeek } from "../../domain/dates";
 import { weeklyGymCount } from "../../domain/gamification";
+import { loggedSessionIds } from "../../domain/logging";
 import { Card, EmptyState, Icon, IconTile, Pill, ScreenTitle, SectionHeader } from "../../ui/kit";
 import { InviteCodeCard } from "../shared/SettingsScreen";
 
@@ -97,7 +98,9 @@ export default function AthletesScreen({
               (newest, s) => (!newest || s.date > newest.date ? s : newest),
               undefined,
             );
-            const weekCount = pulse ? weeklyGymCount(pulse.sessions, startOfWeek()) : 0;
+            const weekCount = pulse
+              ? weeklyGymCount(pulse.sessions, startOfWeek(), loggedSessionIds(pulse.logs))
+              : 0;
             const trainedToday = pulse?.sessions.some((s) => s.date === localDate());
             return (
               <Card key={profile.id} onClick={() => onOpen(profile.id)}>

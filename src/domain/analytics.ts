@@ -8,6 +8,7 @@ import type { ExerciseCategory, LogType, Session, SetLog } from "../data/types";
 import { addDays, localDate, parseDate, startOfWeek } from "./dates";
 import {
   estimated1RM,
+  loggedSessionIds,
   nameKey,
   sessionBest,
   setHasData,
@@ -15,6 +16,7 @@ import {
   totalDuration,
   totalReps,
   volumeOf,
+  wasTrained,
 } from "./logging";
 
 export interface ExerciseStat {
@@ -114,6 +116,7 @@ export interface WeekPoint {
 /** Volume + session count per week, oldest first. */
 export function weeklySeries(sessions: Session[], logs: SetLog[], weeks = 8, today = new Date()): WeekPoint[] {
   const sessionById = new Map(sessions.map((s) => [s.id, s]));
+  const logged = loggedSessionIds(logs);
   const points: WeekPoint[] = [];
   const thisWeek = startOfWeek(today);
 
@@ -128,7 +131,7 @@ export function weeklySeries(sessions: Session[], logs: SetLog[], weeks = 8, tod
       weekStart: startStr,
       label: start.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
       volume: Math.round(volumeOf(weekLogs)),
-      sessions: new Set(weekSessions.filter((s) => s.completed_names.length > 0).map((s) => s.date)).size,
+      sessions: new Set(weekSessions.filter((s) => wasTrained(s, logged)).map((s) => s.date)).size,
       sets: weekLogs.length,
     });
   }
@@ -256,8 +259,11 @@ function round(n: number): number {
 /** Totals for the header tiles. */
 export function lifetimeTotals(sessions: Session[], logs: SetLog[]) {
   const valid = logs.filter(setHasData);
+  const logged = loggedSessionIds(logs);
   return {
-    sessions: new Set(sessions.filter((s) => s.completed_names.length > 0).map((s) => `${s.date}-${s.id}`)).size,
+    sessions: new Set(
+      sessions.filter((s) => wasTrained(s, logged)).map((s) => `${s.date}-${s.id}`),
+    ).size,
     sets: valid.length,
     volume: Math.round(volumeOf(valid)),
     distanceKm: Math.round(totalDistance(valid) * 10) / 10,

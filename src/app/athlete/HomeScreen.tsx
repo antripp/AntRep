@@ -36,7 +36,7 @@ import {
   type MakeupCandidate,
 } from "../../domain/makeup";
 import { dayForDate, resolveSegments, typeIcon, type ResolvedSegment } from "../../domain/plan";
-import { nameKey } from "../../domain/logging";
+import { loggedSessionIds, nameKey } from "../../domain/logging";
 import { plural } from "../../domain/text";
 import {
   ActionDialog,
@@ -65,6 +65,7 @@ export default function HomeScreen({ onGoPlans }: { onGoPlans: () => void }) {
     planViews,
     allBundles,
     sessions,
+    logs,
     sessionForSegment,
     ensureSession,
     startTimer,
@@ -110,8 +111,8 @@ export default function HomeScreen({ onGoPlans }: { onGoPlans: () => void }) {
   );
 
   const candidates = useMemo(
-    () => (isToday ? makeupCandidates(bundles, sessions, today) : []),
-    [bundles, sessions, today, isToday],
+    () => (isToday ? makeupCandidates(bundles, sessions, today, loggedSessionIds(logs)) : []),
+    [bundles, sessions, logs, today, isToday],
   );
 
   const liveSession = useMemo(

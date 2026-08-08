@@ -10,7 +10,7 @@ import { coachFlags, offPlanCount, planAdherence } from "../../domain/adherence"
 import { lifetimeTotals, recentRecords, exerciseStats, weeklySeries } from "../../domain/analytics";
 import { compactKg } from "../../domain/text";
 import { AdherenceBars, Sparkline } from "../../ui/charts";
-import { progressFor, sessionFor } from "../../domain/logging";
+import { loggedSessionIds, progressFor, sessionFor } from "../../domain/logging";
 import { dayForDate, resolveSegments, typeIcon } from "../../domain/plan";
 import { plural } from "../../domain/text";
 import {
@@ -99,7 +99,11 @@ export default function AthleteDetailScreen({
       ),
     [training],
   );
-  const liveStreak = training ? currentStreak(training.sessions, restWeekdays, today) : 0;
+  // Recorded sets count as training even when nothing was ticked off.
+  const loggedIds = useMemo(() => loggedSessionIds(training?.logs ?? []), [training]);
+  const liveStreak = training
+    ? currentStreak(training.sessions, restWeekdays, today, loggedIds)
+    : 0;
   const level = levelFor(athlete.profile.total_xp);
 
   const assignmentsForAthlete = workspace.assignments.filter((a) => a.athlete_id === athlete.profile.id);
@@ -435,9 +439,10 @@ function CoachOverview({
     [training.plans, training.assignments],
   );
 
+  const logged = useMemo(() => loggedSessionIds(training.logs), [training.logs]);
   const adherence = useMemo(
-    () => planAdherence(plans, training.sessions, 4, today),
-    [plans, training.sessions, today],
+    () => planAdherence(plans, training.sessions, 4, today, logged),
+    [plans, training.sessions, today, logged],
   );
   const flags = useMemo(
     () =>
@@ -469,7 +474,7 @@ function CoachOverview({
     (newest, s) => (!newest || s.date > newest ? s.date : newest),
     null,
   );
-  const offPlan = offPlanCount(training.sessions);
+  const offPlan = offPlanCount(training.sessions, logged);
   const doneRatio = thisWeek && thisWeek.planned > 0 ? thisWeek.completed / thisWeek.planned : 0;
 
   return (

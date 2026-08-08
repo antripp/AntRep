@@ -215,9 +215,13 @@ function buildFeed(
 ): FeedItem[] {
   const planIds = new Set(coachPlans.map((b) => b.plan.id));
   const setCounts = new Map<string, number>();
+  const namesBySession = new Map<string, Set<string>>();
   for (const log of logs) {
     if (!setHasData(log)) continue;
     setCounts.set(log.session_id, (setCounts.get(log.session_id) ?? 0) + 1);
+    const names = namesBySession.get(log.session_id) ?? new Set<string>();
+    names.add(log.exercise_name.trim().toLowerCase());
+    namesBySession.set(log.session_id, names);
   }
 
   const items: FeedItem[] = sessions
@@ -227,10 +231,12 @@ function buildFeed(
       kind: "session" as const,
       date: session.date,
       title: session.day_title || "Workout",
-      detail: `${plural(session.completed_names.length, "exercise")} · ${plural(
-        setCounts.get(session.id) ?? 0,
-        "set",
-      )}`,
+      // Ticking an exercise off is optional, so count what was actually logged
+      // too — otherwise a half-finished session reads as "0 exercises".
+      detail: `${plural(
+        Math.max(namesBySession.get(session.id)?.size ?? 0, session.completed_names.length),
+        "exercise",
+      )} · ${plural(setCounts.get(session.id) ?? 0, "set")}`,
       emoji: typeIcon(session.day_type),
       tint: DAY_TYPE_COLORS[session.day_type] ?? "var(--t-accent)",
       sessionId: session.id,

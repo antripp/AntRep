@@ -37,6 +37,11 @@ export function SessionList({
       <div className="space-y-2">
         {ordered.map((session) => {
           const sessionLogs = logs.filter((l) => l.session_id === session.id && setHasData(l));
+          // Logged sets count as exercises even when nothing was ticked off.
+          const exerciseCount = Math.max(
+            new Set(sessionLogs.map((l) => nameKey(l.exercise_name))).size,
+            session.completed_names.length,
+          );
           const tint = DAY_TYPE_COLORS[session.day_type] ?? "var(--t-accent)";
           const duration = elapsedSeconds(session);
           return (
@@ -47,8 +52,8 @@ export function SessionList({
                   <p className="truncate text-sm font-black text-ink">{session.day_title || "Workout"}</p>
                   <p className="truncate text-xs font-bold text-muted">
                     {weekdayLabel(isoWeekday(parseDate(session.date)), true)} {formatShortDate(session.date)} ·{" "}
-                    {session.completed_names.length} exercise
-                    {session.completed_names.length === 1 ? "" : "s"} · {sessionLogs.length} set
+                    {exerciseCount} exercise
+                    {exerciseCount === 1 ? "" : "s"} · {sessionLogs.length} set
                     {sessionLogs.length === 1 ? "" : "s"}
                     {duration > 0 && ` · ${formatDuration(duration)}`}
                   </p>
