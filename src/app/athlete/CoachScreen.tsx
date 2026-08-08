@@ -1,4 +1,4 @@
-/** Coach tab — chat, weekly check-ins, trackers and your coach's notes. */
+/** Coach tab — the activity feed, weekly check-ins, trackers and coach notes. */
 
 import { useMemo, useState } from "react";
 import type { CoachLink, Profile } from "../../data/types";
@@ -6,18 +6,18 @@ import {
   BoardLoading,
   CheckInsPanel,
   currentWeekIndex,
-  MessageThread,
   NotesPanel,
   TrackersPanel,
   useCoachingBoard,
 } from "../shared/CoachingPanels";
+import { ActivityFeed } from "../shared/ActivityFeed";
 import { EmptyState, Pill, ScreenTitle, Segmented } from "../../ui/kit";
 import { useWorkspace } from "../workspace";
 
 type View = "chat" | "checkin" | "trackers" | "notes";
 
 export default function CoachScreen() {
-  const { profile, workspace } = useWorkspace();
+  const { profile, workspace, sessions, logs } = useWorkspace();
   const coaches = workspace.coaches;
   const [activeLinkId, setActiveLinkId] = useState<string | null>(coaches[0]?.link.id ?? null);
   const [view, setView] = useState<View>("chat");
@@ -29,13 +29,23 @@ export default function CoachScreen() {
 
   const { board, loading, reload } = useCoachingBoard(active?.link.id ?? null);
 
+  // The feed covers what this coach prescribed — with several coaches linked,
+  // each tab shows only that coach's plans.
+  const coachPlans = useMemo(
+    () =>
+      workspace.assigned
+        .filter((a) => a.bundle.plan.trainer_id === active?.coach.id)
+        .map((a) => a.bundle),
+    [workspace.assigned, active?.coach.id],
+  );
+
   if (coaches.length === 0) {
     return (
       <>
         <ScreenTitle title="Coach" />
         <EmptyState
           title="No coach linked"
-          subtitle="Ask your coach for an invite code, then enter it in Settings → Coaches. Chat, check-ins and trackers appear here."
+          subtitle="Ask your coach for an invite code, then enter it in Settings → Coaches. Your activity feed, check-ins and trackers appear here."
         />
       </>
     );
@@ -75,7 +85,7 @@ export default function CoachScreen() {
           value={view}
           onChange={setView}
           options={[
-            { value: "chat", label: "Chat" },
+            { value: "chat", label: "Activity" },
             { value: "checkin", label: "Check-in" },
             { value: "trackers", label: "Trackers" },
             { value: "notes", label: "Notes" },
@@ -88,11 +98,15 @@ export default function CoachScreen() {
       ) : (
         <>
           {view === "chat" && (
-            <MessageThread
+            <ActivityFeed
               linkId={link.id}
               board={board}
               meProfileId={profile.id}
+              isCoach={false}
               otherName={coach.display_name || "your coach"}
+              sessions={sessions}
+              logs={logs}
+              coachPlans={coachPlans}
               onChanged={reload}
             />
           )}

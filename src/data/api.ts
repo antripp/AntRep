@@ -14,7 +14,7 @@ import type {
   CoachNote,
   ExercisePreset,
   LinkedAthlete,
-  Message,
+  ReactionPreset,
   PlanAssignment,
   PlanBundle,
   Profile,
@@ -138,7 +138,18 @@ export interface Api {
   coachingBoard(linkId: string): Promise<CoachingBoard>;
   /** Unread counts per link for the given reader. */
   unreadCounts(linkIds: string[], readerProfileId: string): Promise<Record<string, number>>;
-  sendMessage(linkId: string, senderProfileId: string, body: string): Promise<Message>;
+  /**
+   * Leave a preset reaction on a session or check-in. Replaces the coach's
+   * previous reaction on that item. Free-text chat was removed in 008.
+   */
+  saveReaction(input: {
+    linkId: string;
+    senderProfileId: string;
+    sessionId?: string | null;
+    checkInId?: string | null;
+    preset: ReactionPreset;
+  }): Promise<void>;
+  removeReaction(id: string): Promise<void>;
   markThreadRead(linkId: string, readerProfileId: string): Promise<void>;
   saveCheckIn(checkIn: CheckIn): Promise<void>;
   saveCoachNote(note: CoachNote): Promise<void>;

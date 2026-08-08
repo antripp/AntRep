@@ -45,21 +45,22 @@ export const BACKGROUNDS: BackgroundPalette[] = [
   { key: "mocha",    label: "Mocha",    light: { bg: "#f1ebe6", accent: "#7d5a44", deep: "#684a38" }, dark: { bg: "#211a15", accent: "#a98268", deep: "#8e6b54" } },
   { key: "slate",    label: "Slate",    light: { bg: "#eceff3", accent: "#5a6c85", deep: "#4a596e" }, dark: { bg: "#181d24", accent: "#8ba0bd", deep: "#71869f" } },
   { key: "mist",     label: "Mist",     light: { bg: "#edf1f2", accent: "#5f8794", deep: "#4e707b" }, dark: { bg: "#171e20", accent: "#8ab3c0", deep: "#7096a2" } },
+  { key: "crimson",  label: "Crimson",  light: { bg: "#fbe9ec", accent: "#c02f4a", deep: "#a3283e" }, dark: { bg: "#2a1216", accent: "#e56a80", deep: "#c4576b" } },
+  { key: "amber",    label: "Amber",    light: { bg: "#fdf1de", accent: "#c98a12", deep: "#ab740f" }, dark: { bg: "#2b2110", accent: "#e5b04a", deep: "#c4953e" } },
+  { key: "jade",     label: "Jade",     light: { bg: "#e6f4ee", accent: "#1f8a5f", deep: "#197250" }, dark: { bg: "#10231c", accent: "#4cb68a", deep: "#3c9a73" } },
+  { key: "violet",   label: "Violet",   light: { bg: "#f0eafa", accent: "#7a45c4", deep: "#6639a6" }, dark: { bg: "#1d1529", accent: "#a67ae4", deep: "#8d64c4" } },
+  { key: "cobalt",   label: "Cobalt",   light: { bg: "#e7edfa", accent: "#2b5fd0", deep: "#244fb0" }, dark: { bg: "#121a2d", accent: "#6b92ec", deep: "#567bc9" } },
+  { key: "coral",    label: "Coral",    light: { bg: "#fdece9", accent: "#d95f4a", deep: "#b8503e" }, dark: { bg: "#2b1714", accent: "#f0897a", deep: "#cf7166" } },
+  { key: "moss",     label: "Moss",     light: { bg: "#edf1e5", accent: "#5d7c33", deep: "#4d682a" }, dark: { bg: "#1b2113", accent: "#8fa95f", deep: "#77904d" } },
+  { key: "charcoal", label: "Charcoal", light: { bg: "#ecedee", accent: "#52585f", deep: "#43484e" }, dark: { bg: "#17191b", accent: "#9aa2ab", deep: "#7f8790" } },
 ];
 
+/** Solid uses one colour; duotone washes it into a second. */
+export const THEME_STYLES = ["solid", "duotone"] as const;
+export type ThemeStyle = (typeof THEME_STYLES)[number];
+
 /* Background texture (item: dev-tunable pattern lab). */
-export const PATTERN_STYLES = [
-  "checker",
-  "dots",
-  "grid",
-  "diag",
-  "cross",
-  "weave",
-  "scales",
-  "rings",
-  "plus",
-  "none",
-] as const;
+export const PATTERN_STYLES = ["checker", "dots", "grid", "diag", "none"] as const;
 export type PatternStyle = (typeof PATTERN_STYLES)[number];
 
 export interface PatternPref {
@@ -75,6 +76,9 @@ interface ThemePref {
   mode: ThemeMode;
   accent: AccentKey;
   bg: string | null; // BackgroundPalette key, or null = default surface
+  style: ThemeStyle;
+  /** Second BackgroundPalette key — only read when style is "duotone". */
+  bg2: string | null;
   pattern: PatternPref;
 }
 
@@ -82,6 +86,8 @@ interface ThemeState extends ThemePref {
   setMode: (m: ThemeMode) => void;
   setAccent: (a: AccentKey) => void;
   setBg: (b: string | null) => void;
+  setStyle: (s: ThemeStyle) => void;
+  setBg2: (b: string | null) => void;
   setPattern: (p: PatternPref) => void;
 }
 
@@ -93,6 +99,8 @@ function loadPref(): ThemePref {
     mode: prefersDark ? "dark" : "light",
     accent: "mint",
     bg: "denim",
+    style: "solid",
+    bg2: null,
     pattern: DEFAULT_PATTERN,
   };
   try {
@@ -103,38 +111,29 @@ function loadPref(): ThemePref {
       mode: p.mode === "dark" || p.mode === "light" ? p.mode : fallback.mode,
       accent: ACCENTS.some((a) => a.key === p.accent) ? p.accent : "mint",
       bg: BACKGROUNDS.some((b) => b.key === p.bg) ? p.bg : fallback.bg,
-      pattern: {
-        style: PATTERN_STYLES.includes(p.pattern?.style) ? p.pattern.style : DEFAULT_PATTERN.style,
-        size: clamp(Number(p.pattern?.size) || DEFAULT_PATTERN.size, 16, 64),
-        opacityLight: clamp(
-          Number(p.pattern?.opacityLight ?? p.pattern?.opacity ?? DEFAULT_PATTERN.opacityLight),
-          0,
-          12,
-        ),
-        opacityDark: clamp(
-          Number(p.pattern?.opacityDark ?? DEFAULT_PATTERN.opacityDark),
-          0,
-          12,
-        ),
-      },
+      style: THEME_STYLES.includes(p.style) ? p.style : "solid",
+      bg2: BACKGROUNDS.some((b) => b.key === p.bg2) ? p.bg2 : null,
+      // The texture picker is gone; everyone gets the standard dotted default.
+      pattern: DEFAULT_PATTERN,
     };
   } catch {
     return fallback;
   }
 }
 
-function clamp(v: number, lo: number, hi: number) {
-  return Math.min(hi, Math.max(lo, v));
-}
 
 const ThemeContext = createContext<ThemeState>({
   mode: "light",
   accent: "mint",
   bg: null,
+  style: "solid",
+  bg2: null,
   pattern: DEFAULT_PATTERN,
   setMode: () => {},
   setAccent: () => {},
   setBg: () => {},
+  setStyle: () => {},
+  setBg2: () => {},
   setPattern: () => {},
 });
 
@@ -161,6 +160,21 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       root.style.removeProperty("--t-accent-deep");
     }
 
+    // Duotone washes the primary into a second colour. The accent still comes
+    // from the primary, so contrast stays predictable whatever the pairing.
+    const second = BACKGROUNDS.find((b) => b.key === pref.bg2);
+    const duotone = pref.style === "duotone" && palette && second && second.key !== palette.key;
+    if (duotone) {
+      root.dataset.duotone = "on";
+      root.style.setProperty(
+        "--t-bg-gradient",
+        `linear-gradient(160deg, ${palette[pref.mode].bg} 0%, ${second[pref.mode].bg} 100%)`,
+      );
+    } else {
+      delete root.dataset.duotone;
+      root.style.removeProperty("--t-bg-gradient");
+    }
+
     root.style.setProperty("--pattern-size", `${pref.pattern.size}px`);
     const opacity = pref.mode === "dark" ? pref.pattern.opacityDark : pref.pattern.opacityLight;
     const alpha = (opacity / 100).toFixed(3);
@@ -179,6 +193,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         setMode: (mode) => setPref((p) => ({ ...p, mode })),
         setAccent: (accent) => setPref((p) => ({ ...p, accent })),
         setBg: (bg) => setPref((p) => ({ ...p, bg })),
+        setStyle: (style) => setPref((p) => ({ ...p, style })),
+        setBg2: (bg2) => setPref((p) => ({ ...p, bg2 })),
         setPattern: (pattern) => setPref((p) => ({ ...p, pattern })),
       }}
     >

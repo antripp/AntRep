@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { api, DEMO_ACCOUNTS, disableDemoMode, isDemoMode, resetDemoStore } from "../../data";
 import type { CoachLink, Profile, Role } from "../../data/types";
-import { ACCENTS, BACKGROUNDS, PATTERN_STYLES, useTheme } from "../../lib/theme";
+import { ACCENTS, BACKGROUNDS, useTheme } from "../../lib/theme";
 import {
   Button,
   Card,
@@ -22,23 +22,6 @@ import {
 } from "../../ui/kit";
 import { useAuth } from "../auth";
 import GuideScreen from "./GuideScreen";
-
-/** Miniature versions of the index.css patterns, for the picker swatches. */
-const PATTERN_SWATCHES: Record<string, string> = {
-  checker:
-    "linear-gradient(45deg, currentColor 25%, transparent 25% 75%, currentColor 75%), linear-gradient(45deg, currentColor 25%, transparent 25% 75%, currentColor 75%)",
-  dots: "radial-gradient(currentColor 1px, transparent 1.2px)",
-  grid: "linear-gradient(currentColor 1px, transparent 1px), linear-gradient(90deg, currentColor 1px, transparent 1px)",
-  diag: "repeating-linear-gradient(45deg, currentColor 0 1px, transparent 1px 6px)",
-  cross:
-    "linear-gradient(currentColor 1px, transparent 1px), linear-gradient(90deg, currentColor 1px, transparent 1px)",
-  weave:
-    "repeating-linear-gradient(45deg, currentColor 0 1px, transparent 1px 50%), repeating-linear-gradient(-45deg, currentColor 0 1px, transparent 1px 50%)",
-  scales: "radial-gradient(circle at 50% 100%, transparent 45%, currentColor 46%, transparent 47%)",
-  rings: "radial-gradient(circle, transparent 30%, currentColor 31%, transparent 33%)",
-  plus: "linear-gradient(currentColor 1px, transparent 1px), linear-gradient(90deg, currentColor 1px, transparent 1px)",
-  none: "none",
-};
 
 export default function SettingsScreen({
   profile,
@@ -251,107 +234,7 @@ export default function SettingsScreen({
       </p>
 
       <Sheet open={showTheme} onClose={() => setShowTheme(false)} title="Colour">
-        <div className="grid grid-cols-4 gap-2">
-          <button
-            onClick={() => theme.setBg(null)}
-            className={`rounded-2xl border p-2 text-[11px] font-black ${
-              theme.bg === null ? "border-accent text-accent" : "border-line text-muted"
-            }`}
-          >
-            Default
-          </button>
-          {BACKGROUNDS.map((bg) => (
-            <button
-              key={bg.key}
-              onClick={() => theme.setBg(bg.key)}
-              className={`rounded-2xl border p-2 text-[11px] font-black ${
-                theme.bg === bg.key ? "border-accent" : "border-line"
-              }`}
-              style={{ background: bg[theme.mode].bg, color: bg[theme.mode].accent }}
-            >
-              {bg.label}
-            </button>
-          ))}
-        </div>
-
-        <SectionHeader title="Accent (when no colour is set)" />
-        <div className="flex flex-wrap gap-2">
-          {ACCENTS.map((accent) => (
-            <button
-              key={accent.key}
-              onClick={() => theme.setAccent(accent.key)}
-              className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-black ${
-                theme.accent === accent.key ? "border-accent" : "border-line"
-              }`}
-            >
-              <span className="h-3 w-3 rounded-full" style={{ background: accent.swatch }} />
-              {accent.label}
-            </button>
-          ))}
-        </div>
-
-        <SectionHeader title="Background texture" />
-        <div className="grid grid-cols-5 gap-2">
-          {PATTERN_STYLES.map((style) => (
-            <button
-              key={style}
-              onClick={() => theme.setPattern({ ...theme.pattern, style })}
-              aria-pressed={theme.pattern.style === style}
-              className={`rounded-2xl border p-1 text-[10px] font-black capitalize ${
-                theme.pattern.style === style ? "border-accent text-accent" : "border-line text-muted"
-              }`}
-            >
-              {/* A live swatch of the pattern itself, so the name isn't a guess. */}
-              <span
-                data-pattern={style}
-                className="mb-1 block h-9 w-full rounded-xl bg-inset"
-                style={{ backgroundImage: PATTERN_SWATCHES[style], backgroundSize: "12px 12px" }}
-              />
-              {style}
-            </button>
-          ))}
-        </div>
-
-        <SectionHeader title="Texture strength" />
-        <div className="flex items-center gap-3">
-          <input
-            type="range"
-            min={0}
-            max={12}
-            value={theme.mode === "dark" ? theme.pattern.opacityDark : theme.pattern.opacityLight}
-            onChange={(e) => {
-              const v = Number(e.target.value);
-              theme.setPattern(
-                theme.mode === "dark"
-                  ? { ...theme.pattern, opacityDark: v }
-                  : { ...theme.pattern, opacityLight: v },
-              );
-            }}
-            className="h-2 flex-1 accent-accent"
-            aria-label="Texture strength"
-          />
-          <span className="w-16 text-right text-[11px] font-bold text-muted">
-            {theme.mode === "dark" ? theme.pattern.opacityDark : theme.pattern.opacityLight}% ·{" "}
-            {theme.mode}
-          </span>
-        </div>
-
-        <SectionHeader title="Texture scale" />
-        <div className="flex items-center gap-3">
-          <input
-            type="range"
-            min={16}
-            max={64}
-            step={2}
-            value={theme.pattern.size}
-            onChange={(e) => theme.setPattern({ ...theme.pattern, size: Number(e.target.value) })}
-            className="h-2 flex-1 accent-accent"
-            aria-label="Texture scale"
-          />
-          <span className="w-16 text-right text-[11px] font-bold text-muted">
-            {theme.pattern.size}px
-          </span>
-        </div>
+        <ColourPicker theme={theme} />
       </Sheet>
     </>
   );
@@ -454,6 +337,137 @@ function EmailCard() {
         </Button>
       )}
     </Card>
+  );
+}
+
+/**
+ * Colour, in the order the decision is actually made: pick a colour, pick a
+ * style, and only then — if you chose duotone — pick what it blends into.
+ * The second step is hidden until it's relevant, so solid stays a two-tap job.
+ */
+function ColourPicker({ theme }: { theme: ReturnType<typeof useTheme> }) {
+  const primary = BACKGROUNDS.find((b) => b.key === theme.bg) ?? null;
+  const second = BACKGROUNDS.find((b) => b.key === theme.bg2) ?? null;
+  const duotone = theme.style === "duotone" && primary && second && second.key !== primary.key;
+
+  const preview = !primary
+    ? "var(--t-bg)"
+    : duotone
+      ? `linear-gradient(160deg, ${primary[theme.mode].bg} 0%, ${second[theme.mode].bg} 100%)`
+      : primary[theme.mode].bg;
+
+  return (
+    <>
+      {/* What you're about to get, before you commit to it. */}
+      <div
+        className="mb-4 flex h-16 items-center justify-center rounded-card border border-line"
+        style={{ background: preview }}
+      >
+        <span
+          className="text-xs font-black"
+          style={{ color: primary ? primary[theme.mode].accent : "var(--t-accent)" }}
+        >
+          {primary ? primary.label : "Default"}
+          {duotone && ` → ${second.label}`}
+        </span>
+      </div>
+
+      <SectionHeader title="1 · Colour" />
+      <div className="grid grid-cols-4 gap-2">
+        <button
+          onClick={() => theme.setBg(null)}
+          className={`rounded-2xl border p-2 text-[11px] font-black ${
+            theme.bg === null ? "border-accent text-accent" : "border-line text-muted"
+          }`}
+        >
+          Default
+        </button>
+        {BACKGROUNDS.map((bg) => (
+          <button
+            key={bg.key}
+            onClick={() => theme.setBg(bg.key)}
+            aria-pressed={theme.bg === bg.key}
+            className={`rounded-2xl border p-2 text-[11px] font-black ${
+              theme.bg === bg.key ? "border-accent" : "border-line"
+            }`}
+            style={{ background: bg[theme.mode].bg, color: bg[theme.mode].accent }}
+          >
+            {bg.label}
+          </button>
+        ))}
+      </div>
+
+      {primary && (
+        <>
+          <SectionHeader title="2 · Style" />
+          <Segmented
+            value={theme.style}
+            onChange={(style) => {
+              theme.setStyle(style);
+              // Pick a sensible partner so duotone shows something immediately
+              // rather than silently behaving like solid.
+              if (style === "duotone" && !theme.bg2) {
+                const suggestion = BACKGROUNDS.find((b) => b.key !== primary.key);
+                if (suggestion) theme.setBg2(suggestion.key);
+              }
+            }}
+            options={[
+              { value: "solid", label: "Solid" },
+              { value: "duotone", label: "Duotone" },
+            ]}
+          />
+
+          {theme.style === "duotone" && (
+            <>
+              <SectionHeader title="3 · Blends into" />
+              <div className="grid grid-cols-4 gap-2">
+                {BACKGROUNDS.filter((b) => b.key !== primary.key).map((bg) => (
+                  <button
+                    key={bg.key}
+                    onClick={() => theme.setBg2(bg.key)}
+                    aria-pressed={theme.bg2 === bg.key}
+                    className={`rounded-2xl border p-2 text-[11px] font-black ${
+                      theme.bg2 === bg.key ? "border-accent" : "border-line"
+                    }`}
+                    style={{
+                      background: `linear-gradient(160deg, ${primary[theme.mode].bg} 0%, ${bg[theme.mode].bg} 100%)`,
+                      color: bg[theme.mode].accent,
+                    }}
+                  >
+                    {bg.label}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2 text-[11px] font-semibold text-muted">
+                The accent still comes from your first colour, so text stays readable whichever pair
+                you choose.
+              </p>
+            </>
+          )}
+        </>
+      )}
+
+      {!primary && (
+        <>
+          <SectionHeader title="Accent" />
+          <div className="flex flex-wrap gap-2">
+            {ACCENTS.map((accent) => (
+              <button
+                key={accent.key}
+                onClick={() => theme.setAccent(accent.key)}
+                aria-pressed={theme.accent === accent.key}
+                className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-black ${
+                  theme.accent === accent.key ? "border-accent" : "border-line"
+                }`}
+              >
+                <span className="h-3 w-3 rounded-full" style={{ background: accent.swatch }} />
+                {accent.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </>
   );
 }
 

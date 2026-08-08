@@ -28,6 +28,7 @@ import {
   Spinner,
   StatTile,
 } from "../../ui/kit";
+import { ActivityFeed } from "../shared/ActivityFeed";
 import { ProgressBody } from "../progress/ProgressScreen";
 import { WeekStrip } from "../athlete/PlansScreen";
 import { SessionList } from "../shared/SessionHistory";
@@ -36,7 +37,6 @@ import {
   BoardLoading,
   CheckInsPanel,
   currentWeekIndex,
-  MessageThread,
   NotesPanel,
   TrackersPanel,
   useCoachingBoard,
@@ -223,7 +223,7 @@ export default function AthleteDetailScreen({
                   value={coachingView}
                   onChange={setCoachingView}
                   options={[
-                    { value: "chat", label: "Chat" },
+                    { value: "chat", label: "Activity" },
                     { value: "checkin", label: "Check-ins" },
                     { value: "notes", label: "Notes" },
                     { value: "trackers", label: "Trackers" },
@@ -236,11 +236,15 @@ export default function AthleteDetailScreen({
               ) : (
                 <>
                   {coachingView === "chat" && (
-                    <MessageThread
+                    <ActivityFeed
                       linkId={athlete.link.id}
                       board={board}
                       meProfileId={coach.id}
+                      isCoach
                       otherName={athlete.profile.display_name || "your athlete"}
+                      sessions={training.sessions}
+                      logs={training.logs}
+                      coachPlans={workspace.plans}
                       onChanged={reloadBoard}
                     />
                   )}

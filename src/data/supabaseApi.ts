@@ -7,13 +7,13 @@ import { supabase } from "../lib/supabase";
 import { localDate, startOfWeek } from "../domain/dates";
 import type { Api, AthleteTraining, AthleteWorkspace, AuthResult, CoachWorkspace } from "./api";
 import type {
+  ActivityReaction,
   CheckIn,
   CoachingBoard,
   CoachLink,
   CoachNote,
   DayType,
   ExercisePreset,
-  Message,
   Plan,
   PlanAssignment,
   PlanBundle,
@@ -202,14 +202,15 @@ function toSession(r: Row): Session {
   };
 }
 
-function toMessage(r: Row): Message {
+function toReaction(r: Row): ActivityReaction {
   return {
     id: str(r.id),
     coach_link_id: str(r.coach_link_id),
     sender_profile_id: str(r.sender_profile_id),
-    body: str(r.body),
+    session_id: (r.session_id as string) ?? null,
+    check_in_id: (r.check_in_id as string) ?? null,
+    preset: str(r.preset, "noted") as ActivityReaction["preset"],
     created_at: str(r.created_at),
-    read_at: (r.read_at as string) ?? null,
   };
 }
 
@@ -743,8 +744,8 @@ export const supabaseApi: Api = {
   },
 
   async coachingBoard(linkId): Promise<CoachingBoard> {
-    const [messages, checkIns, notes, templates, entries] = await Promise.all([
-      supabase.from("messages").select("*").eq("coach_link_id", linkId).order("created_at"),
+    const [reactions, checkIns, notes, templates, entries] = await Promise.all([
+      supabase.from("activity_reactions").select("*").eq("coach_link_id", linkId),
       supabase.from("check_ins").select("*").eq("coach_link_id", linkId).order("week_index"),
       supabase.from("coach_notes").select("*").eq("coach_link_id", linkId).order("note_date", { ascending: false }),
       supabase.from("tracker_templates").select("*").eq("coach_link_id", linkId).order("sort_order"),
@@ -752,7 +753,9 @@ export const supabaseApi: Api = {
     ]);
 
     return {
-      messages: (messages.data ?? []).map((r) => toMessage(r as Row)),
+      // Chat is frozen (migration 008); the feed is derived from training.
+      messages: [],
+      reactions: (reactions.data ?? []).map((r) => toReaction(r as Row)),
       checkIns: (checkIns.data ?? []).map((r) => toCheckIn(r as Row)),
       notes: (notes.data ?? []).map((r) => toCoachNote(r as Row)),
       templates: (templates.data ?? []).map((r) => toTemplate(r as Row)),
@@ -777,13 +780,22 @@ export const supabaseApi: Api = {
     return counts;
   },
 
-  async sendMessage(linkId, senderProfileId, body) {
-    const { data } = await supabase
-      .from("messages")
-      .insert({ coach_link_id: linkId, sender_profile_id: senderProfileId, body: body.trim() })
-      .select()
-      .single();
-    return toMessage((data ?? {}) as Row);
+  async saveReaction({ linkId, senderProfileId, sessionId, checkInId, preset }) {
+    // One reaction per coach per item — upsert on the uniqueness constraint.
+    await supabase.from("activity_reactions").upsert(
+      {
+        coach_link_id: linkId,
+        sender_profile_id: senderProfileId,
+        session_id: sessionId ?? null,
+        check_in_id: checkInId ?? null,
+        preset,
+      },
+      { onConflict: "coach_link_id,sender_profile_id,session_id,check_in_id" },
+    );
+  },
+
+  async removeReaction(id) {
+    await supabase.from("activity_reactions").delete().eq("id", id);
   },
 
   async markThreadRead(linkId, readerProfileId) {

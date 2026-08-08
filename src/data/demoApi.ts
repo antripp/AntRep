@@ -27,6 +27,7 @@ import {
 } from "./factories";
 import type { Api, AthleteTraining, AuthResult, AuthUser } from "./api";
 import type {
+  ActivityReaction,
   CheckIn,
   CoachingBoard,
   CoachLink,
@@ -64,6 +65,7 @@ interface DemoUser {
 }
 
 interface DemoStore {
+  reactions: ActivityReaction[];
   users: DemoUser[];
   profiles: Profile[];
   links: CoachLink[];
@@ -878,6 +880,7 @@ function buildSeed(): DemoStore {
   const plans = [mainPlan, conditioning, ownPlan, coachOwnPlan];
 
   return {
+    reactions: [],
     users,
     profiles: [athlete, coach, coachAthlete, second],
     links: [alexLink, selfLink, secondLink, pendingInvite],
@@ -1349,11 +1352,9 @@ export const demoApi: Api = {
   async coachingBoard(linkId): Promise<CoachingBoard> {
     const db = load();
     return {
-      messages: clone(
-        db.messages
-          .filter((m) => m.coach_link_id === linkId)
-          .sort((a, b) => a.created_at.localeCompare(b.created_at)),
-      ),
+      // Chat is frozen; the feed comes from sessions and check-ins instead.
+      messages: [],
+      reactions: clone((db.reactions ?? []).filter((r) => r.coach_link_id === linkId)),
       checkIns: clone(
         db.checkIns.filter((c) => c.coach_link_id === linkId).sort((a, b) => a.week_index - b.week_index),
       ),
@@ -1380,19 +1381,33 @@ export const demoApi: Api = {
     return counts;
   },
 
-  async sendMessage(linkId, senderProfileId, body) {
+  async saveReaction({ linkId, senderProfileId, sessionId, checkInId, preset }) {
     const db = load();
-    const message: Message = {
-      id: newId(),
-      coach_link_id: linkId,
-      sender_profile_id: senderProfileId,
-      body: body.trim(),
-      created_at: new Date().toISOString(),
-      read_at: null,
-    };
-    db.messages.push(message);
+    db.reactions = db.reactions ?? [];
+    const match = (r: ActivityReaction) =>
+      r.coach_link_id === linkId &&
+      r.sender_profile_id === senderProfileId &&
+      (r.session_id ?? null) === (sessionId ?? null) &&
+      (r.check_in_id ?? null) === (checkInId ?? null);
+    const existing = db.reactions.find(match);
+    if (existing) existing.preset = preset;
+    else
+      db.reactions.push({
+        id: newId(),
+        coach_link_id: linkId,
+        sender_profile_id: senderProfileId,
+        session_id: sessionId ?? null,
+        check_in_id: checkInId ?? null,
+        preset,
+        created_at: new Date().toISOString(),
+      });
     persist();
-    return clone(message);
+  },
+
+  async removeReaction(id) {
+    const db = load();
+    db.reactions = (db.reactions ?? []).filter((r) => r.id !== id);
+    persist();
   },
 
   async markThreadRead(linkId, readerProfileId) {

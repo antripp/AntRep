@@ -4,7 +4,7 @@
  * `canCoach` decides who may edit what.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../../data";
 import { makeCheckIn, makeCoachNote, makeTrackerTemplate, newId } from "../../data/factories";
 import {
@@ -32,7 +32,14 @@ import {
   TextField,
 } from "../../ui/kit";
 
-const emptyBoard: CoachingBoard = { messages: [], checkIns: [], notes: [], templates: [], entries: [] };
+const emptyBoard: CoachingBoard = {
+  messages: [],
+  reactions: [],
+  checkIns: [],
+  notes: [],
+  templates: [],
+  entries: [],
+};
 
 /** Loads (and reloads) everything attached to a link. */
 export function useCoachingBoard(linkId: string | null) {
@@ -55,104 +62,6 @@ export function useCoachingBoard(linkId: string | null) {
   }, [reload, linkId]);
 
   return { board, loading, reload };
-}
-
-// ------------------------------------------------------------------
-// Chat
-// ------------------------------------------------------------------
-
-export function MessageThread({
-  linkId,
-  board,
-  meProfileId,
-  otherName,
-  onChanged,
-}: {
-  linkId: string;
-  board: CoachingBoard;
-  meProfileId: string;
-  otherName: string;
-  onChanged: () => Promise<void>;
-}) {
-  const [text, setText] = useState("");
-  const [sending, setSending] = useState(false);
-  const bottom = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    bottom.current?.scrollIntoView({ block: "nearest" });
-  }, [board.messages.length]);
-
-  // Anything the other side sent is read once the thread is on screen.
-  useEffect(() => {
-    const unread = board.messages.some((m) => !m.read_at && m.sender_profile_id !== meProfileId);
-    if (unread) api.markThreadRead(linkId, meProfileId).then(onChanged);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [board.messages, linkId, meProfileId]);
-
-  async function send() {
-    const body = text.trim();
-    if (!body || sending) return;
-    setSending(true);
-    try {
-      await api.sendMessage(linkId, meProfileId, body);
-      setText("");
-      await onChanged();
-    } finally {
-      setSending(false);
-    }
-  }
-
-  return (
-    <div>
-      <div className="mb-3 max-h-[52dvh] space-y-2 overflow-y-auto rounded-card border border-line bg-surface p-3">
-        {board.messages.length === 0 && (
-          <p className="py-8 text-center text-sm font-semibold text-muted">
-            No messages yet — say hello to {otherName}.
-          </p>
-        )}
-        {board.messages.map((message) => {
-          const mine = message.sender_profile_id === meProfileId;
-          return (
-            <div key={message.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-              <div
-                className={`max-w-[80%] rounded-2xl px-3 py-2 ${
-                  mine ? "bg-accent text-white" : "bg-inset text-ink"
-                }`}
-              >
-                <p className="whitespace-pre-wrap text-sm font-semibold leading-snug">{message.body}</p>
-                <p className={`mt-1 text-[10px] font-bold ${mine ? "text-white/70" : "text-muted"}`}>
-                  {new Date(message.created_at).toLocaleString(undefined, {
-                    month: "short",
-                    day: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </p>
-              </div>
-            </div>
-          );
-        })}
-        <div ref={bottom} />
-      </div>
-
-      <div className="flex gap-2">
-        <TextField
-          value={text}
-          placeholder={`Message ${otherName}`}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              send();
-            }
-          }}
-        />
-        <Button onClick={send} disabled={sending || !text.trim()}>
-          <Icon.send className="h-4 w-4" /> Send
-        </Button>
-      </div>
-    </div>
-  );
 }
 
 // ------------------------------------------------------------------

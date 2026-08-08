@@ -430,8 +430,39 @@ export interface TrackerEntry {
 }
 
 /** Everything attached to one coach ↔ athlete link. */
+/**
+ * The only things a coach can say. Keys are constrained by a CHECK in the
+ * database (migration 008), so free text cannot reach this column even by
+ * calling the API directly.
+ */
+export const REACTION_PRESETS = [
+  { key: "well_done", label: "Well done", emoji: "👏" },
+  { key: "strong_session", label: "Strong session", emoji: "💪" },
+  { key: "good_consistency", label: "Good consistency", emoji: "📈" },
+  { key: "nice_progress", label: "Nice progress", emoji: "🚀" },
+  { key: "watch_your_form", label: "Watch your form", emoji: "👀" },
+  { key: "ease_off", label: "Ease off next time", emoji: "🧊" },
+  { key: "push_harder", label: "Room to push", emoji: "🔥" },
+  { key: "lets_review", label: "Let's review this", emoji: "📋" },
+  { key: "noted", label: "Noted", emoji: "✅" },
+] as const;
+
+export type ReactionPreset = (typeof REACTION_PRESETS)[number]["key"];
+
+export interface ActivityReaction {
+  id: string;
+  coach_link_id: string;
+  sender_profile_id: string;
+  session_id: string | null;
+  check_in_id: string | null;
+  preset: ReactionPreset;
+  created_at: string;
+}
+
 export interface CoachingBoard {
+  /** Frozen by migration 008 — always empty, kept so old code still compiles. */
   messages: Message[];
+  reactions: ActivityReaction[];
   checkIns: CheckIn[];
   notes: CoachNote[];
   templates: TrackerTemplate[];
