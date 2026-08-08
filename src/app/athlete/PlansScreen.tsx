@@ -1,6 +1,7 @@
 /** Plans — sync what a coach assigned, or build your own. */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useDraft } from "../usePersisted";
 import { api } from "../../data";
 import { makeDay, makePlan, makePreset } from "../../data/factories";
 import type { PlanBundle } from "../../data/types";
@@ -24,18 +25,31 @@ import { useWorkspace } from "../workspace";
 
 export default function PlansScreen() {
   const { profile, workspace, reload, showToast } = useWorkspace();
-  const [draft, setDraft] = useState<PlanBundle | null>(null);
+  // A plan is a lot of typing. Keep it across reloads, per profile, and drop it
+  // only once it has actually reached the server.
+  const plan = useDraft<PlanBundle>(`plan-draft:${profile.id}`);
+  const draft = plan.value;
+  const setDraft = plan.set;
   const [viewing, setViewing] = useState<PlanBundle | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // Say so when work comes back, or a restored draft looks like a bug.
+  const announced = useRef(false);
+  useEffect(() => {
+    if (plan.restored && plan.value && !announced.current) {
+      announced.current = true;
+      showToast("Picked up your unsaved plan");
+    }
+  }, [plan.restored, plan.value, showToast]);
 
   async function save() {
     if (!draft) return;
     setSaving(true);
     try {
       await api.savePlan(draft);
+      plan.discard();
       await reload();
       showToast("Plan saved");
-      setDraft(null);
     } finally {
       setSaving(false);
     }
@@ -44,8 +58,8 @@ export default function PlansScreen() {
   async function remove() {
     if (!draft) return;
     await api.deletePlan(draft.plan.id);
+    plan.discard();
     await reload();
-    setDraft(null);
     showToast("Plan deleted");
   }
 

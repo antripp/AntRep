@@ -1,6 +1,6 @@
 /** Athlete portal shell: Home · Plans · Progress · Library · Settings. */
 
-import { useState } from "react";
+import { usePersisted } from "../usePersisted";
 import type { Profile, Role } from "../../data/types";
 import { Icon, LoadingScreen, Screen, TabBar, Toast } from "../../ui/kit";
 import SettingsScreen from "../shared/SettingsScreen";
@@ -36,7 +36,7 @@ export default function AthleteApp({
 
 function AthleteShell({ onSwitchPortal }: { onSwitchPortal: (role: Role) => void }) {
   const { loading, profile, workspace, reload, toast, clearToast } = useWorkspace();
-  const [tab, setTab] = useState("home");
+  const [tab, setTab] = usePersisted("athlete-tab", "home");
 
   if (loading) return <LoadingScreen />;
 

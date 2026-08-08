@@ -1,6 +1,7 @@
 /** Coach portal shell: Athletes · Plans · My training · Settings. */
 
 import { useCallback, useEffect, useState } from "react";
+import { usePersisted } from "../usePersisted";
 import { api } from "../../data";
 import type { CoachWorkspace } from "../../data/api";
 import type { Profile, Role } from "../../data/types";
@@ -31,7 +32,7 @@ export default function CoachApp({
   onSwitchPortal: (role: Role) => void;
 }) {
   const { profiles, refresh } = useAuth();
-  const [tab, setTab] = useState("athletes");
+  const [tab, setTab] = usePersisted("coach-tab", "athletes");
   const [workspace, setWorkspace] = useState<CoachWorkspace>(emptyWorkspace);
   const [loading, setLoading] = useState(true);
   const [openAthlete, setOpenAthlete] = useState<string | null>(null);
