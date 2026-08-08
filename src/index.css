@@ -142,10 +142,11 @@ html[data-pattern="none"] .checker-bg {
   background-image: none;
 }
 
-/* Duotone: the two-colour wash sits beneath the texture. Layered here rather
-   than on --t-bg, which is a background-*color* and can't hold a gradient. */
-html[data-duotone="on"] .pattern-bg,
-html[data-duotone="on"] .checker-bg {
+/* Gradient: the two-colour wash sits beneath the texture. Layered here rather
+   than on --t-bg, which is a background-*color* and can't hold a gradient.
+   (Duotone needs no CSS — it just re-points the surface and accent vars.) */
+html[data-bgstyle="gradient"] .pattern-bg,
+html[data-bgstyle="gradient"] .checker-bg {
   background-image:
     radial-gradient(var(--t-checker) 1.5px, transparent 1.6px),
     var(--t-bg-gradient);

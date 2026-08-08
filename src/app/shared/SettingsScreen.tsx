@@ -348,28 +348,38 @@ function EmailCard() {
 function ColourPicker({ theme }: { theme: ReturnType<typeof useTheme> }) {
   const primary = BACKGROUNDS.find((b) => b.key === theme.bg) ?? null;
   const second = BACKGROUNDS.find((b) => b.key === theme.bg2) ?? null;
-  const duotone = theme.style === "duotone" && primary && second && second.key !== primary.key;
+  const paired = primary && second && second.key !== primary.key ? second : null;
+  const needsSecond = theme.style === "gradient" || theme.style === "duotone";
 
-  const preview = !primary
+  const page = !primary
     ? "var(--t-bg)"
-    : duotone
-      ? `linear-gradient(160deg, ${primary[theme.mode].bg} 0%, ${second[theme.mode].bg} 100%)`
+    : paired && theme.style === "gradient"
+      ? `linear-gradient(160deg, ${primary[theme.mode].bg} 0%, ${paired[theme.mode].bg} 100%)`
       : primary[theme.mode].bg;
+
+  // Duotone puts the second colour on the card, not in the background, so the
+  // preview has to show a card to mean anything.
+  const cardBg =
+    paired && theme.style === "duotone" ? paired[theme.mode].bg : "var(--t-surface)";
+  const cardInk =
+    paired && theme.style === "duotone"
+      ? paired[theme.mode].accent
+      : (primary?.[theme.mode].accent ?? "var(--t-accent)");
 
   return (
     <>
       {/* What you're about to get, before you commit to it. */}
       <div
-        className="mb-4 flex h-16 items-center justify-center rounded-card border border-line"
-        style={{ background: preview }}
+        className="mb-4 flex h-20 items-center justify-center rounded-card border border-line"
+        style={{ background: page }}
       >
-        <span
-          className="text-xs font-black"
-          style={{ color: primary ? primary[theme.mode].accent : "var(--t-accent)" }}
+        <div
+          className="rounded-2xl border border-line px-4 py-2 text-xs font-black"
+          style={{ background: cardBg, color: cardInk }}
         >
           {primary ? primary.label : "Default"}
-          {duotone && ` → ${second.label}`}
-        </span>
+          {paired && needsSecond && (theme.style === "gradient" ? " → " : " + ") + paired.label}
+        </div>
       </div>
 
       <SectionHeader title="1 · Colour" />
@@ -404,22 +414,31 @@ function ColourPicker({ theme }: { theme: ReturnType<typeof useTheme> }) {
             value={theme.style}
             onChange={(style) => {
               theme.setStyle(style);
-              // Pick a sensible partner so duotone shows something immediately
-              // rather than silently behaving like solid.
-              if (style === "duotone" && !theme.bg2) {
+              // Pick a sensible partner so the second colour shows something
+              // immediately rather than silently behaving like solid.
+              if (style !== "solid" && !theme.bg2) {
                 const suggestion = BACKGROUNDS.find((b) => b.key !== primary.key);
                 if (suggestion) theme.setBg2(suggestion.key);
               }
             }}
             options={[
               { value: "solid", label: "Solid" },
+              { value: "gradient", label: "Gradient" },
               { value: "duotone", label: "Duotone" },
             ]}
           />
+          <p className="mt-2 text-[11px] font-semibold text-muted">
+            {theme.style === "solid" && "One colour for the background and the app."}
+            {theme.style === "gradient" && "The background fades from your colour into a second."}
+            {theme.style === "duotone" &&
+              "Your colour stays on the background; a second one paints the cards and buttons."}
+          </p>
 
-          {theme.style === "duotone" && (
+          {needsSecond && (
             <>
-              <SectionHeader title="3 · Blends into" />
+              <SectionHeader
+                title={theme.style === "gradient" ? "3 · Fades into" : "3 · App colour"}
+              />
               <div className="grid grid-cols-4 gap-2">
                 {BACKGROUNDS.filter((b) => b.key !== primary.key).map((bg) => (
                   <button
@@ -430,7 +449,10 @@ function ColourPicker({ theme }: { theme: ReturnType<typeof useTheme> }) {
                       theme.bg2 === bg.key ? "border-accent" : "border-line"
                     }`}
                     style={{
-                      background: `linear-gradient(160deg, ${primary[theme.mode].bg} 0%, ${bg[theme.mode].bg} 100%)`,
+                      background:
+                        theme.style === "gradient"
+                          ? `linear-gradient(160deg, ${primary[theme.mode].bg} 0%, ${bg[theme.mode].bg} 100%)`
+                          : bg[theme.mode].bg,
                       color: bg[theme.mode].accent,
                     }}
                   >
@@ -439,8 +461,9 @@ function ColourPicker({ theme }: { theme: ReturnType<typeof useTheme> }) {
                 ))}
               </div>
               <p className="mt-2 text-[11px] font-semibold text-muted">
-                The accent still comes from your first colour, so text stays readable whichever pair
-                you choose.
+                {theme.style === "gradient"
+                  ? "The accent still comes from your first colour, so text stays readable whichever pair you choose."
+                  : "This colour drives the cards, insets and buttons — pick one that stands away from your background."}
               </p>
             </>
           )}

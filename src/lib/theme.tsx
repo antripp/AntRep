@@ -55,8 +55,15 @@ export const BACKGROUNDS: BackgroundPalette[] = [
   { key: "charcoal", label: "Charcoal", light: { bg: "#ecedee", accent: "#52585f", deep: "#43484e" }, dark: { bg: "#17191b", accent: "#9aa2ab", deep: "#7f8790" } },
 ];
 
-/** Solid uses one colour; duotone washes it into a second. */
-export const THEME_STYLES = ["solid", "duotone"] as const;
+/**
+ * How the two colours relate.
+ *
+ *   solid     one colour: background and UI both derive from it
+ *   gradient  the background washes from the first colour into the second
+ *   duotone   two separate colours — first paints the page, second paints the
+ *             cards, insets and accent
+ */
+export const THEME_STYLES = ["solid", "gradient", "duotone"] as const;
 export type ThemeStyle = (typeof THEME_STYLES)[number];
 
 /* Background texture (item: dev-tunable pattern lab). */
@@ -160,19 +167,33 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       root.style.removeProperty("--t-accent-deep");
     }
 
-    // Duotone washes the primary into a second colour. The accent still comes
-    // from the primary, so contrast stays predictable whatever the pairing.
+    // The second colour only means something once a first one is chosen and the
+    // two actually differ; otherwise both styles collapse back to solid.
     const second = BACKGROUNDS.find((b) => b.key === pref.bg2);
-    const duotone = pref.style === "duotone" && palette && second && second.key !== palette.key;
-    if (duotone) {
-      root.dataset.duotone = "on";
+    const paired = palette && second && second.key !== palette.key ? second : null;
+
+    if (palette && paired && pref.style === "gradient") {
+      root.dataset.bgstyle = "gradient";
       root.style.setProperty(
         "--t-bg-gradient",
-        `linear-gradient(160deg, ${palette[pref.mode].bg} 0%, ${second[pref.mode].bg} 100%)`,
+        `linear-gradient(160deg, ${palette[pref.mode].bg} 0%, ${paired[pref.mode].bg} 100%)`,
       );
     } else {
-      delete root.dataset.duotone;
+      delete root.dataset.bgstyle;
       root.style.removeProperty("--t-bg-gradient");
+    }
+
+    // Duotone keeps the colours apart: the page stays the first colour while
+    // every card, inset and accent moves to the second.
+    if (paired && pref.style === "duotone") {
+      const ui = paired[pref.mode];
+      root.style.setProperty("--t-surface", ui.bg);
+      root.style.setProperty("--t-inset", `color-mix(in srgb, ${ui.bg} 86%, ${ui.accent} 14%)`);
+      root.style.setProperty("--t-accent", ui.accent);
+      root.style.setProperty("--t-accent-deep", ui.deep);
+    } else {
+      root.style.removeProperty("--t-surface");
+      root.style.removeProperty("--t-inset");
     }
 
     root.style.setProperty("--pattern-size", `${pref.pattern.size}px`);
