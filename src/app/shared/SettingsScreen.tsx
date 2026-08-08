@@ -5,7 +5,6 @@ import { api, DEMO_ACCOUNTS, disableDemoMode, isDemoMode, resetDemoStore } from 
 import type { CoachLink, Profile, Role } from "../../data/types";
 import {
   ACCENTS,
-  BACKGROUND_FAMILIES,
   BACKGROUNDS,
   DEFAULT_PALETTE,
   useTheme,
@@ -348,13 +347,16 @@ function EmailCard() {
 }
 
 /**
- * Colour, in the order the decision is actually made: pick a colour, pick a
- * style, and only then — if the style needs one — pick the second colour.
- *
- * "Default" is a palette like any other here, so the app's own colours can be
- * gradiented or duotoned too rather than switching those options off.
+ * Colour, split so each screenful asks one question: which colour, then how to
+ * use it. The preview sits above both tabs and never scrolls away, with its own
+ * light/dark toggle — you can check a pairing in the other mode without
+ * actually switching the app into it.
  */
 function ColourPicker({ theme }: { theme: ReturnType<typeof useTheme> }) {
+  const [tab, setTab] = useState<"colours" | "style">("colours");
+  /** Preview only. Deliberately separate from theme.mode. */
+  const [previewMode, setPreviewMode] = useState<"light" | "dark">(theme.mode);
+
   const chosen = BACKGROUNDS.find((b) => b.key === theme.bg) ?? null;
   const primary = chosen ?? DEFAULT_PALETTE;
   const second = BACKGROUNDS.find((b) => b.key === theme.bg2) ?? null;
@@ -363,15 +365,14 @@ function ColourPicker({ theme }: { theme: ReturnType<typeof useTheme> }) {
 
   const page =
     paired && theme.style === "gradient"
-      ? `linear-gradient(160deg, ${primary[theme.mode].bg} 0%, ${paired[theme.mode].bg} 100%)`
-      : primary[theme.mode].bg;
+      ? `linear-gradient(160deg, ${primary[previewMode].bg} 0%, ${paired[previewMode].bg} 100%)`
+      : primary[previewMode].bg;
 
-  // Duotone puts the second colour on the card, not in the background, so the
-  // preview has to show a card to mean anything.
+  // Duotone puts the second colour on the card, not the background, so the
+  // preview needs a card on it to show any difference at all.
+  const ui = paired && theme.style === "duotone" ? paired : primary;
   const cardBg =
-    paired && theme.style === "duotone" ? paired[theme.mode].bg : "var(--t-surface)";
-  const cardInk =
-    paired && theme.style === "duotone" ? paired[theme.mode].accent : primary[theme.mode].accent;
+    paired && theme.style === "duotone" ? ui[previewMode].bg : previewMode === "dark" ? "#202f36" : "#ffffff";
 
   const swatch = (bg: BackgroundPalette, selected: boolean, onPick: () => void, blend = false) => (
     <button
@@ -383,125 +384,150 @@ function ColourPicker({ theme }: { theme: ReturnType<typeof useTheme> }) {
       }`}
       style={{
         background: blend
-          ? `linear-gradient(160deg, ${primary[theme.mode].bg} 0%, ${bg[theme.mode].bg} 100%)`
-          : bg[theme.mode].bg,
-        color: bg[theme.mode].accent,
+          ? `linear-gradient(160deg, ${primary[previewMode].bg} 0%, ${bg[previewMode].bg} 100%)`
+          : bg[previewMode].bg,
+        color: bg[previewMode].accent,
       }}
     >
       {bg.label}
     </button>
   );
 
-  const grouped = (render: (bg: BackgroundPalette) => React.ReactNode, skipKey?: string) =>
-    BACKGROUND_FAMILIES.map((family) => {
-      const inFamily = BACKGROUNDS.filter((b) => b.family === family && b.key !== skipKey);
-      if (inFamily.length === 0) return null;
-      return (
-        <div key={family} className="mb-3">
-          <p className="mb-1.5 text-[10px] font-black uppercase tracking-wide text-muted">{family}</p>
-          <div className="grid grid-cols-4 gap-2">{inFamily.map(render)}</div>
-        </div>
-      );
-    });
-
   return (
     <>
-      {/* What you're about to get, before you commit to it. */}
+      {/* Always on screen: changing anything below should be visible at once. */}
       <div
-        className="mb-4 flex h-20 items-center justify-center rounded-card border border-line"
+        className="mb-2 flex h-24 items-center justify-center rounded-card border border-line"
         style={{ background: page }}
       >
         <div
           className="rounded-2xl border border-line px-4 py-2 text-xs font-black"
-          style={{ background: cardBg, color: cardInk }}
+          style={{ background: cardBg, color: ui[previewMode].accent }}
         >
           {primary.label}
           {paired && needsSecond && (theme.style === "gradient" ? " → " : " + ") + paired.label}
         </div>
       </div>
 
-      <SectionHeader title="1 · Colour" />
-      <div className="mb-3 grid grid-cols-4 gap-2">
-        <button
-          onClick={() => theme.setBg(null)}
-          aria-pressed={theme.bg === null}
-          className={`rounded-2xl border p-2 text-[11px] font-black ${
-            theme.bg === null ? "border-accent" : "border-line"
-          }`}
-          style={{
-            background: DEFAULT_PALETTE[theme.mode].bg,
-            color: DEFAULT_PALETTE[theme.mode].accent,
-          }}
-        >
-          Default
-        </button>
+      <div className="mb-4 flex items-center gap-2">
+        <p className="flex-1 text-[11px] font-semibold text-muted">
+          Preview{previewMode === theme.mode ? "" : ` — ${previewMode} mode`}
+        </p>
+        <div className="w-32">
+          <Segmented
+            value={previewMode}
+            onChange={setPreviewMode}
+            options={[
+              { value: "light", label: "Light" },
+              { value: "dark", label: "Dark" },
+            ]}
+          />
+        </div>
       </div>
-      {grouped((bg) => swatch(bg, theme.bg === bg.key, () => theme.setBg(bg.key)))}
 
-      <SectionHeader title="2 · Style" />
-      <Segmented
-        value={theme.style}
-        onChange={(style) => {
-          theme.setStyle(style);
-          // Pick a sensible partner so the second colour shows something
-          // immediately rather than silently behaving like solid.
-          if (style !== "solid" && !theme.bg2) {
-            const suggestion = BACKGROUNDS.find((b) => b.key !== primary.key);
-            if (suggestion) theme.setBg2(suggestion.key);
-          }
-        }}
-        options={[
-          { value: "solid", label: "Solid" },
-          { value: "gradient", label: "Gradient" },
-          { value: "duotone", label: "Duotone" },
-        ]}
-      />
-      <p className="mt-2 text-[11px] font-semibold text-muted">
-        {theme.style === "solid" && "One colour for the background and the app."}
-        {theme.style === "gradient" && "The background fades from your colour into a second."}
-        {theme.style === "duotone" &&
-          "Your colour stays on the background; a second one paints the cards and buttons."}
-      </p>
+      <div className="mb-4">
+        <Segmented
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: "colours", label: "Colours" },
+            { value: "style", label: "Style" },
+          ]}
+        />
+      </div>
 
-      {needsSecond && (
-        <>
-          <SectionHeader title={theme.style === "gradient" ? "3 · Fades into" : "3 · App colour"} />
-          {grouped(
-            (bg) =>
-              swatch(bg, theme.bg2 === bg.key, () => theme.setBg2(bg.key), theme.style === "gradient"),
-            primary.key,
-          )}
-          <p className="text-[11px] font-semibold text-muted">
-            {theme.style === "gradient"
-              ? "The accent still comes from your first colour, so text stays readable whichever pair you choose."
-              : "This colour drives the cards, insets and buttons — pick one that stands away from your background."}
-          </p>
-        </>
+      {tab === "colours" && (
+        <div className="grid grid-cols-4 gap-2">
+          <button
+            onClick={() => theme.setBg(null)}
+            aria-pressed={theme.bg === null}
+            className={`rounded-2xl border p-2 text-[11px] font-black ${
+              theme.bg === null ? "border-accent" : "border-line"
+            }`}
+            style={{
+              background: DEFAULT_PALETTE[previewMode].bg,
+              color: DEFAULT_PALETTE[previewMode].accent,
+            }}
+          >
+            Default
+          </button>
+          {BACKGROUNDS.map((bg) => swatch(bg, theme.bg === bg.key, () => theme.setBg(bg.key)))}
+        </div>
       )}
 
-      {theme.bg === null && theme.style === "solid" && (
+      {tab === "style" && (
         <>
-          <SectionHeader title="Accent" />
-          <div className="flex flex-wrap gap-2">
-            {ACCENTS.map((accent) => (
-              <button
-                key={accent.key}
-                onClick={() => theme.setAccent(accent.key)}
-                aria-pressed={theme.accent === accent.key}
-                className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-black ${
-                  theme.accent === accent.key ? "border-accent" : "border-line"
-                }`}
-              >
-                <span className="h-3 w-3 rounded-full" style={{ background: accent.swatch }} />
-                {accent.label}
-              </button>
-            ))}
-          </div>
+          <Segmented
+            value={theme.style}
+            onChange={(style) => {
+              theme.setStyle(style);
+              // Pick a partner so the second colour does something immediately
+              // rather than silently behaving like solid.
+              if (style !== "solid" && !theme.bg2) {
+                const suggestion = BACKGROUNDS.find((b) => b.key !== primary.key);
+                if (suggestion) theme.setBg2(suggestion.key);
+              }
+            }}
+            options={[
+              { value: "solid", label: "Solid" },
+              { value: "gradient", label: "Gradient" },
+              { value: "duotone", label: "Duotone" },
+            ]}
+          />
+          <p className="mt-2 text-[11px] font-semibold text-muted">
+            {theme.style === "solid" && "One colour for the background and the app."}
+            {theme.style === "gradient" && "The background fades from your colour into a second."}
+            {theme.style === "duotone" &&
+              "Your colour stays on the background; a second one paints the cards and buttons."}
+          </p>
+
+          {needsSecond && (
+            <>
+              <SectionHeader title={theme.style === "gradient" ? "Fades into" : "App colour"} />
+              <div className="grid grid-cols-4 gap-2">
+                {BACKGROUNDS.filter((b) => b.key !== primary.key).map((bg) =>
+                  swatch(
+                    bg,
+                    theme.bg2 === bg.key,
+                    () => theme.setBg2(bg.key),
+                    theme.style === "gradient",
+                  ),
+                )}
+              </div>
+              <p className="mt-2 text-[11px] font-semibold text-muted">
+                {theme.style === "gradient"
+                  ? "The accent still comes from your first colour, so text stays readable whichever pair you choose."
+                  : "This colour drives the cards, insets and buttons — pick one that stands away from your background."}
+              </p>
+            </>
+          )}
+
+          {theme.bg === null && theme.style === "solid" && (
+            <>
+              <SectionHeader title="Accent" />
+              <div className="flex flex-wrap gap-2">
+                {ACCENTS.map((accent) => (
+                  <button
+                    key={accent.key}
+                    onClick={() => theme.setAccent(accent.key)}
+                    aria-pressed={theme.accent === accent.key}
+                    className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-black ${
+                      theme.accent === accent.key ? "border-accent" : "border-line"
+                    }`}
+                  >
+                    <span className="h-3 w-3 rounded-full" style={{ background: accent.swatch }} />
+                    {accent.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </>
       )}
     </>
   );
 }
+
 
 export function ShareToggleRow({
   value,
