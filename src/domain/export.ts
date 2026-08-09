@@ -150,6 +150,94 @@ function notesRows(board: CoachingBoard): Cell[][] {
   return rows;
 }
 
+/**
+ * The importer's own columns, with worked examples.
+ *
+ * This sheet is the contract: whatever the athlete's old spreadsheet looks
+ * like, getting it into these columns is the whole job. It ships inside the
+ * export so the format arrives with the data rather than living in a docs page
+ * nobody reads.
+ */
+export const IMPORT_COLUMNS = [
+  "Date",
+  "Day",
+  "Session",
+  "Exercise",
+  "Set",
+  "Weight (kg)",
+  "Reps",
+  "RPE",
+  "Distance (km)",
+  "Duration",
+  "Note",
+];
+
+/**
+ * The prompt handed to an AI assistant to reshape someone's own spreadsheet.
+ *
+ * Reshaping a sheet is exactly the tedious job an LLM does well, and most
+ * people won't do it by hand. The rules that matter are the ones that stop it
+ * being helpful in the wrong direction — above all, not inventing numbers that
+ * were never recorded.
+ */
+export const IMPORT_PROMPT = [
+  `Reshape my training spreadsheet into a CSV with exactly these columns: ${IMPORT_COLUMNS.join(", ")}.`,
+  "Rules:",
+  "- One row per set. If a row says '3x10 @ 60kg', expand it into 3 rows.",
+  "- Date must be YYYY-MM-DD. Leave it blank if the sheet only says which workout",
+  "  number it was, and fill Day and Session instead.",
+  "- Day is the workout name, e.g. 'Pull day'. Session is which repeat of that day",
+  "  it was, counting from 1.",
+  "- Weight in kg. Convert from lbs by dividing by 2.2046 if needed.",
+  "- RPE is 0-10, halves allowed. Leave blank if not recorded.",
+  "- Duration as mm:ss. Distance in km.",
+  "- Do not invent values. Leave a cell blank if the source doesn't say.",
+  "- Output only the CSV, no commentary.",
+].join("\n");
+
+function importTemplateRows(): Cell[][] {
+  return [
+    IMPORT_COLUMNS,
+    ["2026-07-01", "Pull day", 1, "Barbell row", 1, 60, 10, 7.5, "", "", "felt easy"],
+    ["2026-07-01", "Pull day", 1, "Barbell row", 2, 62.5, 9, 8, "", "", ""],
+    ["", "Pull day", 2, "Barbell row", 1, 65, 8, 8.5, "", "", "no date — 2nd pull day"],
+    ["2026-07-04", "Run", 1, "Easy run", 1, "", "", 5, 5.2, "28:30", ""],
+  ];
+}
+
+/**
+ * Instructions, including a prompt to paste into an AI assistant.
+ *
+ * Reshaping a spreadsheet is exactly the sort of tedious job an LLM does well,
+ * and most people won't do it by hand. Handing them the prompt with the file
+ * removes the step where they have to work out what to ask for.
+ */
+function importGuideRows(): Cell[][] {
+  return [
+    ["Importing your training history into AntRep"],
+    [],
+    ["1. Put your data in the columns on the 'Import template' sheet."],
+    ["2. Save as .xlsx or .csv."],
+    ["3. In AntRep, open Import training and pick the file. You'll see a preview first."],
+    [],
+    ["Saying WHEN a session happened — either is fine:"],
+    ["  Date", "A real date. Always wins if both are given. 2026-07-01 or 01/07/2026."],
+    [
+      "  Day + Session",
+      "The plan day by name, and which repeat it was. 'Pull day' + 3 = the 3rd pull day, placed from the plan's start date.",
+    ],
+    [],
+    ["Column names are matched loosely — 'Weight lifted (kg)' finds 'Weight (kg)'."],
+    ["Duration accepts 28:30, 1:05:00, or a plain number of seconds."],
+    ["One row per SET. Rows with no exercise name are ignored."],
+    [],
+    ["Prompt for an AI assistant — copy everything below into ChatGPT or Claude"],
+    ["along with your own spreadsheet:"],
+    [],
+    ...IMPORT_PROMPT.split("\n").map((line) => [line] as Cell[]),
+  ];
+}
+
 function download(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -184,6 +272,10 @@ export function exportAthleteWorkbook({
     XLSX.utils.book_append_sheet(book, aoaToStyledSheet(trackerRows(board)), "Trackers");
     XLSX.utils.book_append_sheet(book, aoaToStyledSheet(notesRows(board)), "Notes");
   }
+  // The round trip: the same workbook that carries the data out describes how
+  // to bring data back in.
+  XLSX.utils.book_append_sheet(book, aoaToStyledSheet(importTemplateRows()), "Import template");
+  XLSX.utils.book_append_sheet(book, aoaToStyledSheet(importGuideRows()), "How to import");
 
   const out = XLSX.write(book, { bookType: "xlsx", type: "array" });
   download(
@@ -217,6 +309,21 @@ export function exportAthleteCsv({
   download(
     new Blob([csv], { type: "text/csv;charset=utf-8" }),
     `antrep-${safeName(athleteName)}-${new Date().toISOString().slice(0, 10)}.csv`,
+  );
+}
+
+/**
+ * Just the template and its instructions — for someone with nothing logged yet,
+ * who has no export to take the format from.
+ */
+export function exportImportTemplate() {
+  const book = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(book, aoaToStyledSheet(importTemplateRows()), "Import template");
+  XLSX.utils.book_append_sheet(book, aoaToStyledSheet(importGuideRows()), "How to import");
+  const out = XLSX.write(book, { bookType: "xlsx", type: "array" });
+  download(
+    new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+    "antrep-import-template.xlsx",
   );
 }
 

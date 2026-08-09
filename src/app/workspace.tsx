@@ -16,6 +16,7 @@ import {
 } from "react";
 import { api } from "../data";
 import type { AthleteWorkspace } from "../data/api";
+import { writeImport, type ImportOutcome } from "../data/importWriter";
 import { makeSession } from "../data/factories";
 import type {
   ExercisePreset,
@@ -29,6 +30,7 @@ import type {
 import { localDate } from "../domain/dates";
 import { exerciseXp, XP } from "../domain/gamification";
 import { nameKey, namesMatch, progressFor, sessionFor } from "../domain/logging";
+import type { ImportSession } from "../domain/importLog";
 import type { ResolvedSegment } from "../domain/plan";
 
 /** A plan that can schedule days, with the start date that applies to this athlete. */
@@ -60,6 +62,11 @@ interface WorkspaceValue {
   removeExtraExercise: (session: Session, name: string) => Promise<void>;
   patchSession: (session: Session, patch: Partial<Session>) => Promise<Session>;
   saveSets: (session: Session, exerciseName: string, sets: SetLog[]) => Promise<void>;
+  /** Write a reviewed spreadsheet import. Resolves with what actually landed. */
+  importSessions: (
+    batch: ImportSession[],
+    onProgress?: (done: number, total: number) => void,
+  ) => Promise<ImportOutcome>;
   /** `segment` is omitted for extra work that isn't part of a plan day. */
   setExerciseDone: (
     session: Session,
@@ -237,6 +244,35 @@ export function WorkspaceProvider({ profile, children }: { profile: Profile; chi
     [],
   );
 
+  /**
+   * Write a reviewed import, keeping the on-screen data in step as it lands.
+   *
+   * The athlete owns these rows, so existing sessions are rewritten rather than
+   * skipped — re-importing a corrected file updates it instead of duplicating.
+   */
+  const importSessions = useCallback(
+    (batch: ImportSession[], onProgress?: (done: number, total: number) => void) =>
+      writeImport({
+        athleteId: profile.id,
+        batch,
+        allowUpdateExisting: true,
+        onProgress,
+        onSessionSaved: upsertLocalSession,
+        onSetsSaved: (sessionId, exerciseName, sets) => {
+          setWorkspace((w) => ({
+            ...w,
+            logs: [
+              ...w.logs.filter(
+                (l) => l.session_id !== sessionId || !namesMatch(l.exercise_name, exerciseName),
+              ),
+              ...sets,
+            ],
+          }));
+        },
+      }),
+    [profile.id, upsertLocalSession],
+  );
+
   const setExerciseDone = useCallback(
     async (session: Session, exercise: PlanExercise, done: boolean, segment?: ResolvedSegment) => {
       const others = session.completed_names.filter((n) => !namesMatch(n, exercise.name));
@@ -377,6 +413,7 @@ export function WorkspaceProvider({ profile, children }: { profile: Profile; chi
       removeExtraExercise,
       patchSession,
       saveSets,
+      importSessions,
       setExerciseDone,
       startTimer,
       pauseTimer,
@@ -402,6 +439,7 @@ export function WorkspaceProvider({ profile, children }: { profile: Profile; chi
       removeExtraExercise,
       patchSession,
       saveSets,
+      importSessions,
       setExerciseDone,
       startTimer,
       pauseTimer,

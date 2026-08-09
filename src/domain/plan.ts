@@ -28,7 +28,15 @@ import {
   type PlanExercise,
   type PlanSegment,
 } from "../data/types";
-import { daysBetween, isoWeekday, localDate, parseDate, startOfWeek, weekdayLabel } from "./dates";
+import {
+  addDays,
+  daysBetween,
+  isoWeekday,
+  localDate,
+  parseDate,
+  startOfWeek,
+  weekdayLabel,
+} from "./dates";
 
 export interface ResolvedSegment {
   /** Stable id: the segment row id, or `day:<dayId>` for a legacy single-block day. */
@@ -149,6 +157,37 @@ export function planCycleDay(
   const offset = daysBetween(startStr, localDate(date));
   if (offset < 0) return null;
   return (offset % slotCount(plan)) + 1;
+}
+
+/**
+ * The date the `occurrence`-th repeat of a slot falls on (1-based both ways).
+ *
+ * The inverse of `planCycleDay` / `planWeekIndex`, and what lets a spreadsheet
+ * say "3rd pull day" instead of a date: a split repeats on a fixed period, so
+ * the nth repeat of slot s is start + (s-1) + (n-1) × period.
+ *
+ * Returns null if the plan has no start date to count from.
+ */
+export function occurrenceDate(
+  plan: Pick<Plan, "start_date" | "schedule_mode" | "cycle_length">,
+  slot: number,
+  occurrence: number,
+  startOverride?: string | null,
+): string | null {
+  const startStr = startOverride ?? plan.start_date;
+  if (!startStr) return null;
+  const start = parseDate(startStr);
+  const nth = Math.max(1, occurrence) - 1;
+
+  if (isCyclePlan(plan)) {
+    // Day 1 IS the start date — no weekday alignment.
+    return localDate(addDays(start, slot - 1 + nth * slotCount(plan)));
+  }
+
+  // Weekly: the slot is an ISO weekday, so find its first occurrence on or
+  // after the start date and step a week at a time from there.
+  const offset = (slot - isoWeekday(start) + 7) % 7;
+  return localDate(addDays(start, offset + nth * 7));
 }
 
 /** The plan's days that are in play on `date`, in slot order. */

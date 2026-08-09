@@ -42,6 +42,8 @@ import {
   useCoachingBoard,
 } from "../shared/CoachingPanels";
 import { exportAthleteCsv, exportAthleteWorkbook } from "../../domain/export";
+import { writeImport } from "../../data/importWriter";
+import { ImportSheet } from "../shared/ImportSheet";
 
 export default function AthleteDetailScreen({
   athlete,
@@ -65,6 +67,7 @@ export default function AthleteDetailScreen({
   const [coachingView, setCoachingView] = useState<"chat" | "checkin" | "notes" | "trackers">("chat");
   const [viewingPlan, setViewingPlan] = useState<PlanBundle | null>(null);
   const [showExport, setShowExport] = useState(false);
+  const [showImport, setShowImport] = useState(false);
 
   const { board, loading: boardLoading, reload: reloadBoard } = useCoachingBoard(athlete.link.id);
   const weekIndex = currentWeekIndex(athlete.link.claimed_at);
@@ -139,6 +142,9 @@ export default function AthleteDetailScreen({
             Level {level} · {liveStreak}-day streak
           </p>
         </div>
+        <IconButton label="Import training" onClick={() => setShowImport(true)}>
+          <Icon.plus className="h-4 w-4" />
+        </IconButton>
         <IconButton label="Export report" onClick={() => setShowExport(true)}>
           <Icon.share className="h-4 w-4" />
         </IconButton>
@@ -404,6 +410,26 @@ export default function AthleteDetailScreen({
           </div>
         </Sheet>
       )}
+
+      {/* Importing on an athlete's behalf: adds history they never logged, and
+          skips anything already in their log — a coach can add, never erase. */}
+      <ImportSheet
+        open={showImport}
+        onClose={() => setShowImport(false)}
+        bundles={(training?.plans ?? []).map((bundle) => ({ bundle }))}
+        existingSessions={training?.sessions ?? []}
+        onImport={async (batch, onProgress) => {
+          const outcome = await writeImport({
+            athleteId: athlete.profile.id,
+            batch,
+            allowUpdateExisting: false,
+            onProgress,
+          });
+          await load();
+          return outcome;
+        }}
+        onToast={onToast}
+      />
     </>
   );
 }

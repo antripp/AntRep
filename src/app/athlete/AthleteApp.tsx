@@ -4,6 +4,7 @@ import { usePersisted } from "../usePersisted";
 import type { Profile, Role } from "../../data/types";
 import { Icon, LoadingScreen, Screen, TabBar, Toast } from "../../ui/kit";
 import SettingsScreen from "../shared/SettingsScreen";
+import { DataSection } from "./DataSection";
 import { DbFaultBanner } from "../shared/DbFaultBanner";
 import ProgressScreen from "../progress/ProgressScreen";
 import { useWorkspace, WorkspaceProvider } from "../workspace";
@@ -56,6 +57,7 @@ function AthleteShell({ onSwitchPortal }: { onSwitchPortal: (role: Role) => void
             coaches={workspace.coaches}
             onReload={reload}
             onSwitchPortal={onSwitchPortal}
+            extra={<DataSection />}
           />
         )}
       </Screen>
