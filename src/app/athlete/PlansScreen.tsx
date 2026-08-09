@@ -3,10 +3,19 @@
 import { useEffect, useRef, useState } from "react";
 import { useDraft } from "../usePersisted";
 import { api } from "../../data";
-import { makeDay, makePlan, makePreset } from "../../data/factories";
+import { makePlan, makePreset, newId } from "../../data/factories";
 import type { PlanBundle } from "../../data/types";
-import { localDate, startOfWeek, weekdayLabel } from "../../domain/dates";
-import { resolveSegments, typeColor, typeIcon } from "../../domain/plan";
+import { localDate, startOfWeek } from "../../domain/dates";
+import {
+  emptyDays,
+  isCyclePlan,
+  planSlots,
+  resolveSegments,
+  slotIndex,
+  slotLabel,
+  typeColor,
+  typeIcon,
+} from "../../domain/plan";
 import { plural } from "../../domain/text";
 import {
   Button,
@@ -47,9 +56,13 @@ export default function PlansScreen() {
     setSaving(true);
     try {
       await api.savePlan(draft);
+      // Only drop the local draft once the server has actually taken it —
+      // otherwise a failed save quietly throws the plan away.
       plan.discard();
       await reload();
       showToast("Plan saved");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Couldn't save that plan.");
     } finally {
       setSaving(false);
     }
@@ -57,10 +70,14 @@ export default function PlansScreen() {
 
   async function remove() {
     if (!draft) return;
-    await api.deletePlan(draft.plan.id);
-    plan.discard();
-    await reload();
-    showToast("Plan deleted");
+    try {
+      await api.deletePlan(draft.plan.id);
+      plan.discard();
+      await reload();
+      showToast("Plan deleted");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Couldn't delete that plan.");
+    }
   }
 
   function createPlan() {
@@ -69,18 +86,17 @@ export default function PlansScreen() {
       start_date: localDate(startOfWeek()),
       is_active: workspace.ownPlans.length === 0,
     });
-    setDraft({
-      plan,
-      days: Array.from({ length: 7 }, (_, i) => makeDay(plan.id, i + 1)),
-      segments: [],
-      exercises: [],
-    });
+    setDraft({ plan, days: emptyDays(plan, 1, newId), segments: [], exercises: [] });
   }
 
   async function syncPlan(assignmentId: string, status: "active" | "declined") {
-    await api.setAssignmentStatus(assignmentId, status);
-    await reload();
-    showToast(status === "active" ? "Plan synced — it's on your Home now" : "Plan declined");
+    try {
+      await api.setAssignmentStatus(assignmentId, status);
+      await reload();
+      showToast(status === "active" ? "Plan synced — it's on your Home now" : "Plan declined");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Couldn't update that plan.");
+    }
   }
 
   if (viewing) {
@@ -164,8 +180,8 @@ export default function PlansScreen() {
                 <button className="min-w-0 flex-1 text-left" onClick={() => setViewing(bundle)}>
                   <p className="truncate text-[15px] font-black text-ink">{bundle.plan.name}</p>
                   <p className="truncate text-xs font-bold text-muted">
-                    {coach?.display_name ?? "Coach"} · {bundle.plan.weeks} week
-                    {bundle.plan.weeks === 1 ? "" : "s"} · {plural(bundle.exercises.length, "exercise")}
+                    {coach?.display_name ?? "Coach"} · {planShape(bundle)} ·{" "}
+                    {plural(bundle.exercises.length, "exercise")}
                   </p>
                   <span className="mt-1 inline-flex items-center gap-1 text-[11px] font-black text-accent">
                     View plan <Icon.chevron className="h-3 w-3" />
@@ -218,7 +234,7 @@ export default function PlansScreen() {
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[15px] font-black text-ink">{bundle.plan.name}</p>
                   <p className="truncate text-xs font-bold text-muted">
-                    {bundle.plan.weeks} week{bundle.plan.weeks === 1 ? "" : "s"} · {plural(bundle.exercises.length, "exercise")}
+                    {planShape(bundle)} · {plural(bundle.exercises.length, "exercise")}
                   </p>
                 </div>
                 {bundle.plan.is_active && <Pill tint="var(--t-accent)">Active</Pill>}
@@ -233,23 +249,40 @@ export default function PlansScreen() {
   );
 }
 
+/** "3 weeks" / "9-day split" — how a plan repeats, in a phrase. */
+export function planShape(bundle: PlanBundle): string {
+  if (isCyclePlan(bundle.plan)) return `${bundle.plan.cycle_length}-day split`;
+  return plural(bundle.plan.weeks, "week");
+}
+
+/**
+ * One pass through the plan at a glance: seven weekdays, or every day of the
+ * split. A long cycle scrolls sideways rather than squeezing the tiles flat.
+ */
 export function WeekStrip({ bundle }: { bundle: PlanBundle }) {
-  const days = Array.from({ length: 7 }, (_, i) =>
-    bundle.days.find((d) => d.week_index === 1 && d.weekday === i + 1),
-  );
+  const cycle = isCyclePlan(bundle.plan);
+  const pool = cycle
+    ? bundle.days.filter((d) => d.cycle_day !== null)
+    : bundle.days.filter((d) => d.cycle_day === null && d.week_index === 1);
+  const slots = planSlots(bundle.plan);
+  const scrolls = slots.length > 7;
+
   return (
-    <div className="mt-3 flex gap-1">
-      {days.map((day, i) => {
+    <div className={`mt-3 flex gap-1 ${scrolls ? "-mx-1 overflow-x-auto px-1 pb-1" : ""}`}>
+      {slots.map((slot) => {
+        const day = pool.find((d) => slotIndex(bundle.plan, d) === slot);
         const type = day?.day_type ?? "rest";
         const count = day ? resolveSegments(bundle, day).reduce((t, s) => t + s.exercises.length, 0) : 0;
         return (
           <div
-            key={i}
-            className="flex-1 rounded-xl px-1 py-1.5 text-center"
+            key={slot}
+            className={`rounded-xl px-1 py-1.5 text-center ${scrolls ? "w-9 shrink-0" : "flex-1"}`}
             style={{ background: type === "rest" ? "var(--t-inset)" : `${typeColor(type, day?.color_hex)}22` }}
             title={day?.title || "Rest"}
           >
-            <p className="text-[9px] font-black uppercase text-muted">{weekdayLabel(i + 1, true)}</p>
+            <p className="text-[9px] font-black uppercase text-muted">
+              {slotLabel(bundle.plan, slot, true)}
+            </p>
             <p className="text-sm leading-tight">{typeIcon(type, day?.icon_name)}</p>
             {count > 0 && <p className="text-[9px] font-bold text-muted">{count}</p>}
           </div>

@@ -54,7 +54,7 @@ export function OverviewTab({
   stats,
   weeklyGymGoal,
   totalXp,
-  restWeekdays,
+  isRestDay,
   onOpenExercise,
 }: {
   sessions: Session[];
@@ -63,7 +63,8 @@ export function OverviewTab({
   weeklyGymGoal: number;
   /** Streak and level moved here off the Home screen. */
   totalXp: number;
-  restWeekdays: number[];
+  /** Was a day off scheduled on this date? Bridges the streak. */
+  isRestDay: (date: Date) => boolean;
   onOpenExercise: (key: string) => void;
 }) {
   const [rangeKey, setRangeKey] = useState<(typeof RANGES)[number]["key"]>("8");
@@ -106,7 +107,7 @@ export function OverviewTab({
   const previousTotal = previous.reduce((t, p) => t + valueOf(p), 0);
   const delta = previousTotal > 0 ? (currentTotal - previousTotal) / previousTotal : 0;
 
-  const streak = currentStreak(sessions, restWeekdays, new Date(), logged);
+  const streak = currentStreak(sessions, isRestDay, new Date(), logged);
   const copy = streakCopy(streak);
   const dots = recentDays(sessions, 10, new Date(), logged);
   const level = levelProgress(totalXp);

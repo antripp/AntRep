@@ -5,6 +5,7 @@
 
 import { supabase } from "../lib/supabase";
 import { localDate, startOfWeek } from "../domain/dates";
+import { DbWriteError, recordFault } from "./dbHealth";
 import type { Api, AthleteTraining, AthleteWorkspace, AuthResult, CoachWorkspace } from "./api";
 import type {
   ActivityReaction,
@@ -29,6 +30,40 @@ import type {
 } from "./types";
 
 type Row = Record<string, unknown>;
+
+/** The shape every PostgREST call resolves to. */
+interface Res<T> {
+  data: T | null;
+  error: { code?: string; message?: string } | null;
+}
+
+/**
+ * A read that degrades: report the failure, hand back an empty result so the
+ * screen still renders rather than crashing on a half-migrated database.
+ */
+function read<T>(context: string, res: Res<T>, fallback: T): T {
+  if (res.error) {
+    recordFault(context, res.error);
+    return fallback;
+  }
+  return res.data ?? fallback;
+}
+
+/** Rows from a `select`, or `[]` if it failed. */
+function readRows(context: string, res: Res<unknown[]>): Row[] {
+  return read(context, res, [] as unknown[]) as Row[];
+}
+
+/**
+ * A write that must not fail quietly. Throws, so the caller can tell the user
+ * their work didn't land instead of showing it as saved.
+ */
+function write(context: string, res: { error: { code?: string; message?: string } | null }): void {
+  if (res.error) {
+    recordFault(context, res.error);
+    throw new DbWriteError(context, res.error);
+  }
+}
 
 const str = (v: unknown, fallback = ""): string => (typeof v === "string" ? v : fallback);
 
@@ -108,6 +143,8 @@ function toPlan(r: Row): Plan {
     is_archived: bool(r.is_archived),
     start_date: str(r.start_date, localDate()),
     weeks: num(r.weeks, 1),
+    schedule_mode: str(r.schedule_mode, "weekly") === "cycle" ? "cycle" : "weekly",
+    cycle_length: num(r.cycle_length, 0),
     icon_name: str(r.icon_name),
     color_hex: str(r.color_hex),
     notes: str(r.notes),
@@ -115,11 +152,15 @@ function toPlan(r: Row): Plan {
 }
 
 function toDay(r: Row): PlanDay {
+  // Exactly one of the two is set. A row from before migration 009 has no
+  // cycle_day column at all, so it reads as a weekly day — which it is.
+  const cycleDay = r.cycle_day === null || r.cycle_day === undefined ? null : num(r.cycle_day, 1);
   return {
     id: str(r.id),
     plan_id: str(r.plan_id),
     week_index: num(r.week_index, 1),
-    weekday: num(r.weekday, 1),
+    weekday: cycleDay === null ? num(r.weekday, 1) : null,
+    cycle_day: cycleDay,
     title: str(r.title),
     day_type: str(r.day_type, "rest") as DayType,
     custom_type_label: str(r.custom_type_label),
@@ -334,24 +375,28 @@ function toLink(r: Row): CoachLink {
 
 async function loadBundles(planIds: string[]): Promise<PlanBundle[]> {
   if (planIds.length === 0) return [];
-  const [{ data: planRows }, { data: dayRows }] = await Promise.all([
+  const [plansRes, daysRes] = await Promise.all([
     supabase.from("plans").select("*").in("id", planIds),
     supabase.from("plan_days").select("*").in("plan_id", planIds),
   ]);
-
-  const days = (dayRows ?? []).map((r) => toDay(r as Row));
+  const planRows = readRows("load plans", plansRes);
+  const days = readRows("load plan days", daysRes).map((r) => toDay(r));
   const dayIds = days.map((d) => d.id);
 
-  const [{ data: segmentRows }, { data: exerciseRows }] = await Promise.all([
-    dayIds.length ? supabase.from("plan_segments").select("*").in("plan_day_id", dayIds) : { data: [] },
-    dayIds.length ? supabase.from("plan_exercises").select("*").in("plan_day_id", dayIds) : { data: [] },
+  const [segmentsRes, exercisesRes] = await Promise.all([
+    dayIds.length
+      ? supabase.from("plan_segments").select("*").in("plan_day_id", dayIds)
+      : { data: [], error: null },
+    dayIds.length
+      ? supabase.from("plan_exercises").select("*").in("plan_day_id", dayIds)
+      : { data: [], error: null },
   ]);
 
-  const segments = (segmentRows ?? []).map((r) => toSegment(r as Row));
-  const exercises = (exerciseRows ?? []).map((r) => toExercise(r as Row));
+  const segments = readRows("load plan blocks", segmentsRes).map((r) => toSegment(r));
+  const exercises = readRows("load plan exercises", exercisesRes).map((r) => toExercise(r));
 
-  return (planRows ?? []).map((r) => {
-    const plan = toPlan(r as Row);
+  return planRows.map((r) => {
+    const plan = toPlan(r);
     const planDays = days.filter((d) => d.plan_id === plan.id);
     const ids = new Set(planDays.map((d) => d.id));
     return {
@@ -364,21 +409,21 @@ async function loadBundles(planIds: string[]): Promise<PlanBundle[]> {
 }
 
 async function loadSessionsAndLogs(athleteId: string): Promise<{ sessions: Session[]; logs: SetLog[] }> {
-  const { data: sessionRows } = await supabase
+  const sessionsRes = await supabase
     .from("sessions")
     .select("*")
     .eq("athlete_id", athleteId)
     .order("date", { ascending: false });
 
-  const sessions = (sessionRows ?? []).map((r) => toSession(r as Row));
+  const sessions = readRows("load sessions", sessionsRes).map((r) => toSession(r));
   if (sessions.length === 0) return { sessions, logs: [] };
 
-  const { data: logRows } = await supabase
+  const logsRes = await supabase
     .from("set_logs")
     .select("*")
     .in("session_id", sessions.map((s) => s.id));
 
-  return { sessions, logs: (logRows ?? []).map((r) => toSetLog(r as Row)) };
+  return { sessions, logs: readRows("load sets", logsRes).map((r) => toSetLog(r)) };
 }
 
 /** Upsert the rows we keep and delete the ones the editor removed. */
@@ -389,13 +434,13 @@ async function syncRows(
   rows: Row[],
 ): Promise<void> {
   if (rows.length > 0) {
-    await supabase.from(table).upsert(rows);
+    write(`save ${table.replace(/_/g, " ")}`, await supabase.from(table).upsert(rows));
   }
   if (scopeIds.length > 0) {
     const keep = rows.map((r) => String(r.id));
     let query = supabase.from(table).delete().in(scopeColumn, scopeIds);
     if (keep.length > 0) query = query.not("id", "in", `(${keep.join(",")})`);
-    await query;
+    write(`prune ${table.replace(/_/g, " ")}`, await query);
   }
 }
 
@@ -538,16 +583,17 @@ export const supabaseApi: Api = {
   },
 
   async athleteWorkspace(profile): Promise<AthleteWorkspace> {
-    const [{ data: ownPlanRows }, { data: assignmentRows }, { data: presetRows }, { data: linkRows }] =
-      await Promise.all([
-        supabase.from("plans").select("id").eq("owner_id", profile.id),
-        supabase.from("plan_assignments").select("*").eq("athlete_id", profile.id),
-        supabase.from("exercise_presets").select("*").eq("owner_id", profile.id),
-        supabase.from("coach_links").select("*").eq("athlete_id", profile.id).eq("status", "active"),
-      ]);
+    const [ownPlansRes, assignmentsRes, presetsRes, linksRes] = await Promise.all([
+      supabase.from("plans").select("id").eq("owner_id", profile.id),
+      supabase.from("plan_assignments").select("*").eq("athlete_id", profile.id),
+      supabase.from("exercise_presets").select("*").eq("owner_id", profile.id),
+      supabase.from("coach_links").select("*").eq("athlete_id", profile.id).eq("status", "active"),
+    ]);
 
-    const assignments = (assignmentRows ?? []).map((r) => toAssignment(r as Row));
-    const ownIds = (ownPlanRows ?? []).map((r) => str((r as Row).id));
+    const presetRows = readRows("load your exercises", presetsRes);
+    const linkRows = readRows("load your coaches", linksRes);
+    const assignments = readRows("load assigned plans", assignmentsRes).map((r) => toAssignment(r));
+    const ownIds = readRows("load your plans", ownPlansRes).map((r) => str(r.id));
     const assignedIds = assignments.map((a) => a.plan_id).filter((id) => !ownIds.includes(id));
 
     const [ownBundles, assignedBundles, training] = await Promise.all([
@@ -556,12 +602,12 @@ export const supabaseApi: Api = {
       loadSessionsAndLogs(profile.id),
     ]);
 
-    const links = (linkRows ?? []).map((r) => toLink(r as Row)).filter((l) => !l.is_self_link);
+    const links = linkRows.map((r) => toLink(r)).filter((l) => !l.is_self_link);
     let coaches: { link: CoachLink; coach: Profile }[] = [];
     const ownerIds = [...new Set([...assignedBundles.map((b) => b.plan.owner_id), ...links.map((l) => l.trainer_id)])];
     if (ownerIds.length > 0) {
-      const { data: coachRows } = await supabase.from("profiles").select("*").in("id", ownerIds);
-      const profiles = (coachRows ?? []).map((r) => toProfile(r as Row));
+      const coachRes = await supabase.from("profiles").select("*").in("id", ownerIds);
+      const profiles = readRows("load coach profiles", coachRes).map((r) => toProfile(r));
       coaches = links
         .map((link) => {
           const coach = profiles.find((p) => p.id === link.trainer_id);
@@ -578,7 +624,7 @@ export const supabaseApi: Api = {
         })),
         sessions: training.sessions,
         logs: training.logs,
-        presets: (presetRows ?? []).map((r) => toPreset(r as Row)),
+        presets: presetRows.map((r) => toPreset(r)),
         coaches,
       };
     }
@@ -588,31 +634,33 @@ export const supabaseApi: Api = {
       assigned: [],
       sessions: training.sessions,
       logs: training.logs,
-      presets: (presetRows ?? []).map((r) => toPreset(r as Row)),
+      presets: presetRows.map((r) => toPreset(r)),
       coaches: [],
     };
   },
 
   async coachWorkspace(profile): Promise<CoachWorkspace> {
-    const [{ data: linkRows }, { data: planRows }] = await Promise.all([
+    const [linksRes, planIdsRes] = await Promise.all([
       supabase.from("coach_links").select("*").eq("trainer_id", profile.id),
       supabase.from("plans").select("id").eq("owner_id", profile.id),
     ]);
 
-    const links = (linkRows ?? []).map((r) => toLink(r as Row));
+    const links = readRows("load your athletes", linksRes).map((r) => toLink(r));
     const activeLinks = links.filter((l) => l.status === "active" && l.athlete_id);
     const athleteIds = activeLinks.map((l) => l.athlete_id as string);
 
-    const [{ data: athleteRows }, plans] = await Promise.all([
-      athleteIds.length ? supabase.from("profiles").select("*").in("id", athleteIds) : { data: [] },
-      loadBundles((planRows ?? []).map((r) => str((r as Row).id))),
+    const [athletesRes, plans] = await Promise.all([
+      athleteIds.length
+        ? supabase.from("profiles").select("*").in("id", athleteIds)
+        : { data: [], error: null },
+      loadBundles(readRows("load your plans", planIdsRes).map((r) => str(r.id))),
     ]);
 
-    const athleteProfiles = (athleteRows ?? []).map((r) => toProfile(r as Row));
+    const athleteProfiles = readRows("load athlete profiles", athletesRes).map((r) => toProfile(r));
     const planIds = plans.map((p) => p.plan.id);
-    const { data: assignmentRows } = planIds.length
+    const assignmentsRes = planIds.length
       ? await supabase.from("plan_assignments").select("*").in("plan_id", planIds)
-      : { data: [] };
+      : { data: [], error: null };
 
     return {
       plans,
@@ -623,24 +671,26 @@ export const supabaseApi: Api = {
         })
         .filter((x): x is { link: CoachLink; profile: Profile } => Boolean(x)),
       pendingInvites: links.filter((l) => l.status === "pending"),
-      assignments: (assignmentRows ?? []).map((r) => toAssignment(r as Row)),
+      assignments: readRows("load plan assignments", assignmentsRes).map((r) => toAssignment(r)),
     };
   },
 
   async athleteTraining(athleteId): Promise<AthleteTraining> {
-    const [training, { data: profileRows }, { data: assignmentRows }, { data: ownPlanRows }] =
-      await Promise.all([
-        loadSessionsAndLogs(athleteId),
-        supabase.from("profiles").select("*").eq("id", athleteId),
-        supabase.from("plan_assignments").select("*").eq("athlete_id", athleteId),
-        supabase.from("plans").select("id").eq("owner_id", athleteId),
-      ]);
+    const [training, profileRes, assignmentsRes, ownPlansRes] = await Promise.all([
+      loadSessionsAndLogs(athleteId),
+      supabase.from("profiles").select("*").eq("id", athleteId),
+      supabase.from("plan_assignments").select("*").eq("athlete_id", athleteId),
+      supabase.from("plans").select("id").eq("owner_id", athleteId),
+    ]);
 
-    const assignments = (assignmentRows ?? []).map((r) => toAssignment(r as Row));
+    const assignments = readRows("load their plan assignments", assignmentsRes).map((r) =>
+      toAssignment(r),
+    );
+    const profileRows = readRows("load the athlete", profileRes);
     const planIds = [
       ...new Set([
         ...assignments.map((a) => a.plan_id),
-        ...((ownPlanRows ?? []).map((r) => str((r as Row).id))),
+        ...readRows("load their plans", ownPlansRes).map((r) => str(r.id)),
       ]),
     ];
 
@@ -649,13 +699,13 @@ export const supabaseApi: Api = {
       logs: training.logs,
       plans: await loadBundles(planIds),
       assignments,
-      profile: profileRows?.[0] ? toProfile(profileRows[0] as Row) : null,
+      profile: profileRows[0] ? toProfile(profileRows[0]) : null,
     };
   },
 
   async savePlan(bundle) {
     const { plan, days, segments, exercises } = bundle;
-    await supabase.from("plans").upsert({
+    write("save the plan", await supabase.from("plans").upsert({
       id: plan.id,
       owner_id: plan.owner_id,
       trainer_id: plan.trainer_id || plan.owner_id,
@@ -664,10 +714,12 @@ export const supabaseApi: Api = {
       is_archived: plan.is_archived,
       start_date: plan.start_date,
       weeks: plan.weeks,
+      schedule_mode: plan.schedule_mode,
+      cycle_length: plan.cycle_length,
       icon_name: plan.icon_name,
       color_hex: plan.color_hex,
       notes: plan.notes,
-    });
+    }));
 
     await syncRows("plan_days", "plan_id", [plan.id], days as unknown as Row[]);
 
@@ -676,71 +728,108 @@ export const supabaseApi: Api = {
     await syncRows("plan_exercises", "plan_day_id", dayIds, exercises as unknown as Row[]);
 
     if (plan.is_active) {
-      await supabase
-        .from("plans")
-        .update({ is_active: false })
-        .eq("owner_id", plan.owner_id)
-        .neq("id", plan.id);
+      write(
+        "deactivate the other plans",
+        await supabase
+          .from("plans")
+          .update({ is_active: false })
+          .eq("owner_id", plan.owner_id)
+          .neq("id", plan.id),
+      );
     }
   },
 
   async deletePlan(planId) {
-    await supabase.from("plans").delete().eq("id", planId);
+    write("delete the plan", await supabase.from("plans").delete().eq("id", planId));
   },
 
   async assignPlan(planId, athleteId) {
-    await supabase.from("plan_assignments").upsert(
-      {
-        plan_id: planId,
-        athlete_id: athleteId,
-        start_date: localDate(startOfWeek()),
-        status: "offered",
-      },
-      { onConflict: "plan_id,athlete_id" },
+    write(
+      "assign the plan",
+      await supabase.from("plan_assignments").upsert(
+        {
+          plan_id: planId,
+          athlete_id: athleteId,
+          start_date: localDate(startOfWeek()),
+          status: "offered",
+        },
+        { onConflict: "plan_id,athlete_id" },
+      ),
     );
   },
 
   async unassignPlan(assignmentId) {
-    await supabase.from("plan_assignments").delete().eq("id", assignmentId);
+    write(
+      "unassign the plan",
+      await supabase.from("plan_assignments").delete().eq("id", assignmentId),
+    );
   },
 
   async setAssignmentStatus(assignmentId, status, startDate) {
     const patch: Row = { status, accepted_at: status === "active" ? new Date().toISOString() : null };
     if (startDate !== undefined) patch.start_date = startDate;
-    await supabase.from("plan_assignments").update(patch).eq("id", assignmentId);
+    write(
+      "update the plan assignment",
+      await supabase.from("plan_assignments").update(patch).eq("id", assignmentId),
+    );
   },
 
+  /**
+   * Returning the un-saved `session` on failure used to make a dead write look
+   * like a live one: the logger carried on against a session id the database
+   * had never heard of, so every set inserted against it failed the foreign key
+   * too — silently. Throw instead.
+   */
   async saveSession(session) {
-    const { data } = await supabase.from("sessions").upsert(session).select().single();
-    return data ? toSession(data as Row) : session;
+    // `.select()` rather than `.select().single()`: single() raises PGRST116
+    // when the write succeeded but no row came back, which would turn a good
+    // save into a thrown error. Take the first row if there is one.
+    const res = await supabase.from("sessions").upsert(session).select();
+    write("save the session", res);
+    const row = (res.data as Row[] | null)?.[0];
+    return row ? toSession(row) : session;
   },
 
   async deleteSession(sessionId) {
-    await supabase.from("sessions").delete().eq("id", sessionId);
+    write("delete the session", await supabase.from("sessions").delete().eq("id", sessionId));
   },
 
   async replaceSets(sessionId, exerciseName, sets) {
-    await supabase.from("set_logs").delete().eq("session_id", sessionId).eq("exercise_name", exerciseName);
+    write(
+      "clear the old sets",
+      await supabase.from("set_logs").delete().eq("session_id", sessionId).eq("exercise_name", exerciseName),
+    );
     if (sets.length > 0) {
-      await supabase.from("set_logs").insert(sets);
+      write("save your sets", await supabase.from("set_logs").insert(sets));
     }
   },
 
   async savePreset(preset) {
-    await supabase.from("exercise_presets").upsert(preset);
+    write("save the exercise", await supabase.from("exercise_presets").upsert(preset));
   },
 
   async deletePreset(presetId) {
-    await supabase.from("exercise_presets").delete().eq("id", presetId);
+    write("delete the exercise", await supabase.from("exercise_presets").delete().eq("id", presetId));
   },
 
+  /**
+   * XP is a nice-to-have on top of the real work. A failure here is reported
+   * but never thrown: losing a few points must not fail the set that earned
+   * them, and `xp_events` is one of the tables a stale database is missing.
+   */
   async addXp(profileId, amount, reason) {
-    const { data } = await supabase.from("profiles").select("total_xp").eq("id", profileId).single();
-    const total = num((data as Row)?.total_xp) + amount;
-    await Promise.all([
+    const res = await supabase.from("profiles").select("total_xp").eq("id", profileId).single();
+    if (res.error) {
+      recordFault("read your XP", res.error);
+      return;
+    }
+    const total = num((res.data as Row)?.total_xp) + amount;
+    const [profileRes, eventRes] = await Promise.all([
       supabase.from("profiles").update({ total_xp: total }).eq("id", profileId),
       supabase.from("xp_events").insert({ profile_id: profileId, amount, reason }),
     ]);
+    if (profileRes.error) recordFault("save your XP", profileRes.error);
+    if (eventRes.error) recordFault("record the XP event", eventRes.error);
   },
 
   async coachingBoard(linkId): Promise<CoachingBoard> {
@@ -755,24 +844,24 @@ export const supabaseApi: Api = {
     return {
       // Chat is frozen (migration 008); the feed is derived from training.
       messages: [],
-      reactions: (reactions.data ?? []).map((r) => toReaction(r as Row)),
-      checkIns: (checkIns.data ?? []).map((r) => toCheckIn(r as Row)),
-      notes: (notes.data ?? []).map((r) => toCoachNote(r as Row)),
-      templates: (templates.data ?? []).map((r) => toTemplate(r as Row)),
-      entries: (entries.data ?? []).map((r) => toEntry(r as Row)),
+      reactions: readRows("load reactions", reactions).map((r) => toReaction(r)),
+      checkIns: readRows("load check-ins", checkIns).map((r) => toCheckIn(r)),
+      notes: readRows("load coach notes", notes).map((r) => toCoachNote(r)),
+      templates: readRows("load trackers", templates).map((r) => toTemplate(r)),
+      entries: readRows("load tracker entries", entries).map((r) => toEntry(r)),
     };
   },
 
   async unreadCounts(linkIds, readerProfileId) {
     if (linkIds.length === 0) return {};
-    const { data } = await supabase
+    const res = await supabase
       .from("messages")
       .select("coach_link_id, sender_profile_id, read_at")
       .in("coach_link_id", linkIds)
       .is("read_at", null);
 
     const counts: Record<string, number> = Object.fromEntries(linkIds.map((id) => [id, 0]));
-    for (const row of (data ?? []) as Row[]) {
+    for (const row of readRows("load unread counts", res)) {
       if (str(row.sender_profile_id) === readerProfileId) continue;
       const id = str(row.coach_link_id);
       counts[id] = (counts[id] ?? 0) + 1;
@@ -782,54 +871,66 @@ export const supabaseApi: Api = {
 
   async saveReaction({ linkId, senderProfileId, sessionId, checkInId, preset }) {
     // One reaction per coach per item — upsert on the uniqueness constraint.
-    await supabase.from("activity_reactions").upsert(
-      {
-        coach_link_id: linkId,
-        sender_profile_id: senderProfileId,
-        session_id: sessionId ?? null,
-        check_in_id: checkInId ?? null,
-        preset,
-      },
-      { onConflict: "coach_link_id,sender_profile_id,session_id,check_in_id" },
+    write(
+      "send that reaction",
+      await supabase.from("activity_reactions").upsert(
+        {
+          coach_link_id: linkId,
+          sender_profile_id: senderProfileId,
+          session_id: sessionId ?? null,
+          check_in_id: checkInId ?? null,
+          preset,
+        },
+        { onConflict: "coach_link_id,sender_profile_id,session_id,check_in_id" },
+      ),
     );
   },
 
   async removeReaction(id) {
-    await supabase.from("activity_reactions").delete().eq("id", id);
+    write("remove that reaction", await supabase.from("activity_reactions").delete().eq("id", id));
   },
 
   async markThreadRead(linkId, readerProfileId) {
-    await supabase
-      .from("messages")
-      .update({ read_at: new Date().toISOString() })
-      .eq("coach_link_id", linkId)
-      .is("read_at", null)
-      .neq("sender_profile_id", readerProfileId);
+    write(
+      "mark the thread read",
+      await supabase
+        .from("messages")
+        .update({ read_at: new Date().toISOString() })
+        .eq("coach_link_id", linkId)
+        .is("read_at", null)
+        .neq("sender_profile_id", readerProfileId),
+    );
   },
 
   async saveCheckIn(checkIn) {
-    await supabase.from("check_ins").upsert(checkIn, { onConflict: "coach_link_id,week_index" });
+    write(
+      "save your check-in",
+      await supabase.from("check_ins").upsert(checkIn, { onConflict: "coach_link_id,week_index" }),
+    );
   },
 
   async saveCoachNote(note) {
-    await supabase.from("coach_notes").upsert(note);
+    write("save the note", await supabase.from("coach_notes").upsert(note));
   },
 
   async deleteCoachNote(noteId) {
-    await supabase.from("coach_notes").delete().eq("id", noteId);
+    write("delete the note", await supabase.from("coach_notes").delete().eq("id", noteId));
   },
 
   async saveTrackerTemplate(template) {
-    await supabase.from("tracker_templates").upsert(template);
+    write("save the tracker", await supabase.from("tracker_templates").upsert(template));
   },
 
   async deleteTrackerTemplate(templateId) {
-    await supabase.from("tracker_templates").delete().eq("id", templateId);
+    write("delete the tracker", await supabase.from("tracker_templates").delete().eq("id", templateId));
   },
 
   async saveTrackerEntry(entry) {
-    await supabase
-      .from("tracker_entries")
-      .upsert(entry, { onConflict: "template_id,metric_key,column_index" });
+    write(
+      "save the tracker entry",
+      await supabase
+        .from("tracker_entries")
+        .upsert(entry, { onConflict: "template_id,metric_key,column_index" }),
+    );
   },
 };

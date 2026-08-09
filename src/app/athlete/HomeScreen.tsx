@@ -35,7 +35,7 @@ import {
   scheduledSegmentIds,
   type MakeupCandidate,
 } from "../../domain/makeup";
-import { dayForDate, resolveSegments, typeIcon, type ResolvedSegment } from "../../domain/plan";
+import { dayForDate, resolveSegments, slotLabel, typeIcon, type ResolvedSegment } from "../../domain/plan";
 import { loggedSessionIds, nameKey } from "../../domain/logging";
 import { plural } from "../../domain/text";
 import {
@@ -110,9 +110,11 @@ export default function HomeScreen({ onGoPlans }: { onGoPlans: () => void }) {
     [allBundles, sessions, date, plansInEffect],
   );
 
+  // Pass the plan views, not bare bundles: a cycle counts its days off the
+  // start date that applies to this athlete, which may be an assignment override.
   const candidates = useMemo(
-    () => (isToday ? makeupCandidates(bundles, sessions, today, loggedSessionIds(logs)) : []),
-    [bundles, sessions, logs, today, isToday],
+    () => (isToday ? makeupCandidates(planViews, sessions, today, loggedSessionIds(logs)) : []),
+    [planViews, sessions, logs, today, isToday],
   );
 
   const liveSession = useMemo(
@@ -140,7 +142,11 @@ export default function HomeScreen({ onGoPlans }: { onGoPlans: () => void }) {
 
   async function finishCountdown() {
     setCountdown(false);
-    if (pendingStart) await startTimer(pendingStart);
+    try {
+      if (pendingStart) await startTimer(pendingStart);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Couldn't start that workout.");
+    }
     setPendingStart(null);
   }
 
@@ -156,9 +162,13 @@ export default function HomeScreen({ onGoPlans }: { onGoPlans: () => void }) {
       target_reps: saved?.target_reps ?? preset?.reps,
       custom_fields: saved?.custom_fields ?? [],
     };
-    await addExtraExercise(extra, dateStr);
-    setShowExtraPicker(false);
-    showToast(`${name} added to ${isToday ? "today" : formatLongDate(date)}`);
+    try {
+      await addExtraExercise(extra, dateStr);
+      setShowExtraPicker(false);
+      showToast(`${name} added to ${isToday ? "today" : formatLongDate(date)}`);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : `Couldn't add ${name}.`);
+    }
   }
 
   const dayTitle =
@@ -333,7 +343,12 @@ export default function HomeScreen({ onGoPlans }: { onGoPlans: () => void }) {
             : []),
           {
             label: "Just log without a timer",
-            onClick: () => startDialog && ensureSession(startDialog, dateStr),
+            onClick: () => {
+              if (!startDialog) return;
+              ensureSession(startDialog, dateStr).catch((error) =>
+                showToast(error instanceof Error ? error.message : "Couldn't start that session."),
+              );
+            },
           },
         ]}
       />
@@ -534,7 +549,7 @@ function SegmentBlock({
   allowTimer: boolean;
   makeup?: boolean;
 }) {
-  const { sessionForSegment, ensureSession, resumeTimer } = useWorkspace();
+  const { sessionForSegment, ensureSession, resumeTimer, showToast } = useWorkspace();
   const dateStr = localDate(date);
   const session = sessionForSegment(segment, dateStr);
   const progress = progressFor(segment, date, session);
@@ -553,7 +568,7 @@ function SegmentBlock({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h3 className="truncate text-[16px] font-black text-ink">{segment.title}</h3>
-            {makeup && <Pill tint={segment.color}>{weekdayLabel(segment.day.weekday, true)}</Pill>}
+            {makeup && <Pill tint={segment.color}>{slotLabel(segment.plan, segment.slot, true)}</Pill>}
             {segment.day.is_optional && <Pill tint="var(--t-muted)">Optional</Pill>}
           </div>
           <p className="text-xs font-bold text-muted">
@@ -577,7 +592,15 @@ function SegmentBlock({
             Start now
           </Button>
         ) : !allowTimer && !session ? (
-          <Button size="sm" variant="secondary" onClick={() => ensureSession(segment, dateStr)}>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() =>
+              ensureSession(segment, dateStr).catch((error) =>
+                showToast(error instanceof Error ? error.message : "Couldn't start that session."),
+              )
+            }
+          >
             Log this
           </Button>
         ) : null}
@@ -712,7 +735,7 @@ function MakeupSheet({
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-black text-ink">{c.day.title}</p>
                     <p className="truncate text-[11px] font-bold text-muted">
-                      {weekdayLabel(c.day.weekday)} · {c.relativeLabel}
+                      {slotLabel(c.bundle.plan, c.segment.slot)} · {c.relativeLabel}
                       {c.exerciseCount > 0 && ` · ${plural(c.exerciseCount, "exercise")}`}
                     </p>
                   </div>

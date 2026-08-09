@@ -55,6 +55,7 @@ export const Icon = {
   send: svg(<><path d="m4 12 16-8-6 16-2.5-6z" /></>),
   search: svg(<><circle cx="11" cy="11" r="6.5" /><path d="m20 20-3.5-3.5" /></>),
   close: svg(<><path d="M6 6l12 12M18 6 6 18" /></>),
+  alert: svg(<><path d="M12 3.8 2.6 20h18.8z" /><path d="M12 10v4.2M12 17.2v.2" /></>),
   share: svg(<><path d="M12 15V3M8 7l4-4 4 4" /><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" /></>),
 };
 

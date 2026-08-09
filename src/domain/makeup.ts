@@ -5,9 +5,23 @@
  */
 
 import type { PlanBundle, PlanDay, Session } from "../data/types";
-import { addDays, isoWeekday, localDate, relativeDayLabel } from "./dates";
-import { daysForDate, hasTrainableContent, resolveSegments, type ResolvedSegment } from "./plan";
+import { addDays, localDate, relativeDayLabel } from "./dates";
+import {
+  dayForDate,
+  daysForDate,
+  daysSinceSlot,
+  hasTrainableContent,
+  resolveSegments,
+  slotIndex,
+  type ResolvedSegment,
+} from "./plan";
 import { canStartTimer, sessionFor, wasTrained } from "./logging";
+
+/** A plan with the start date that applies to this athlete. */
+export interface PlanView {
+  bundle: PlanBundle;
+  start?: string | null;
+}
 
 export interface MakeupCandidate {
   day: PlanDay;
@@ -24,23 +38,28 @@ export interface MakeupCandidate {
 
 /** Other scheduled days that can be trained today, most recent first. */
 export function makeupCandidates(
-  bundles: PlanBundle[],
+  plans: PlanView[],
   sessions: Session[],
   today = new Date(),
   /** Sessions with recorded sets — already trained, even if nothing was ticked. */
   logged?: Set<string>,
 ): MakeupCandidate[] {
   const todayStr = localDate(today);
-  const todayWeekday = isoWeekday(today);
   const out: MakeupCandidate[] = [];
 
-  for (const bundle of bundles) {
+  for (const { bundle, start } of plans) {
     if (!bundle.plan.is_active || bundle.plan.is_archived) continue;
-    for (const day of daysForDate(bundle, today)) {
-      if (day.weekday === todayWeekday) continue;
+    const todayDay = dayForDate(bundle, today, start);
+    const todaySlot = todayDay ? slotIndex(bundle.plan, todayDay) : null;
+
+    for (const day of daysForDate(bundle, today, start)) {
+      if (todaySlot !== null && slotIndex(bundle.plan, day) === todaySlot) continue;
       if (!hasTrainableContent(bundle, day)) continue;
 
-      const daysAgo = (todayWeekday - day.weekday + 7) % 7;
+      // How long ago this day last came round. A cycle wraps on its own
+      // length, so this cannot be weekday arithmetic.
+      const daysAgo = daysSinceSlot(bundle.plan, day, today, start);
+      if (daysAgo === null) continue;
       const scheduledDate = localDate(addDays(today, -daysAgo));
       const segments = resolveSegments(bundle, day);
 
@@ -106,17 +125,12 @@ export function offScheduleSegments(
 }
 
 /** Segment ids scheduled on `date` by the plans in effect then. */
-export function scheduledSegmentIds(
-  plans: { bundle: PlanBundle; start?: string | null }[],
-  date: Date,
-): Set<string> {
-  const weekday = isoWeekday(date);
+export function scheduledSegmentIds(plans: PlanView[], date: Date): Set<string> {
   const ids = new Set<string>();
   for (const { bundle, start } of plans) {
-    for (const day of daysForDate(bundle, date, start)) {
-      if (day.weekday !== weekday) continue;
-      for (const seg of resolveSegments(bundle, day)) ids.add(seg.id);
-    }
+    const day = dayForDate(bundle, date, start);
+    if (!day) continue;
+    for (const seg of resolveSegments(bundle, day)) ids.add(seg.id);
   }
   return ids;
 }
@@ -127,13 +141,6 @@ export function makeupSegmentsToday(
   sessions: Session[],
   today = new Date(),
 ): ResolvedSegment[] {
-  return offScheduleSegments(
-    bundles,
-    sessions,
-    today,
-    scheduledSegmentIds(
-      bundles.map((bundle) => ({ bundle })),
-      today,
-    ),
-  );
+  const plans = bundles.map((bundle) => ({ bundle }));
+  return offScheduleSegments(bundles, sessions, today, scheduledSegmentIds(plans, today));
 }

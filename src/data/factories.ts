@@ -34,6 +34,8 @@ export function makePlan(ownerId: string, patch: Partial<Plan> = {}): Plan {
     is_archived: false,
     start_date: localDate(),
     weeks: 1,
+    schedule_mode: "weekly",
+    cycle_length: 0,
     icon_name: "",
     color_hex: "",
     notes: "",
@@ -41,12 +43,18 @@ export function makePlan(ownerId: string, patch: Partial<Plan> = {}): Plan {
   };
 }
 
-export function makeDay(planId: string, weekday: number, patch: Partial<PlanDay> = {}): PlanDay {
+/**
+ * A plan day. `slot` is the weekday (1–7) for a weekly plan; pass
+ * `{ weekday: null, cycle_day: n }` in the patch — or use `slotFields()` — to
+ * place it in a cycle instead.
+ */
+export function makeDay(planId: string, slot: number, patch: Partial<PlanDay> = {}): PlanDay {
   return {
     id: newId(),
     plan_id: planId,
     week_index: 1,
-    weekday,
+    weekday: slot,
+    cycle_day: null,
     title: "Rest",
     day_type: "rest",
     custom_type_label: "",
@@ -55,7 +63,7 @@ export function makeDay(planId: string, weekday: number, patch: Partial<PlanDay>
     is_optional: false,
     counts_as_gym: null,
     run_modality: "walk",
-    sort_order: weekday,
+    sort_order: slot,
     ...patch,
   };
 }

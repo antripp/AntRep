@@ -89,6 +89,9 @@ export function ExerciseLogCard({
   /**
    * Blank rows stay on screen so you can fill them in, but they are never
    * saved — otherwise an accidental empty set shifts every later set number.
+   *
+   * Throws if the write fails: the caller decides what to say, and the sets
+   * stay on screen so nothing typed is lost while the problem is fixed.
    */
   async function commit(next: SetLog[]) {
     setDraft(next);
@@ -102,10 +105,14 @@ export function ExerciseLogCard({
   }
 
   // Edits save themselves shortly after you stop typing — no Save press needed.
+  // A failure here has no click behind it to report to, so it says so inline:
+  // silence is what made a dead database look like a working one.
   useEffect(() => {
     if (!dirty) return;
     const timer = setTimeout(() => {
-      commit(draft);
+      commit(draft).catch((error) => {
+        setHint(error instanceof Error ? error.message : "Couldn't save those sets.");
+      });
     }, 600);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -136,8 +143,12 @@ export function ExerciseLogCard({
       setHint(`Fill set ${draft.length} first`);
       return;
     }
-    const active = session ?? (await onNeedSession());
-    seedSet(active);
+    try {
+      const active = session ?? (await onNeedSession());
+      seedSet(active);
+    } catch (error) {
+      setHint(error instanceof Error ? error.message : "Couldn't start that session.");
+    }
   }
 
   /**
@@ -161,7 +172,11 @@ export function ExerciseLogCard({
   }
 
   async function removeSet(index: number) {
-    await commit(draft.filter((_, i) => i !== index));
+    try {
+      await commit(draft.filter((_, i) => i !== index));
+    } catch (error) {
+      setHint(error instanceof Error ? error.message : "Couldn't remove that set.");
+    }
   }
 
   /**
@@ -174,8 +189,12 @@ export function ExerciseLogCard({
       setHint("Nothing to save yet — put a number in a set first.");
       return;
     }
-    await commit(draft);
-    setHint(`${plural(withData, "set")} saved.`);
+    try {
+      await commit(draft);
+      setHint(`${plural(withData, "set")} saved.`);
+    } catch (error) {
+      setHint(error instanceof Error ? error.message : "Couldn't save those sets.");
+    }
   }
 
   async function toggleDone() {
@@ -198,6 +217,8 @@ export function ExerciseLogCard({
         if (draft.length === 0) seedSet(active);
         setHint("Add your numbers — the tick alone doesn't record any sets.");
       }
+    } catch (error) {
+      setHint(error instanceof Error ? error.message : "Couldn't save that.");
     } finally {
       setBusy(false);
     }

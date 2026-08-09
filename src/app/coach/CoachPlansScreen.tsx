@@ -3,12 +3,13 @@
 import { useState } from "react";
 import { api } from "../../data";
 import type { CoachWorkspace } from "../../data/api";
-import { makeDay, makePlan } from "../../data/factories";
+import { makePlan, newId } from "../../data/factories";
 import type { PlanBundle, Profile } from "../../data/types";
 import { localDate, startOfWeek } from "../../domain/dates";
+import { emptyDays } from "../../domain/plan";
 import { plural } from "../../domain/text";
 import { Button, Card, EmptyState, Icon, IconTile, Pill, ScreenTitle, SectionHeader, Sheet } from "../../ui/kit";
-import { WeekStrip } from "../athlete/PlansScreen";
+import { planShape, WeekStrip } from "../athlete/PlansScreen";
 import { PlanDetail } from "../plans/PlanDetail";
 import { PlanEditor } from "../plans/PlanEditor";
 
@@ -34,12 +35,7 @@ export default function CoachPlansScreen({
       start_date: localDate(startOfWeek()),
       is_active: true,
     });
-    setDraft({
-      plan,
-      days: Array.from({ length: 7 }, (_, i) => makeDay(plan.id, i + 1)),
-      segments: [],
-      exercises: [],
-    });
+    setDraft({ plan, days: emptyDays(plan, 1, newId), segments: [], exercises: [] });
   }
 
   async function save() {
@@ -49,7 +45,10 @@ export default function CoachPlansScreen({
       await api.savePlan(draft);
       await onReload();
       onToast("Plan saved");
+      // Keep the editor open on failure so the work isn't thrown away.
       setDraft(null);
+    } catch (error) {
+      onToast(error instanceof Error ? error.message : "Couldn't save that plan.");
     } finally {
       setSaving(false);
     }
@@ -57,10 +56,14 @@ export default function CoachPlansScreen({
 
   async function remove() {
     if (!draft) return;
-    await api.deletePlan(draft.plan.id);
-    await onReload();
-    setDraft(null);
-    onToast("Plan deleted");
+    try {
+      await api.deletePlan(draft.plan.id);
+      await onReload();
+      setDraft(null);
+      onToast("Plan deleted");
+    } catch (error) {
+      onToast(error instanceof Error ? error.message : "Couldn't delete that plan.");
+    }
   }
 
   if (viewing) {
@@ -123,7 +126,7 @@ export default function CoachPlansScreen({
                   <button className="min-w-0 flex-1 text-left" onClick={() => setViewing(bundle)}>
                     <p className="truncate text-[15px] font-black text-ink">{bundle.plan.name}</p>
                     <p className="truncate text-xs font-bold text-muted">
-                      {bundle.plan.weeks} week{bundle.plan.weeks === 1 ? "" : "s"} · {plural(bundle.exercises.length, "exercise")} · {assigned.length} assigned
+                      {planShape(bundle)} · {plural(bundle.exercises.length, "exercise")} · {assigned.length} assigned
                       {assigned.length > 0 && ` (${synced} synced)`}
                     </p>
                   </button>
@@ -168,9 +171,15 @@ export default function CoachPlansScreen({
                       <Button
                         size="sm"
                         onClick={async () => {
-                          await api.assignPlan(assigning.plan.id, profile.id);
-                          await onReload();
-                          onToast(`Sent to ${profile.display_name || "athlete"}`);
+                          try {
+                            await api.assignPlan(assigning.plan.id, profile.id);
+                            await onReload();
+                            onToast(`Sent to ${profile.display_name || "athlete"}`);
+                          } catch (error) {
+                            onToast(
+                              error instanceof Error ? error.message : "Couldn't assign that plan.",
+                            );
+                          }
                         }}
                       >
                         Send

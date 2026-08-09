@@ -61,7 +61,12 @@ export function activeDates(sessions: Session[], logged?: Set<string>): Set<stri
  */
 export function currentStreak(
   sessions: Session[],
-  restWeekdays: number[] = [],
+  /**
+   * Was a day off scheduled on this date? Built by `restDayPredicate()` —
+   * a predicate rather than a list of weekdays, because a cycle plan's rest
+   * days land on a different weekday each time round.
+   */
+  isRestDay: (date: Date) => boolean = () => false,
   today = new Date(),
   logged?: Set<string>,
 ): number {
@@ -84,8 +89,7 @@ export function currentStreak(
       continue;
     }
     // A scheduled rest day keeps the chain alive without counting.
-    const weekday = cursor.getDay() === 0 ? 7 : cursor.getDay();
-    if (restWeekdays.includes(weekday)) {
+    if (isRestDay(cursor)) {
       cursor = addDays(cursor, -1);
       continue;
     }
@@ -174,8 +178,12 @@ export function streakCopy(streak: number): { headline: string; subtitle: string
   return { headline: `${streak}-day streak`, subtitle: "You're on fire — keep it up" };
 }
 
-export function syncedProfileStats(profile: Profile, sessions: Session[], restWeekdays: number[]): Partial<Profile> {
-  const streak = currentStreak(sessions, restWeekdays);
+export function syncedProfileStats(
+  profile: Profile,
+  sessions: Session[],
+  isRestDay?: (date: Date) => boolean,
+): Partial<Profile> {
+  const streak = currentStreak(sessions, isRestDay);
   const last = [...activeDates(sessions)].sort().pop() ?? null;
   return {
     current_streak: streak,

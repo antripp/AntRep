@@ -1,10 +1,19 @@
 /**
  * Plan resolution — the port of the iOS `PlanService`.
  *
- * A plan owns days (per program week + weekday); a day owns ordered segments
- * ("Strength", then "Walk"); a segment owns exercises. Days without explicit
- * segments resolve to one synthetic segment so every screen can treat a day as
- * a list of segments.
+ * A plan owns days; a day owns ordered segments ("Strength", then "Walk"); a
+ * segment owns exercises. Days without explicit segments resolve to one
+ * synthetic segment so every screen can treat a day as a list of segments.
+ *
+ * A day is addressed one of two ways, depending on `plan.schedule_mode`:
+ *
+ *   weekly  program week (`week_index`) + weekday, Monday-aligned and cycling
+ *           every `plan.weeks` weeks.
+ *   cycle   a position in a `cycle_length`-day split (`cycle_day`), counted
+ *           from the plan's start date — day 1 IS the start date.
+ *
+ * Screens should not read `weekday` or `cycle_day` directly: `slotIndex`,
+ * `slotLabel` and `planSlots` give the same answers in either mode.
  */
 
 import {
@@ -13,18 +22,23 @@ import {
   DAY_TYPE_LABELS,
   isGymType,
   type DayType,
+  type Plan,
   type PlanBundle,
   type PlanDay,
   type PlanExercise,
   type PlanSegment,
 } from "../data/types";
-import { isoWeekday, localDate, parseDate, startOfWeek } from "./dates";
+import { daysBetween, isoWeekday, localDate, parseDate, startOfWeek, weekdayLabel } from "./dates";
 
 export interface ResolvedSegment {
   /** Stable id: the segment row id, or `day:<dayId>` for a legacy single-block day. */
   id: string;
   segmentId: string | null;
   dayId: string;
+  /** The plan behind it, so a screen holding a loose segment can still label its slot. */
+  plan: Plan;
+  /** The day's 1-based position in the plan — its weekday, or its cycle day. */
+  slot: number;
   title: string;
   dayType: DayType;
   customTypeLabel: string;
@@ -50,6 +64,59 @@ export function typeIcon(dayType: DayType, iconName = ""): string {
   return iconName.trim() || DAY_TYPE_ICONS[dayType] || DAY_TYPE_ICONS.fullbody;
 }
 
+// ------------------------------------------------------------------
+// Slots — the shape of a plan, whichever schedule it runs on
+// ------------------------------------------------------------------
+
+export function isCyclePlan(plan: Pick<Plan, "schedule_mode" | "cycle_length">): boolean {
+  return plan.schedule_mode === "cycle" && plan.cycle_length > 0;
+}
+
+/** How many day slots one pass through the plan has: 7 for a week, else the cycle. */
+export function slotCount(plan: Pick<Plan, "schedule_mode" | "cycle_length">): number {
+  return isCyclePlan(plan) ? Math.max(2, plan.cycle_length) : 7;
+}
+
+/** Every slot position of one pass, in order: 1…7 or 1…cycle_length. */
+export function planSlots(plan: Pick<Plan, "schedule_mode" | "cycle_length">): number[] {
+  return Array.from({ length: slotCount(plan) }, (_, i) => i + 1);
+}
+
+/**
+ * A day's position in its plan, 1-based.
+ *
+ * Reading `weekday` or `cycle_day` straight off the row only works in one
+ * mode; this works in both, so it is what screens should sort and match on.
+ */
+export function slotIndex(
+  plan: Pick<Plan, "schedule_mode" | "cycle_length">,
+  day: Pick<PlanDay, "weekday" | "cycle_day">,
+): number {
+  return (isCyclePlan(plan) ? day.cycle_day : day.weekday) ?? 1;
+}
+
+/** "Monday" / "Mon" for a weekly plan, "Day 9" / "D9" for a cycle. */
+export function slotLabel(
+  plan: Pick<Plan, "schedule_mode" | "cycle_length">,
+  slot: number,
+  short = false,
+): string {
+  if (!isCyclePlan(plan)) return weekdayLabel(slot, short);
+  return short ? `D${slot}` : `Day ${slot}`;
+}
+
+/** The patch that puts a new day in `slot` — the right column for the mode. */
+export function slotFields(
+  plan: Pick<Plan, "schedule_mode" | "cycle_length">,
+  slot: number,
+): Pick<PlanDay, "weekday" | "cycle_day"> {
+  return isCyclePlan(plan) ? { weekday: null, cycle_day: slot } : { weekday: slot, cycle_day: null };
+}
+
+// ------------------------------------------------------------------
+// Resolution — which slot a calendar date lands on
+// ------------------------------------------------------------------
+
 /** Which program week of the plan applies on `date` (1-based, cycles). */
 export function planWeekIndex(
   plan: { start_date: string; weeks: number },
@@ -66,12 +133,39 @@ export function planWeekIndex(
   return (diffWeeks % weeks) + 1;
 }
 
-/** Days of the program week that applies on `date`, falling back to week 1. */
+/**
+ * The cycle position `date` falls on, 1-based, or null before the plan began.
+ *
+ * Unlike the weekly path this is not Monday-aligned: a cycle counts whole days
+ * from its start date, so day 1 is the start date itself.
+ */
+export function planCycleDay(
+  plan: Pick<Plan, "start_date" | "schedule_mode" | "cycle_length">,
+  date: Date,
+  startOverride?: string | null,
+): number | null {
+  const startStr = startOverride ?? plan.start_date;
+  if (!startStr) return null;
+  const offset = daysBetween(startStr, localDate(date));
+  if (offset < 0) return null;
+  return (offset % slotCount(plan)) + 1;
+}
+
+/** The plan's days that are in play on `date`, in slot order. */
 export function daysForDate(bundle: PlanBundle, date: Date, startOverride?: string | null): PlanDay[] {
-  const week = planWeekIndex(bundle.plan, date, startOverride);
-  const inWeek = bundle.days.filter((d) => d.week_index === week);
-  const source = inWeek.length > 0 ? inWeek : bundle.days.filter((d) => d.week_index === 1);
-  return [...source].sort((a, b) => a.weekday - b.weekday);
+  const { plan } = bundle;
+  const bySlot = (a: PlanDay, b: PlanDay) => slotIndex(plan, a) - slotIndex(plan, b);
+
+  // A cycle has no week blocks — every day of the cycle is always in play.
+  if (isCyclePlan(plan)) {
+    return [...bundle.days].filter((d) => d.cycle_day !== null).sort(bySlot);
+  }
+
+  const week = planWeekIndex(plan, date, startOverride);
+  const weekly = bundle.days.filter((d) => d.cycle_day === null);
+  const inWeek = weekly.filter((d) => d.week_index === week);
+  const source = inWeek.length > 0 ? inWeek : weekly.filter((d) => d.week_index === 1);
+  return [...source].sort(bySlot);
 }
 
 export function dayForDate(
@@ -79,8 +173,32 @@ export function dayForDate(
   date: Date,
   startOverride?: string | null,
 ): PlanDay | null {
-  const weekday = isoWeekday(date);
-  return daysForDate(bundle, date, startOverride).find((d) => d.weekday === weekday) ?? null;
+  const { plan } = bundle;
+  const slot = isCyclePlan(plan)
+    ? planCycleDay(plan, date, startOverride)
+    : isoWeekday(date);
+  if (slot === null) return null;
+  return daysForDate(bundle, date, startOverride).find((d) => slotIndex(plan, d) === slot) ?? null;
+}
+
+/**
+ * How many days back the last scheduled occurrence of `day` was, relative to
+ * `from` — 0 when it is today's day. Null if the plan hadn't started yet.
+ *
+ * Weekly plans wrap within the week; a cycle wraps on its own length, which is
+ * why "last Tuesday" reasoning cannot be used for one.
+ */
+export function daysSinceSlot(
+  plan: Pick<Plan, "start_date" | "schedule_mode" | "cycle_length">,
+  day: Pick<PlanDay, "weekday" | "cycle_day">,
+  from: Date,
+  startOverride?: string | null,
+): number | null {
+  const length = slotCount(plan);
+  const target = slotIndex(plan, day);
+  const current = isCyclePlan(plan) ? planCycleDay(plan, from, startOverride) : isoWeekday(from);
+  if (current === null) return null;
+  return (current - target + length) % length;
 }
 
 /** Ordered segments of a day — always at least one. */
@@ -92,12 +210,16 @@ export function resolveSegments(bundle: PlanBundle, day: PlanDay): ResolvedSegme
     .filter((e) => e.plan_day_id === day.id)
     .sort((a, b) => a.sort_order - b.sort_order);
 
+  const slot = slotIndex(bundle.plan, day);
+
   if (segments.length === 0) {
     return [
       {
         id: `day:${day.id}`,
         segmentId: null,
         dayId: day.id,
+        plan: bundle.plan,
+        slot,
         title: day.title || typeLabel(day.day_type, day.custom_type_label),
         dayType: day.day_type,
         customTypeLabel: day.custom_type_label,
@@ -115,6 +237,8 @@ export function resolveSegments(bundle: PlanBundle, day: PlanDay): ResolvedSegme
     id: s.id,
     segmentId: s.id,
     dayId: day.id,
+    plan: bundle.plan,
+    slot,
     title: s.title || typeLabel(s.day_type, s.custom_type_label),
     dayType: s.day_type,
     customTypeLabel: s.custom_type_label,
@@ -201,13 +325,13 @@ export function hasTrainableContent(bundle: PlanBundle, day: PlanDay): boolean {
   return dayExercises(bundle, day).length > 0;
 }
 
-/** Empty plan skeleton for a new plan (7 rest days, week 1). */
-export function emptyWeek(planId: string, weekIndex: number, newId: () => string): PlanDay[] {
-  return Array.from({ length: 7 }, (_, i) => ({
+/** Empty skeleton for one pass of a plan: a rest day in every slot. */
+export function emptyDays(plan: Plan, weekIndex: number, newId: () => string): PlanDay[] {
+  return planSlots(plan).map((slot) => ({
     id: newId(),
-    plan_id: planId,
+    plan_id: plan.id,
     week_index: weekIndex,
-    weekday: i + 1,
+    ...slotFields(plan, slot),
     title: "Rest",
     day_type: "rest" as DayType,
     custom_type_label: "",
@@ -216,6 +340,24 @@ export function emptyWeek(planId: string, weekIndex: number, newId: () => string
     is_optional: false,
     counts_as_gym: null,
     run_modality: "walk" as const,
-    sort_order: i,
+    sort_order: slot - 1,
   }));
+}
+
+/**
+ * Was a rest (or optional) day scheduled on `date` by any of these plans?
+ *
+ * The streak uses this to bridge a planned day off. It has to be asked per
+ * date rather than per weekday: a cycle's rest days land on a different
+ * weekday every time round.
+ */
+export function restDayPredicate(
+  plans: { bundle: PlanBundle; start?: string | null }[],
+): (date: Date) => boolean {
+  if (plans.length === 0) return () => false;
+  return (date: Date) =>
+    plans.some(({ bundle, start }) => {
+      const day = dayForDate(bundle, date, start);
+      return Boolean(day && (day.day_type === "rest" || day.is_optional));
+    });
 }

@@ -133,6 +133,21 @@ export function WorkspaceProvider({ profile, children }: { profile: Profile; chi
 
   const showToast = useCallback((message: string) => setToast(message), []);
 
+  /**
+   * Run a best-effort mutation: report a failed write as a toast instead of
+   * rejecting. For the actions with no natural place to show an error — the
+   * timer buttons, adding a scratch exercise — a rejected promise would be
+   * swallowed by the click handler, which is the silence this whole fix exists
+   * to remove. The logging path deliberately does NOT use this: it throws, so
+   * the set row can say so where the numbers are.
+   */
+  const reportFailure = useCallback(
+    (error: unknown, fallback: string) => {
+      showToast(error instanceof Error ? error.message : fallback);
+    },
+    [showToast],
+  );
+
   const sessionForSegment = useCallback(
     (segment: ResolvedSegment, date = localDate()) => sessionFor(workspace.sessions, segment, date),
     [workspace.sessions],
@@ -264,17 +279,23 @@ export function WorkspaceProvider({ profile, children }: { profile: Profile; chi
 
   const removeExtraExercise = useCallback(
     async (session: Session, name: string) => {
-      await patchSession(session, {
-        extra_exercises: session.extra_exercises.filter((e) => nameKey(e.name) !== nameKey(name)),
-        completed_names: session.completed_names.filter((n) => nameKey(n) !== nameKey(name)),
-      });
-      await api.replaceSets(session.id, name, []);
-      setWorkspace((w) => ({
-        ...w,
-        logs: w.logs.filter((l) => l.session_id !== session.id || nameKey(l.exercise_name) !== nameKey(name)),
-      }));
+      try {
+        await patchSession(session, {
+          extra_exercises: session.extra_exercises.filter((e) => nameKey(e.name) !== nameKey(name)),
+          completed_names: session.completed_names.filter((n) => nameKey(n) !== nameKey(name)),
+        });
+        await api.replaceSets(session.id, name, []);
+        setWorkspace((w) => ({
+          ...w,
+          logs: w.logs.filter(
+            (l) => l.session_id !== session.id || nameKey(l.exercise_name) !== nameKey(name),
+          ),
+        }));
+      } catch (error) {
+        reportFailure(error, `Couldn't remove ${name}.`);
+      }
     },
-    [patchSession],
+    [patchSession, reportFailure],
   );
 
   const startTimer = useCallback(
@@ -298,30 +319,42 @@ export function WorkspaceProvider({ profile, children }: { profile: Profile; chi
       const index = segments.findIndex((s) => !s.ended_at);
       if (index < 0) return;
       segments[index] = { ...segments[index], ended_at: new Date().toISOString() };
-      await patchSession(session, { timer_segments: segments });
+      try {
+        await patchSession(session, { timer_segments: segments });
+      } catch (error) {
+        reportFailure(error, "Couldn't pause the timer.");
+      }
     },
-    [patchSession],
+    [patchSession, reportFailure],
   );
 
   const resumeTimer = useCallback(
     async (session: Session) => {
-      await patchSession(session, {
-        timer_segments: [
-          ...session.timer_segments,
-          { started_at: new Date().toISOString(), ended_at: null, paused_seconds: 0 },
-        ],
-      });
+      try {
+        await patchSession(session, {
+          timer_segments: [
+            ...session.timer_segments,
+            { started_at: new Date().toISOString(), ended_at: null, paused_seconds: 0 },
+          ],
+        });
+      } catch (error) {
+        reportFailure(error, "Couldn't resume the timer.");
+      }
     },
-    [patchSession],
+    [patchSession, reportFailure],
   );
 
   const endTimer = useCallback(
     async (session: Session) => {
       const now = new Date().toISOString();
       const segments = session.timer_segments.map((s) => (s.ended_at ? s : { ...s, ended_at: now }));
-      await patchSession(session, { timer_segments: segments, ended_at: now });
+      try {
+        await patchSession(session, { timer_segments: segments, ended_at: now });
+      } catch (error) {
+        reportFailure(error, "Couldn't stop the timer.");
+      }
     },
-    [patchSession],
+    [patchSession, reportFailure],
   );
 
   const value = useMemo<WorkspaceValue>(

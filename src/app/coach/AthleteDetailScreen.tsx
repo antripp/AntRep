@@ -11,7 +11,7 @@ import { lifetimeTotals, recentRecords, exerciseStats, weeklySeries } from "../.
 import { compactKg } from "../../domain/text";
 import { AdherenceBars, Sparkline } from "../../ui/charts";
 import { loggedSessionIds, progressFor, sessionFor } from "../../domain/logging";
-import { dayForDate, resolveSegments, typeIcon } from "../../domain/plan";
+import { dayForDate, resolveSegments, restDayPredicate, typeIcon } from "../../domain/plan";
 import { plural } from "../../domain/text";
 import {
   Button,
@@ -92,17 +92,14 @@ export default function AthleteDetailScreen({
   // Streak and level are derived from the logs, not the stored profile counters,
   // so the coach always sees the same numbers the athlete does — including the
   // rest days of their plan, which bridge the chain instead of breaking it.
-  const restWeekdays = useMemo(
-    () =>
-      (training?.plans ?? []).flatMap((bundle) =>
-        bundle.days.filter((d) => d.day_type === "rest" || d.is_optional).map((d) => d.weekday),
-      ),
+  const isRestDay = useMemo(
+    () => restDayPredicate((training?.plans ?? []).map((bundle) => ({ bundle }))),
     [training],
   );
   // Recorded sets count as training even when nothing was ticked off.
   const loggedIds = useMemo(() => loggedSessionIds(training?.logs ?? []), [training]);
   const liveStreak = training
-    ? currentStreak(training.sessions, restWeekdays, today, loggedIds)
+    ? currentStreak(training.sessions, isRestDay, today, loggedIds)
     : 0;
   const level = levelFor(athlete.profile.total_xp);
 

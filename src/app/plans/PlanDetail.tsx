@@ -1,10 +1,18 @@
 /** Read-only plan structure — every week, day, block and exercise as prescribed. */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { DAY_TYPE_LABELS, type PlanBundle, type PlanDay } from "../../data/types";
-import { formatShortDate, weekdayLabel } from "../../domain/dates";
+import { formatShortDate } from "../../domain/dates";
 import { loggingSlots } from "../../domain/logging";
-import { resolveSegments, typeColor, typeIcon } from "../../domain/plan";
+import {
+  isCyclePlan,
+  planSlots,
+  resolveSegments,
+  slotIndex,
+  slotLabel,
+  typeColor,
+  typeIcon,
+} from "../../domain/plan";
 import { plural } from "../../domain/text";
 import { Button, Card, Icon, IconButton, IconTile, Pill, SectionHeader } from "../../ui/kit";
 
@@ -22,13 +30,26 @@ export function PlanDetail({
   footer?: React.ReactNode;
 }) {
   const [week, setWeek] = useState(1);
-  const days = bundle.days
-    .filter((d) => d.week_index === week)
-    .sort((a, b) => a.weekday - b.weekday);
-  const weekExercises = days.reduce(
-    (total, day) => total + resolveSegments(bundle, day).reduce((t, s) => t + s.exercises.length, 0),
+  const cycle = isCyclePlan(bundle.plan);
+  // A cycle has no week blocks: all of its days are one pass through the split.
+  // Walk the slots rather than the rows, so a day nobody has filled in yet
+  // still shows as the rest day it is instead of going missing.
+  const slots = useMemo(() => {
+    const pool = bundle.days.filter((d) =>
+      cycle ? d.cycle_day !== null : d.cycle_day === null && d.week_index === week,
+    );
+    return planSlots(bundle.plan).map((slot) => ({
+      slot,
+      day: pool.find((d) => slotIndex(bundle.plan, d) === slot) ?? null,
+    }));
+  }, [bundle.days, bundle.plan, cycle, week]);
+
+  const weekExercises = slots.reduce(
+    (total, { day }) =>
+      day ? total + resolveSegments(bundle, day).reduce((t, s) => t + s.exercises.length, 0) : total,
     0,
   );
+  const trainingDays = slots.filter(({ day }) => day && day.day_type !== "rest").length;
 
   return (
     <>
@@ -40,7 +61,11 @@ export function PlanDetail({
           <h1 className="truncate text-xl font-black text-ink">{bundle.plan.name}</h1>
           <p className="truncate text-xs font-bold text-muted">
             {subtitle ??
-              `${plural(bundle.plan.weeks, "week")} · ${plural(bundle.exercises.length, "exercise")}`}
+              `${
+                cycle
+                  ? `${bundle.plan.cycle_length}-day split`
+                  : plural(bundle.plan.weeks, "week")
+              } · ${plural(bundle.exercises.length, "exercise")}`}
           </p>
         </div>
         {onEdit && (
@@ -53,9 +78,13 @@ export function PlanDetail({
       <Card className="mb-3">
         <div className="flex flex-wrap gap-x-6 gap-y-2">
           <Detail label="Starts" value={formatShortDate(bundle.plan.start_date)} />
-          <Detail label="Week blocks" value={String(bundle.plan.weeks)} />
-          <Detail label="Training days" value={String(days.filter((d) => d.day_type !== "rest").length)} />
-          <Detail label="Exercises / week" value={String(weekExercises)} />
+          {cycle ? (
+            <Detail label="Split length" value={`${bundle.plan.cycle_length} days`} />
+          ) : (
+            <Detail label="Week blocks" value={String(bundle.plan.weeks)} />
+          )}
+          <Detail label="Training days" value={String(trainingDays)} />
+          <Detail label={cycle ? "Exercises / split" : "Exercises / week"} value={String(weekExercises)} />
           <Detail label="Status" value={bundle.plan.is_active ? "Active" : "Inactive"} />
         </div>
         {bundle.plan.notes && (
@@ -65,7 +94,7 @@ export function PlanDetail({
         )}
       </Card>
 
-      {bundle.plan.weeks > 1 && (
+      {!cycle && bundle.plan.weeks > 1 && (
         <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1">
           {Array.from({ length: bundle.plan.weeks }, (_, i) => i + 1).map((w) => (
             <button
@@ -81,15 +110,22 @@ export function PlanDetail({
         </div>
       )}
 
-      <SectionHeader title={bundle.plan.weeks > 1 ? `Week ${week}` : "The week"} />
+      <SectionHeader
+        title={
+          cycle
+            ? `The ${bundle.plan.cycle_length}-day split`
+            : bundle.plan.weeks > 1
+              ? `Week ${week}`
+              : "The week"
+        }
+      />
       <div className="space-y-3">
-        {days.map((day) => (
-          <DayCard key={day.id} bundle={bundle} day={day} />
-        ))}
-        {days.length === 0 && (
-          <p className="rounded-card border border-dashed border-line px-4 py-8 text-center text-sm font-semibold text-muted">
-            This week has no days yet.
-          </p>
+        {slots.map(({ slot, day }) =>
+          day ? (
+            <DayCard key={day.id} bundle={bundle} day={day} />
+          ) : (
+            <EmptySlotCard key={`slot-${slot}`} plan={bundle.plan} slot={slot} />
+          ),
         )}
       </div>
 
@@ -107,6 +143,23 @@ function Detail({ label, value }: { label: string; value: string }) {
   );
 }
 
+/** A slot of the plan nobody has set up yet — a rest day by default. */
+function EmptySlotCard({ plan, slot }: { plan: PlanBundle["plan"]; slot: number }) {
+  return (
+    <Card>
+      <div className="flex items-center gap-3">
+        <IconTile emoji={typeIcon("rest")} tint={typeColor("rest")} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[15px] font-black text-ink">
+            {slotLabel(plan, slot)} · {DAY_TYPE_LABELS.rest}
+          </p>
+          <p className="truncate text-xs font-bold text-muted">Nothing scheduled yet</p>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 function DayCard({ bundle, day }: { bundle: PlanBundle; day: PlanDay }) {
   const segments = resolveSegments(bundle, day);
   const tint = typeColor(day.day_type, day.color_hex);
@@ -118,7 +171,8 @@ function DayCard({ bundle, day }: { bundle: PlanBundle; day: PlanDay }) {
         <IconTile emoji={typeIcon(day.day_type, day.icon_name)} tint={tint} />
         <div className="min-w-0 flex-1">
           <p className="truncate text-[15px] font-black text-ink">
-            {weekdayLabel(day.weekday)} · {day.title || DAY_TYPE_LABELS[day.day_type]}
+            {slotLabel(bundle.plan, slotIndex(bundle.plan, day))} ·{" "}
+            {day.title || DAY_TYPE_LABELS[day.day_type]}
           </p>
           <p className="truncate text-xs font-bold text-muted">
             {DAY_TYPE_LABELS[day.day_type]}

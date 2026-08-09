@@ -13,9 +13,19 @@ import {
   type PlanBundle,
   type PlanDay,
   type PlanExercise,
+  type ScheduleMode,
 } from "../../data/types";
-import { weekdayLabel } from "../../domain/dates";
-import { resolveSegments, typeColor, typeIcon } from "../../domain/plan";
+import {
+  isCyclePlan,
+  planSlots,
+  resolveSegments,
+  slotCount,
+  slotFields,
+  slotIndex,
+  slotLabel,
+  typeColor,
+  typeIcon,
+} from "../../domain/plan";
 import { plural } from "../../domain/text";
 import { CustomFieldsEditor, LogTypePicker } from "./LoggingFields";
 import { PasteImport } from "./PasteImport";
@@ -29,6 +39,7 @@ import {
   NumberField,
   Pill,
   SectionHeader,
+  Segmented,
   Sheet,
   TextField,
   Toggle,
@@ -55,21 +66,83 @@ export function PlanEditor({
   const [week, setWeek] = useState(1);
   const [editingDay, setEditingDay] = useState<string | null>(null);
 
-  const weekDays = useMemo(() => {
-    const inWeek = bundle.days.filter((d) => d.week_index === week);
-    return Array.from({ length: 7 }, (_, i) => inWeek.find((d) => d.weekday === i + 1) ?? null);
-  }, [bundle.days, week]);
+  const cycle = isCyclePlan(bundle.plan);
+  const slots = planSlots(bundle.plan);
+
+  /** One entry per slot of the plan — `null` where nothing has been set up yet. */
+  const slotDays = useMemo(() => {
+    // A cycle has no week blocks, so every cycle day is always on screen.
+    const pool = cycle
+      ? bundle.days.filter((d) => d.cycle_day !== null)
+      : bundle.days.filter((d) => d.cycle_day === null && d.week_index === week);
+    return slots.map((slot) => pool.find((d) => slotIndex(bundle.plan, d) === slot) ?? null);
+  }, [bundle.days, bundle.plan, cycle, slots, week]);
 
   function updatePlan(patch: Partial<PlanBundle["plan"]>) {
     onChange({ ...bundle, plan: { ...bundle.plan, ...patch } });
   }
 
-  function ensureDay(weekday: number): PlanDay {
-    const existing = bundle.days.find((d) => d.week_index === week && d.weekday === weekday);
+  function ensureDay(slot: number): PlanDay {
+    const existing = slotDays[slot - 1];
     if (existing) return existing;
-    const day = makeDay(bundle.plan.id, weekday, { week_index: week });
+    const day = makeDay(bundle.plan.id, slot, {
+      week_index: cycle ? 1 : week,
+      ...slotFields(bundle.plan, slot),
+    });
     onChange({ ...bundle, days: [...bundle.days, day] });
     return day;
+  }
+
+  /**
+   * Switch between a calendar week and a free-length cycle.
+   *
+   * The days are re-addressed rather than thrown away: slot 1 stays slot 1, so
+   * a 7-day week becomes days 1–7 of a cycle with all its exercises intact.
+   * Only weeks 2+ are dropped, since a cycle has no week blocks to hold them.
+   */
+  function setScheduleMode(mode: ScheduleMode) {
+    if (mode === bundle.plan.schedule_mode) return;
+    const toCycle = mode === "cycle";
+    const length = toCycle ? Math.max(2, bundle.plan.cycle_length || 7) : 0;
+    const plan = {
+      ...bundle.plan,
+      schedule_mode: mode,
+      cycle_length: length,
+      weeks: toCycle ? 1 : bundle.plan.weeks,
+    };
+
+    const kept = toCycle ? bundle.days.filter((d) => d.week_index === 1) : bundle.days;
+    const days = kept
+      .map((day) => {
+        const slot = slotIndex(bundle.plan, day);
+        if (slot > slotCount(plan)) return null;
+        return { ...day, week_index: 1, ...slotFields(plan, slot) };
+      })
+      .filter((d): d is PlanDay => d !== null);
+
+    const keptIds = new Set(days.map((d) => d.id));
+    onChange({
+      ...bundle,
+      plan,
+      days,
+      segments: bundle.segments.filter((s) => keptIds.has(s.plan_day_id)),
+      exercises: bundle.exercises.filter((e) => keptIds.has(e.plan_day_id)),
+    });
+    setWeek(1);
+  }
+
+  /** Grow or shrink the cycle, dropping any day that falls off the end. */
+  function setCycleLength(count: number) {
+    const length = Math.max(2, Math.min(60, count));
+    const days = bundle.days.filter((d) => slotIndex(bundle.plan, d) <= length);
+    const keptIds = new Set(days.map((d) => d.id));
+    onChange({
+      ...bundle,
+      plan: { ...bundle.plan, cycle_length: length },
+      days,
+      segments: bundle.segments.filter((s) => keptIds.has(s.plan_day_id)),
+      exercises: bundle.exercises.filter((e) => keptIds.has(e.plan_day_id)),
+    });
   }
 
   function setWeeks(count: number) {
@@ -126,17 +199,46 @@ export function PlanEditor({
         <Field label="Plan name">
           <TextField value={bundle.plan.name} onChange={(e) => updatePlan({ name: e.target.value })} />
         </Field>
+        <Field
+          label="Repeats on"
+          hint={
+            cycle
+              ? "Day 1 is the start date, and the split repeats from there — weekdays don't come into it"
+              : "A calendar week, Monday to Sunday"
+          }
+        >
+          <Segmented
+            value={bundle.plan.schedule_mode}
+            onChange={setScheduleMode}
+            options={[
+              { value: "weekly", label: "Week" },
+              { value: "cycle", label: "Custom split" },
+            ]}
+          />
+        </Field>
+
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Starts">
+          <Field label="Starts" hint={cycle ? "This day is day 1" : undefined}>
             <TextField
               type="date"
               value={bundle.plan.start_date}
               onChange={(e) => updatePlan({ start_date: e.target.value })}
             />
           </Field>
-          <Field label="Week blocks" hint="Weeks cycle after the last one">
-            <NumberField value={bundle.plan.weeks} min={1} max={52} onChange={(v) => setWeeks(v ?? 1)} />
-          </Field>
+          {cycle ? (
+            <Field label="Days per split" hint="Starts over on the next day">
+              <NumberField
+                value={bundle.plan.cycle_length}
+                min={2}
+                max={60}
+                onChange={(v) => setCycleLength(v ?? 2)}
+              />
+            </Field>
+          ) : (
+            <Field label="Week blocks" hint="Weeks cycle after the last one">
+              <NumberField value={bundle.plan.weeks} min={1} max={52} onChange={(v) => setWeeks(v ?? 1)} />
+            </Field>
+          )}
         </div>
         <div className="flex items-center justify-between">
           <div>
@@ -151,7 +253,7 @@ export function PlanEditor({
         </div>
       </Card>
 
-      {bundle.plan.weeks > 1 && (
+      {!cycle && bundle.plan.weeks > 1 && (
         <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1">
           {Array.from({ length: bundle.plan.weeks }, (_, i) => i + 1).map((w) => (
             <button
@@ -167,21 +269,21 @@ export function PlanEditor({
         </div>
       )}
 
-      <SectionHeader title="Week schedule" />
+      <SectionHeader title={cycle ? `${bundle.plan.cycle_length}-day split` : "Week schedule"} />
       <div className="space-y-2">
-        {weekDays.map((day, index) => {
-          const weekday = index + 1;
+        {slotDays.map((day, index) => {
+          const slot = index + 1;
           const segments = day ? resolveSegments(bundle, day) : [];
           const count = segments.reduce((t, s) => t + s.exercises.length, 0);
           const type = day?.day_type ?? "rest";
           return (
             <button
-              key={weekday}
-              onClick={() => setEditingDay(ensureDay(weekday).id)}
+              key={slot}
+              onClick={() => setEditingDay(ensureDay(slot).id)}
               className="flex w-full items-center gap-3 rounded-2xl border border-line bg-surface p-3 text-left"
             >
               <span className="w-9 shrink-0 text-xs font-black uppercase text-muted">
-                {weekdayLabel(weekday, true)}
+                {slotLabel(bundle.plan, slot, true)}
               </span>
               <IconTile emoji={typeIcon(type, day?.icon_name)} tint={typeColor(type, day?.color_hex)} size={34} />
               <div className="min-w-0 flex-1">
@@ -316,7 +418,16 @@ function DayEditor({
   }
 
   return (
-    <Sheet open onClose={onClose} title={`${weekdayLabel(day.weekday)} · week ${day.week_index}`} wide>
+    <Sheet
+      open
+      onClose={onClose}
+      title={
+        isCyclePlan(bundle.plan)
+          ? slotLabel(bundle.plan, slotIndex(bundle.plan, day))
+          : `${slotLabel(bundle.plan, slotIndex(bundle.plan, day))} · week ${day.week_index}`
+      }
+      wide
+    >
       <div className="space-y-3">
         <Field label="Day title">
           <TextField
@@ -684,8 +795,11 @@ export function ExerciseEditor({
 
 export function PlanSummaryPill({ bundle }: { bundle: PlanBundle }) {
   const exercises = bundle.exercises.length;
+  const firstPass = isCyclePlan(bundle.plan)
+    ? bundle.days.filter((d) => d.cycle_day !== null)
+    : bundle.days.filter((d) => d.cycle_day === null && d.week_index === 1);
   const trainingDays = new Set(
-    bundle.days.filter((d) => d.week_index === 1 && d.day_type !== "rest").map((d) => d.weekday),
+    firstPass.filter((d) => d.day_type !== "rest").map((d) => slotIndex(bundle.plan, d)),
   ).size;
   return (
     <Pill tint="var(--t-muted)">

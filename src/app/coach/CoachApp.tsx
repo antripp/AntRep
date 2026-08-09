@@ -8,6 +8,7 @@ import type { Profile, Role } from "../../data/types";
 import { Button, Card, Icon, LoadingScreen, Screen, ScreenTitle, TabBar, Toast } from "../../ui/kit";
 import { useAuth } from "../auth";
 import SettingsScreen from "../shared/SettingsScreen";
+import { DbFaultBanner } from "../shared/DbFaultBanner";
 import HomeScreen from "../athlete/HomeScreen";
 import PlansScreen from "../athlete/PlansScreen";
 import { WorkspaceProvider, useWorkspace } from "../workspace";
@@ -55,6 +56,7 @@ export default function CoachApp({
 
   return (
     <>
+      <DbFaultBanner />
       {tab === "training" && athleteProfile ? (
         <WorkspaceProvider profile={athleteProfile}>
           <CoachTraining />

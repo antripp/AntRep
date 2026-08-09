@@ -13,6 +13,7 @@
 import { useMemo, useState } from "react";
 import type { PlanBundle, Session, SetLog } from "../../data/types";
 import { exerciseStats } from "../../domain/analytics";
+import { restDayPredicate } from "../../domain/plan";
 import { plural } from "../../domain/text";
 import { EmptyState, Icon, ScreenTitle, Segmented } from "../../ui/kit";
 import { useWorkspace } from "../workspace";
@@ -80,11 +81,9 @@ export function ProgressBody({
   const stats = useMemo(() => exerciseStats(sessions, logs), [sessions, logs]);
 
   // Rest days the plans schedule bridge a streak rather than breaking it.
-  const restWeekdays = useMemo(
-    () =>
-      plans.flatMap((bundle) =>
-        bundle.days.filter((d) => d.day_type === "rest" || d.is_optional).map((d) => d.weekday),
-      ),
+  // Asked per date, not per weekday — a cycle plan's days off move around.
+  const isRestDay = useMemo(
+    () => restDayPredicate(plans.map((bundle) => ({ bundle }))),
     [plans],
   );
 
@@ -202,7 +201,7 @@ export function ProgressBody({
               stats={stats}
               weeklyGymGoal={weeklyGymGoal}
               totalXp={totalXp}
-              restWeekdays={restWeekdays}
+              isRestDay={isRestDay}
               onOpenExercise={setOpenKey}
             />
           )}

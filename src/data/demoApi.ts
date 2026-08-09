@@ -8,8 +8,8 @@
  * history, extra work, custom logging fields, chat, check-ins and trackers.
  */
 
-import { addDays, isoWeekday, localDate, startOfWeek } from "../domain/dates";
-import { planWeekIndex } from "../domain/plan";
+import { addDays, localDate, startOfWeek } from "../domain/dates";
+import { dayForDate } from "../domain/plan";
 import { STARTER_WEEK, type CatalogExercise } from "./catalog";
 import {
   makeCheckIn,
@@ -348,13 +348,10 @@ function seedHistory(
 
   for (let back = from; back >= until; back -= 1) {
     const date = addDays(today, -back);
-    const weekday = isoWeekday(date);
-    // Multi-week plans cycle: log against the week that actually applied for
-    // this athlete (their assignment start, not always the plan's).
-    const week = planWeekIndex(bundle.plan, date, planStart);
-    const day =
-      bundle.days.find((d) => d.weekday === weekday && d.week_index === week) ??
-      bundle.days.find((d) => d.weekday === weekday && d.week_index === 1);
+    // Multi-week plans cycle, and a cycle plan counts off its own start: log
+    // against whichever day actually applied for this athlete (their
+    // assignment start, not always the plan's).
+    const day = dayForDate(bundle, date, planStart);
     if (!day || day.day_type === "rest") continue;
     if (skipEvery > 0 && back % skipEvery === 0) continue;
 

@@ -167,6 +167,15 @@ export interface CoachLink {
   claimed_at?: string | null;
 }
 
+/**
+ * How a plan repeats.
+ *
+ * `weekly` — the calendar week: `weeks` blocks of Monday–Sunday, cycling.
+ * `cycle`  — a split of its own length (a 9-day split restarting on the 10th).
+ *            Day 1 is the plan's start date; weekdays play no part.
+ */
+export type ScheduleMode = "weekly" | "cycle";
+
 export interface Plan {
   id: string;
   owner_id: string;
@@ -176,6 +185,9 @@ export interface Plan {
   is_archived: boolean;
   start_date: string;
   weeks: number;
+  schedule_mode: ScheduleMode;
+  /** Days per cycle in `cycle` mode; 0 when the plan runs on weeks. */
+  cycle_length: number;
   icon_name: string;
   color_hex: string;
   notes: string;
@@ -185,8 +197,10 @@ export interface PlanDay {
   id: string;
   plan_id: string;
   week_index: number;
-  /** 1 = Monday … 7 = Sunday. */
-  weekday: number;
+  /** 1 = Monday … 7 = Sunday. Null on a cycle day, which has no weekday. */
+  weekday: number | null;
+  /** 1-based position in the cycle. Null on a weekly day. */
+  cycle_day: number | null;
   title: string;
   day_type: DayType;
   custom_type_label: string;
