@@ -22,11 +22,13 @@ import { ExercisesTab } from "./ExercisesTab";
 import { OverviewTab } from "./OverviewTab";
 import { PlansTab } from "./PlansTab";
 import { SessionDetail } from "./SessionDetail";
+import { DaysTab } from "./DaysTab";
 import { useProgressScope } from "./useProgressScope";
 
 const TABS = [
   { value: "overview", label: "Overview" },
   { value: "plans", label: "Plans" },
+  { value: "days", label: "Days" },
   { value: "exercises", label: "Exercises" },
 ] as const;
 
@@ -218,6 +220,10 @@ export function ProgressBody({
               onOpenSession={setOpenSessionId}
               onOpenExercise={setOpenKey}
             />
+          )}
+
+          {tab === "days" && (
+            <DaysTab sessions={sessions} logs={logs} onOpenSession={setOpenSessionId} />
           )}
 
           {tab === "exercises" && <ExercisesTab stats={stats} onOpenExercise={setOpenKey} />}
