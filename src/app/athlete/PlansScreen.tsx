@@ -5,11 +5,13 @@ import { useDraft } from "../usePersisted";
 import { api } from "../../data";
 import { makePlan, makePreset, newId } from "../../data/factories";
 import type { PlanBundle } from "../../data/types";
-import { localDate, startOfWeek } from "../../domain/dates";
+import { formatShortDate, localDate, startOfWeek } from "../../domain/dates";
 import {
   blockCount,
   emptyDays,
   isCyclePlan,
+  planEnd,
+  planIsLive,
   planSlots,
   resolveSegments,
   slotIndex,
@@ -81,6 +83,15 @@ export default function PlansScreen() {
     }
   }
 
+  // A plan is "past" once its end date has gone by, or it was switched off.
+  const today = localDate();
+  const runningOwn = workspace.ownPlans.filter(
+    (b) => !b.plan.is_archived && planIsLive(b.plan, today),
+  );
+  const pastOwn = workspace.ownPlans.filter(
+    (b) => !b.plan.is_archived && !planIsLive(b.plan, today),
+  );
+
   function createPlan() {
     const plan = makePlan(profile.id, {
       name: "My plan",
@@ -88,6 +99,30 @@ export default function PlansScreen() {
       is_active: workspace.ownPlans.length === 0,
     });
     setDraft({ plan, days: emptyDays(plan, 1, newId), segments: [], exercises: [] });
+  }
+
+  /**
+   * Run a finished plan again from today.
+   *
+   * The end date is cleared rather than pushed out by the old duration: how
+   * long it ran last time says nothing about how long you want it now, and an
+   * end date silently reappearing weeks later is worse than none.
+   */
+  async function restartPlan(bundle: PlanBundle) {
+    try {
+      const plan = {
+        ...bundle.plan,
+        start_date: localDate(),
+        end_date: null,
+        is_active: true,
+        is_archived: false,
+      };
+      await api.savePlan({ ...bundle, plan });
+      await reload();
+      showToast(`${plan.name} restarted from today`);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Couldn't restart that plan.");
+    }
   }
 
   async function syncPlan(assignmentId: string, status: "active" | "declined") {
@@ -182,18 +217,26 @@ export default function PlansScreen() {
                   <p className="truncate text-[15px] font-black text-ink">{bundle.plan.name}</p>
                   <p className="truncate text-xs font-bold text-muted">
                     {coach?.display_name ?? "Coach"} · {planShape(bundle)} ·{" "}
-                    {plural(bundle.exercises.length, "exercise")}
+                    {planIsLive(bundle.plan, today, assignment)
+                      ? plural(bundle.exercises.length, "exercise")
+                      : `ended ${formatShortDate(planEnd(bundle.plan, assignment) ?? bundle.plan.start_date)} — your coach can restart it`}
                   </p>
                   <span className="mt-1 inline-flex items-center gap-1 text-[11px] font-black text-accent">
                     View plan <Icon.chevron className="h-3 w-3" />
                   </span>
                 </button>
-                {assignment.status === "active" ? (
-                  <Pill tint="var(--t-accent)">Synced</Pill>
+                {/* A finished coach plan is read-only here: restarting someone
+                    else's programme is the coach's call, not the athlete's. */}
+                {planIsLive(bundle.plan, today, assignment) ? (
+                  assignment.status === "active" ? (
+                    <Pill tint="var(--t-accent)">Synced</Pill>
+                  ) : (
+                    <Button size="sm" onClick={() => syncPlan(assignment.id, "active")}>
+                      Sync
+                    </Button>
+                  )
                 ) : (
-                  <Button size="sm" onClick={() => syncPlan(assignment.id, "active")}>
-                    Sync
-                  </Button>
+                  <Pill tint="var(--t-muted)">Finished</Pill>
                 )}
               </div>
 
@@ -220,7 +263,7 @@ export default function PlansScreen() {
           </Button>
         }
       />
-      {workspace.ownPlans.length === 0 ? (
+      {runningOwn.length === 0 && pastOwn.length === 0 ? (
         <EmptyState
           title="Build your own plan"
           subtitle="Set up your week, add exercises, and log against it — with or without a coach."
@@ -228,7 +271,7 @@ export default function PlansScreen() {
         />
       ) : (
         <div className="space-y-2">
-          {workspace.ownPlans.map((bundle) => (
+          {runningOwn.map((bundle) => (
             <Card key={bundle.plan.id} onClick={() => setViewing(bundle)}>
               <div className="flex items-center gap-3">
                 <IconTile emoji="🗓️" tint="var(--t-accent)" />
@@ -236,6 +279,7 @@ export default function PlansScreen() {
                   <p className="truncate text-[15px] font-black text-ink">{bundle.plan.name}</p>
                   <p className="truncate text-xs font-bold text-muted">
                     {planShape(bundle)} · {plural(bundle.exercises.length, "exercise")}
+                    {bundle.plan.end_date && ` · ends ${formatShortDate(bundle.plan.end_date)}`}
                   </p>
                 </div>
                 {bundle.plan.is_active && <Pill tint="var(--t-accent)">Active</Pill>}
@@ -245,6 +289,35 @@ export default function PlansScreen() {
             </Card>
           ))}
         </div>
+      )}
+
+      {/* Finished plans stay readable — and restartable, which is the whole
+          point of ending one rather than deleting it. */}
+      {pastOwn.length > 0 && (
+        <>
+          <SectionHeader title="Past plans" />
+          <div className="space-y-2">
+            {pastOwn.map((bundle) => (
+              <Card key={bundle.plan.id}>
+                <div className="flex items-center gap-3">
+                  <IconTile emoji="📦" tint="var(--t-muted)" />
+                  <button className="min-w-0 flex-1 text-left" onClick={() => setViewing(bundle)}>
+                    <p className="truncate text-[15px] font-black text-ink">{bundle.plan.name}</p>
+                    <p className="truncate text-xs font-bold text-muted">
+                      {planShape(bundle)} ·{" "}
+                      {bundle.plan.end_date
+                        ? `ended ${formatShortDate(bundle.plan.end_date)}`
+                        : "not running"}
+                    </p>
+                  </button>
+                  <Button size="sm" variant="secondary" onClick={() => restartPlan(bundle)}>
+                    Restart
+                  </Button>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </>
       )}
     </>
   );

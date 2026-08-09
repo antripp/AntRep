@@ -558,6 +558,7 @@ function buildSeed(): DemoStore {
       id: newId(),
       plan_id: mainPlan.plan.id,
       athlete_id: athlete.id,
+      end_date: null,
       start_date: mainStart,
       status: "active",
       accepted_at: new Date(Date.now() - 28 * 86400000).toISOString(),
@@ -568,6 +569,7 @@ function buildSeed(): DemoStore {
       id: newId(),
       plan_id: conditioning.plan.id,
       athlete_id: athlete.id,
+      end_date: null,
       start_date: localDate(startOfWeek()),
       status: "offered",
       accepted_at: null,
@@ -577,6 +579,7 @@ function buildSeed(): DemoStore {
       id: newId(),
       plan_id: mainPlan.plan.id,
       athlete_id: second.id,
+      end_date: null,
       start_date: secondStart,
       status: "active",
       accepted_at: new Date(Date.now() - 14 * 86400000).toISOString(),
@@ -1274,6 +1277,7 @@ export const demoApi: Api = {
       id: newId(),
       plan_id: planId,
       athlete_id: athleteId,
+      end_date: null,
       start_date: localDate(startOfWeek()),
       status: "offered",
       accepted_at: null,
@@ -1295,6 +1299,15 @@ export const demoApi: Api = {
     assignment.status = status;
     assignment.accepted_at = status === "active" ? new Date().toISOString() : null;
     if (startDate !== undefined) assignment.start_date = startDate;
+    persist();
+  },
+
+  async setAssignmentDates(assignmentId, dates) {
+    const db = load();
+    const assignment = db.assignments.find((a) => a.id === assignmentId);
+    if (!assignment) return;
+    if (dates.start_date !== undefined) assignment.start_date = dates.start_date;
+    if (dates.end_date !== undefined) assignment.end_date = dates.end_date;
     persist();
   },
 

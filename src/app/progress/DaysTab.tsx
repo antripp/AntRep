@@ -5,39 +5,31 @@
  * slices it by the day of the split, which is the comparison a repeating plan
  * actually invites: this pull day against the last four pull days, not against
  * yesterday's legs.
+ *
+ * The list is a summary only; each day opens its own page (`DayDetail`).
  */
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { Session, SetLog } from "../../data/types";
 import { DAY_TYPE_COLORS, DAY_TYPE_LABELS } from "../../data/types";
 import { formatShortDate } from "../../domain/dates";
-import {
-  DAY_METRIC_LABELS,
-  formatDayMetric,
-  groupSessionsByDay,
-  type DayGroup,
-  type DaySession,
-} from "../../domain/dayTrends";
+import { DAY_METRIC_LABELS, formatDayMetric, groupSessionsByDay } from "../../domain/dayTrends";
 import { typeIcon } from "../../domain/plan";
-import { buildLogTable } from "../../domain/planLog";
 import { plural } from "../../domain/text";
 import { Sparkline } from "../../ui/charts";
 import { Card, EmptyState, Icon, IconTile, Pill } from "../../ui/kit";
-import { LogTable } from "../shared/LogTable";
+import { TrendPill } from "./DayDetail";
 
 export function DaysTab({
   sessions,
   logs,
-  onOpenSession,
-  onOpenExercise,
+  onOpenDay,
 }: {
   sessions: Session[];
   logs: SetLog[];
-  onOpenSession: (id: string) => void;
-  onOpenExercise: (name: string) => void;
+  onOpenDay: (key: string) => void;
 }) {
   const groups = useMemo(() => groupSessionsByDay(sessions, logs), [sessions, logs]);
-  const [openKey, setOpenKey] = useState<string | null>(null);
 
   if (groups.length === 0) {
     return (
@@ -49,158 +41,34 @@ export function DaysTab({
   }
 
   return (
-    <div className="space-y-3">
-      {groups.map((group) => (
-        <DayGroupCard
-          key={group.key}
-          group={group}
-          logs={logs}
-          open={openKey === group.key}
-          onToggle={() => setOpenKey(openKey === group.key ? null : group.key)}
-          onOpenSession={onOpenSession}
-          onOpenExercise={onOpenExercise}
-        />
-      ))}
-    </div>
-  );
-}
+    <div className="space-y-2">
+      {groups.map((group) => {
+        const tint = DAY_TYPE_COLORS[group.dayType] ?? "var(--t-accent)";
+        return (
+          <Card key={group.key} tint={tint} onClick={() => onOpenDay(group.key)}>
+            <div className="flex items-center gap-3">
+              <IconTile emoji={typeIcon(group.dayType)} tint={tint} />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[15px] font-black text-ink">{group.title}</p>
+                <p className="truncate text-xs font-bold text-muted">
+                  {DAY_TYPE_LABELS[group.dayType]} · {plural(group.count, "session")} · last{" "}
+                  {formatShortDate(group.lastDate)}
+                </p>
+              </div>
+              <Sparkline values={group.series} color={tint} width={70} height={24} />
+              <Icon.chevron className="h-4 w-4 shrink-0 text-muted" />
+            </div>
 
-/** "+12%" / "−4%" / "level", coloured by whether more is happening. */
-function TrendPill({ pct, metric }: { pct: number | null; metric: string }) {
-  if (pct === null) {
-    return <Pill tint="var(--t-muted)">Not enough yet</Pill>;
-  }
-  if (Math.abs(pct) < 3) return <Pill tint="var(--t-muted)">Holding steady</Pill>;
-  const up = pct > 0;
-  return (
-    <Pill tint={up ? "var(--color-done)" : "#f5883b"}>
-      {up ? "▲" : "▼"} {Math.abs(pct)}% {metric}
-    </Pill>
-  );
-}
-
-function DayGroupCard({
-  group,
-  logs,
-  open,
-  onToggle,
-  onOpenSession,
-  onOpenExercise,
-}: {
-  group: DayGroup;
-  logs: SetLog[];
-  open: boolean;
-  onToggle: () => void;
-  onOpenSession: (id: string) => void;
-  onOpenExercise: (name: string) => void;
-}) {
-  const tint = DAY_TYPE_COLORS[group.dayType] ?? "var(--t-accent)";
-  // Built only while expanded — one grid per group up front would walk every
-  // log in the workspace for cards nobody has opened.
-  const table = useMemo(
-    () =>
-      buildLogTable({
-        sessions: open ? group.sessions.map((s) => s.session) : [],
-        logs: open ? logs : [],
-      }),
-    [open, group, logs],
-  );
-
-  return (
-    <Card tint={tint}>
-      <button onClick={onToggle} className="flex w-full items-center gap-3 text-left">
-        <IconTile emoji={typeIcon(group.dayType)} tint={tint} />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[15px] font-black text-ink">{group.title}</p>
-          <p className="truncate text-xs font-bold text-muted">
-            {DAY_TYPE_LABELS[group.dayType]} · {plural(group.count, "session")} · last{" "}
-            {formatShortDate(group.lastDate)}
-          </p>
-        </div>
-        {/* The day's own metric across every repeat — the trend at a glance. */}
-        <Sparkline values={group.series} color={tint} width={70} height={24} />
-        <Icon.chevron
-          className={`h-4 w-4 shrink-0 text-muted transition-transform ${open ? "rotate-90" : ""}`}
-        />
-      </button>
-
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <TrendPill pct={group.trendPct} metric={DAY_METRIC_LABELS[group.metric]} />
-        {group.avgRpe !== null && <Pill tint={tint}>avg RPE {group.avgRpe}</Pill>}
-      </div>
-
-      <div className="mt-3 grid grid-cols-3 gap-2">
-        <Figure
-          label={`Avg ${DAY_METRIC_LABELS[group.metric]}`}
-          value={formatDayMetric(group.metric, group.avgValue)}
-        />
-        <Figure label="Best" value={formatDayMetric(group.metric, group.bestValue)} />
-        <Figure label="Total sets" value={String(group.totalSets)} />
-      </div>
-
-      {open && (
-        <div className="mt-3 border-t border-line pt-3">
-          {/* The same exercise × session grid the Plans tab uses, scoped to this
-              day — so every repeat of it sits side by side in one row. */}
-          <p className="mb-1.5 text-[10px] font-black uppercase tracking-wide text-muted">
-            Across every {group.title}
-          </p>
-          <div className="mb-3">
-            <LogTable
-              table={table}
-              onOpenExercise={onOpenExercise}
-              emptyMessage={`Nothing logged against ${group.title} yet.`}
-            />
-          </div>
-
-          <p className="mb-1.5 text-[10px] font-black uppercase tracking-wide text-muted">
-            Every session
-          </p>
-          <div className="space-y-1">
-            {group.sessions.map((entry) => (
-              <button
-                key={entry.session.id}
-                onClick={() => onOpenSession(entry.session.id)}
-                className="flex w-full items-baseline gap-2 rounded-xl bg-inset px-3 py-1.5 text-left"
-              >
-                <span className="shrink-0 text-xs font-black text-ink">
-                  {formatShortDate(entry.session.date)}
-                </span>
-                <span className="min-w-0 flex-1 truncate text-[11px] font-semibold text-muted">
-                  {plural(entry.sets, "set")}
-                  {entry.rpe !== null && ` · RPE ${entry.rpe}`}
-                </span>
-                <span className="shrink-0 text-[11px] font-black text-ink">
-                  {formatDayMetric(group.metric, metricValue(group.metric, entry))}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-    </Card>
-  );
-}
-
-/** One session's value under whichever metric its day is judged on. */
-function metricValue(metric: DayGroup["metric"], entry: DaySession): number {
-  switch (metric) {
-    case "volume":
-      return entry.volume;
-    case "distance":
-      return entry.distanceKm;
-    case "duration":
-      return entry.durationSec;
-    case "sets":
-      return entry.sets;
-  }
-}
-
-function Figure({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl bg-inset px-2.5 py-2">
-      <p className="text-[10px] font-black uppercase tracking-wide text-muted">{label}</p>
-      <p className="truncate text-sm font-black text-ink">{value}</p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <TrendPill pct={group.trendPct} metric={DAY_METRIC_LABELS[group.metric]} />
+              <Pill tint="var(--t-muted)">
+                avg {formatDayMetric(group.metric, group.avgValue)}
+              </Pill>
+              {group.avgRpe !== null && <Pill tint={tint}>avg RPE {group.avgRpe}</Pill>}
+            </div>
+          </Card>
+        );
+      })}
     </div>
   );
 }

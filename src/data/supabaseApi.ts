@@ -143,7 +143,9 @@ function toPlan(r: Row): Plan {
     is_active: bool(r.is_active, true),
     is_archived: bool(r.is_archived),
     start_date: str(r.start_date, localDate()),
+    end_date: (r.end_date as string) ?? null,
     weeks: num(r.weeks, 1),
+    repeat_mode: str(r.repeat_mode, "auto") === "custom" ? "custom" : "auto",
     schedule_mode: str(r.schedule_mode, "weekly") === "cycle" ? "cycle" : "weekly",
     cycle_length: num(r.cycle_length, 0),
     icon_name: str(r.icon_name),
@@ -360,6 +362,7 @@ function toAssignment(r: Row): PlanAssignment {
     plan_id: str(r.plan_id),
     athlete_id: str(r.athlete_id),
     start_date: (r.start_date as string) ?? null,
+    end_date: (r.end_date as string) ?? null,
     status: str(r.status, "active") as PlanAssignment["status"],
     accepted_at: (r.accepted_at as string) ?? null,
     created_at: (r.created_at as string) ?? undefined,
@@ -779,6 +782,13 @@ export const supabaseApi: Api = {
     write(
       "update the plan assignment",
       await supabase.from("plan_assignments").update(patch).eq("id", assignmentId),
+    );
+  },
+
+  async setAssignmentDates(assignmentId, dates) {
+    write(
+      "update the plan dates",
+      await supabase.from("plan_assignments").update(dates).eq("id", assignmentId),
     );
   },
 

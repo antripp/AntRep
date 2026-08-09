@@ -22,6 +22,8 @@ import { ExercisesTab } from "./ExercisesTab";
 import { OverviewTab } from "./OverviewTab";
 import { PlansTab } from "./PlansTab";
 import { SessionDetail } from "./SessionDetail";
+import { groupSessionsByDay } from "../../domain/dayTrends";
+import { DayDetail } from "./DayDetail";
 import { DaysTab } from "./DaysTab";
 import { useProgressScope } from "./useProgressScope";
 
@@ -74,6 +76,7 @@ export function ProgressBody({
   // take over the whole screen without losing the plan you came from.
   const [openPlanId, setOpenPlanId] = useState<string | null>(null);
   const [openSessionId, setOpenSessionId] = useState<string | null>(null);
+  const [openDayKey, setOpenDayKey] = useState<string | null>(null);
 
   const scope = useProgressScope({ sessions: allSessions, logs: allLogs, plans });
   const { activeBundle, scopePlans, sessions, logs } = scope;
@@ -90,6 +93,10 @@ export function ProgressBody({
   );
 
   const openStat = openKey ? (stats.find((s) => s.key === openKey) ?? null) : null;
+  // Regrouped rather than stashed, so an import or a fresh log shows up in the
+  // open day without having to back out and re-enter it.
+  const dayGroups = useMemo(() => groupSessionsByDay(sessions, logs), [sessions, logs]);
+  const openDay = openDayKey ? (dayGroups.find((g) => g.key === openDayKey) ?? null) : null;
   const openSession = openSessionId
     ? (sessions.find((s) => s.id === openSessionId) ?? null)
     : null;
@@ -111,6 +118,19 @@ export function ProgressBody({
     setOpenPlanId(null);
     setOpenSessionId(null);
     setOpenKey(null);
+    setOpenDayKey(null);
+  }
+
+  if (openDay) {
+    return (
+      <DayDetail
+        group={openDay}
+        logs={logs}
+        onBack={() => setOpenDayKey(null)}
+        onOpenSession={setOpenSessionId}
+        onOpenExercise={setOpenKey}
+      />
+    );
   }
 
   if (openStat) {
@@ -223,12 +243,7 @@ export function ProgressBody({
           )}
 
           {tab === "days" && (
-            <DaysTab
-              sessions={sessions}
-              logs={logs}
-              onOpenSession={setOpenSessionId}
-              onOpenExercise={setOpenKey}
-            />
+            <DaysTab sessions={sessions} logs={logs} onOpenDay={setOpenDayKey} />
           )}
 
           {tab === "exercises" && <ExercisesTab stats={stats} onOpenExercise={setOpenKey} />}

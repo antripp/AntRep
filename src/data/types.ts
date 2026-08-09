@@ -188,6 +188,8 @@ export interface CoachLink {
  */
 export type ScheduleMode = "weekly" | "cycle";
 
+export type RepeatMode = "auto" | "custom";
+
 export interface Plan {
   id: string;
   owner_id: string;
@@ -196,7 +198,16 @@ export interface Plan {
   is_active: boolean;
   is_archived: boolean;
   start_date: string;
+  /** Optional last day. Past it the plan stops scheduling and becomes a past plan. */
+  end_date: string | null;
   weeks: number;
+  /**
+   * 'auto' repeats the first block for the plan's whole life; 'custom' cycles
+   * through every block. The block count alone can't say which is meant — four
+   * weeks with only week 1 filled in is "repeat this week", not "three blank
+   * weeks then back to the first".
+   */
+  repeat_mode: RepeatMode;
   schedule_mode: ScheduleMode;
   /** Days per cycle in `cycle` mode; 0 when the plan runs on weeks. */
   cycle_length: number;
@@ -282,6 +293,8 @@ export interface PlanAssignment {
   plan_id: string;
   athlete_id: string;
   start_date: string | null;
+  /** Per-athlete end override, so ending one run doesn't end everyone's. */
+  end_date: string | null;
   status: "offered" | "active" | "declined";
   accepted_at: string | null;
   created_at?: string;

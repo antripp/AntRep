@@ -127,7 +127,7 @@ export function slotFields(
 
 /** Which program week of the plan applies on `date` (1-based, cycles). */
 export function planWeekIndex(
-  plan: { start_date: string; weeks: number },
+  plan: Pick<Plan, "start_date" | "weeks" | "repeat_mode">,
   date: Date,
   startOverride?: string | null,
 ): number {
@@ -137,8 +137,7 @@ export function planWeekIndex(
   const target = startOfWeek(date);
   const diffWeeks = Math.round((target.getTime() - start.getTime()) / (7 * 86400000));
   if (diffWeeks < 0) return 1;
-  const weeks = Math.max(1, plan.weeks || 1);
-  return (diffWeeks % weeks) + 1;
+  return (diffWeeks % blockCount(plan)) + 1;
 }
 
 /**
@@ -200,8 +199,72 @@ export function occurrenceDate(
 // `blockCount` / `blockLabel` so a 4 × 9-day plan reads as "Split 3", not
 // "Week 3".
 
-export function blockCount(plan: Pick<Plan, "weeks">): number {
+/**
+ * How many blocks actually get scheduled.
+ *
+ * An 'auto' plan repeats its first block forever however many the editor holds,
+ * so it schedules exactly one. Everything downstream — the modulo that picks
+ * today's block, the chips, the day board — follows from this.
+ */
+export function blockCount(plan: Pick<Plan, "weeks" | "repeat_mode">): number {
+  if (plan.repeat_mode !== "custom") return 1;
   return Math.max(1, plan.weeks || 1);
+}
+
+/** Blocks the editor holds, which an 'auto' plan may have more of than it runs. */
+export function editableBlockCount(plan: Pick<Plan, "weeks">): number {
+  return Math.max(1, plan.weeks || 1);
+}
+
+/** The dates one athlete's run of a shared plan uses, when it differs. */
+export interface PlanRun {
+  start_date: string | null;
+  end_date: string | null;
+}
+
+/**
+ * The last day this plan schedules for one athlete.
+ *
+ * An assignment's own end date wins, so a coach can wind one athlete's run down
+ * without touching anyone else following the same plan.
+ *
+ * A run that BEGINS after the plan's end date ignores that end date entirely.
+ * That is what a restart is: the coach moved this athlete's start to today, and
+ * the plan-level end belongs to the earlier timeline. Inheriting it would end
+ * the new run before its first session.
+ */
+export function planEnd(plan: Pick<Plan, "end_date">, run?: PlanRun | null): string | null {
+  if (run?.end_date) return run.end_date;
+  if (plan.end_date && run?.start_date && run.start_date > plan.end_date) return null;
+  return plan.end_date ?? null;
+}
+
+/** Has this plan run past its end date? Never true for an open-ended plan. */
+export function planHasEnded(
+  plan: Pick<Plan, "end_date">,
+  today: Date | string = new Date(),
+  run?: PlanRun | null,
+): boolean {
+  const end = planEnd(plan, run);
+  if (!end) return false;
+  const day = typeof today === "string" ? today : localDate(today);
+  return day > end;
+}
+
+/**
+ * Should this plan drive today's schedule?
+ *
+ * Being active is a setting; having ended is a fact about the calendar. Both
+ * have to hold, and keeping them separate is what lets a finished plan stay
+ * readable in past plans instead of being switched off and forgotten.
+ */
+export function planIsLive(
+  plan: Pick<Plan, "end_date" | "is_active" | "is_archived">,
+  today: Date | string = new Date(),
+  run?: PlanRun | null,
+): boolean {
+  if (!plan.is_active || plan.is_archived) return false;
+  return !planHasEnded(plan, today, run);
 }
 
 /** "Week 3" for a calendar plan, "Split 3" for a custom cycle. */
@@ -222,7 +285,7 @@ export function blockLabel(
  * Monday, but the modulo is the same idea.
  */
 export function planBlockIndex(
-  plan: Pick<Plan, "start_date" | "weeks" | "schedule_mode" | "cycle_length">,
+  plan: Pick<Plan, "start_date" | "weeks" | "repeat_mode" | "schedule_mode" | "cycle_length">,
   date: Date,
   startOverride?: string | null,
 ): number {

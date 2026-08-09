@@ -11,7 +11,14 @@ import { lifetimeTotals, recentRecords, exerciseStats, weeklySeries } from "../.
 import { compactKg } from "../../domain/text";
 import { AdherenceBars, Sparkline } from "../../ui/charts";
 import { loggedSessionIds, progressFor, sessionFor } from "../../domain/logging";
-import { dayForDate, resolveSegments, restDayPredicate, typeIcon } from "../../domain/plan";
+import {
+  dayForDate,
+  planEnd,
+  planIsLive,
+  resolveSegments,
+  restDayPredicate,
+  typeIcon,
+} from "../../domain/plan";
 import { plural } from "../../domain/text";
 import {
   Button,
@@ -81,6 +88,7 @@ export default function AthleteDetailScreen({
   }, [load]);
 
   const today = new Date();
+  const todayStr = localDate(today);
   const todaySegments = useMemo(() => {
     if (!training) return [];
     // Only plans the athlete is actually following drive "today".
@@ -112,6 +120,23 @@ export default function AthleteDetailScreen({
     await api.assignPlan(planId, athlete.profile.id);
     await Promise.all([onChanged(), load()]);
     onToast("Plan sent — the athlete syncs it from their Plans tab");
+  }
+
+  /**
+   * Put the athlete back on a finished plan, starting today.
+   *
+   * Only the assignment moves — the plan itself is shared, so restarting it for
+   * one athlete must not drag everyone else's dates with it.
+   */
+  async function restartFor(assignmentId: string, planName: string) {
+    try {
+      await api.setAssignmentDates(assignmentId, { start_date: todayStr, end_date: null });
+      await api.setAssignmentStatus(assignmentId, "active", todayStr);
+      await Promise.all([onChanged(), load()]);
+      onToast(`${planName} restarted from today`);
+    } catch (error) {
+      onToast(error instanceof Error ? error.message : "Couldn't restart that plan.");
+    }
   }
 
   async function unassign(assignmentId: string) {
@@ -292,13 +317,28 @@ export default function AthleteDetailScreen({
                           <button className="min-w-0 flex-1 text-left" onClick={() => setViewingPlan(bundle)}>
                             <p className="truncate text-sm font-black text-ink">{bundle.plan.name}</p>
                             <p className="text-xs font-bold text-muted">
-                              {assignment.status === "active"
-                                ? `Synced ${assignment.accepted_at ? formatShortDate(assignment.accepted_at.slice(0, 10)) : ""}`
-                                : assignment.status === "declined"
-                                  ? "Declined"
-                                  : "Waiting for the athlete to sync"}
+                              {!planIsLive(bundle.plan, todayStr, assignment)
+                                ? `Finished ${formatShortDate(
+                                    planEnd(bundle.plan, assignment) ?? bundle.plan.start_date,
+                                  )}`
+                                : assignment.status === "active"
+                                  ? `Synced ${assignment.accepted_at ? formatShortDate(assignment.accepted_at.slice(0, 10)) : ""}`
+                                  : assignment.status === "declined"
+                                    ? "Declined"
+                                    : "Waiting for the athlete to sync"}
                             </p>
                           </button>
+                          {/* Only the coach who wrote the plan can put an
+                              athlete back on it. */}
+                          {!planIsLive(bundle.plan, todayStr, assignment) && (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => restartFor(assignment.id, bundle.plan.name)}
+                            >
+                              Restart
+                            </Button>
+                          )}
                           <button className="text-xs font-black text-danger" onClick={() => unassign(assignment.id)}>
                             Remove
                           </button>

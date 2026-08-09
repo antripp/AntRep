@@ -21,6 +21,7 @@ import { makeSession } from "../data/factories";
 import type {
   ExercisePreset,
   ExtraExercise,
+  PlanAssignment,
   PlanBundle,
   PlanExercise,
   Profile,
@@ -28,6 +29,7 @@ import type {
   SetLog,
 } from "../data/types";
 import { localDate } from "../domain/dates";
+import { planEnd, planIsLive } from "../domain/plan";
 import { exerciseXp, XP } from "../domain/gamification";
 import { nameKey, namesMatch, progressFor, sessionFor } from "../domain/logging";
 import type { ImportSession } from "../domain/importLog";
@@ -37,6 +39,12 @@ import type { ResolvedSegment } from "../domain/plan";
 export interface PlanView {
   bundle: PlanBundle;
   start: string;
+  /** Effective last day — the assignment's override, else the plan's. */
+  end?: string | null;
+  /** Set when the plan reaches this athlete through a coach. */
+  assignment?: PlanAssignment | null;
+  /** False once the end date has passed, or the plan was switched off. */
+  live?: boolean;
 }
 
 interface WorkspaceValue {
@@ -47,6 +55,8 @@ interface WorkspaceValue {
   bundles: PlanBundle[];
   /** The same plans, with the start date that applies — a plan schedules nothing before it began. */
   planViews: PlanView[];
+  /** Finished plans: still readable, still restartable, scheduling nothing. */
+  pastViews: PlanView[];
   /** Every plan the athlete has ever followed, for reading back old sessions. */
   allBundles: PlanBundle[];
   sessions: Session[];
@@ -116,19 +126,39 @@ export function WorkspaceProvider({ profile, children }: { profile: Profile; chi
     });
   }, [reload]);
 
-  /** Own active plan + coach plans the athlete has synced, with their start dates. */
-  const planViews = useMemo<PlanView[]>(() => {
+  /**
+   * Every plan the athlete follows, running or finished, with the dates that
+   * apply to them. A finished plan keeps its entry so it can still be read —
+   * `live` is what decides whether it schedules anything today.
+   */
+  const allViews = useMemo<PlanView[]>(() => {
+    const today = localDate();
     const own = workspace.ownPlans
-      .filter((b) => b.plan.is_active && !b.plan.is_archived)
-      .map((bundle) => ({ bundle, start: bundle.plan.start_date }));
+      .filter((b) => !b.plan.is_archived)
+      .map((bundle) => ({
+        bundle,
+        start: bundle.plan.start_date,
+        end: bundle.plan.end_date,
+        assignment: null,
+        live: planIsLive(bundle.plan, today),
+      }));
     const synced = workspace.assigned
-      .filter((a) => a.assignment.status === "active" && a.bundle.plan.is_active)
+      .filter((a) => a.assignment.status === "active")
       .map((a) => ({
         bundle: a.bundle,
         start: a.assignment.start_date ?? a.bundle.plan.start_date,
+        end: planEnd(a.bundle.plan, a.assignment),
+        assignment: a.assignment,
+        live: planIsLive(a.bundle.plan, today, a.assignment),
       }));
     return [...synced, ...own];
   }, [workspace]);
+
+  /** The plans that drive Home and today's schedule. */
+  const planViews = useMemo(() => allViews.filter((v) => v.live), [allViews]);
+
+  /** Ran its course — readable, restartable, but scheduling nothing. */
+  const pastViews = useMemo(() => allViews.filter((v) => !v.live), [allViews]);
 
   const bundles = useMemo(() => planViews.map((p) => p.bundle), [planViews]);
 
@@ -400,6 +430,7 @@ export function WorkspaceProvider({ profile, children }: { profile: Profile; chi
       workspace,
       bundles,
       planViews,
+      pastViews,
       allBundles,
       sessions: workspace.sessions,
       logs: workspace.logs,
@@ -429,6 +460,7 @@ export function WorkspaceProvider({ profile, children }: { profile: Profile; chi
       workspace,
       bundles,
       planViews,
+      pastViews,
       allBundles,
       reload,
       sessionForSegment,

@@ -13,12 +13,14 @@ import {
   type PlanBundle,
   type PlanDay,
   type PlanExercise,
+  type RepeatMode,
   type ScheduleMode,
   type SetDetail,
 } from "../../data/types";
 import {
   blockCount,
   blockLabel,
+  editableBlockCount,
   isCyclePlan,
   planSlots,
   resolveSegments,
@@ -73,6 +75,7 @@ export function PlanEditor({
   const [editingDay, setEditingDay] = useState<string | null>(null);
 
   const cycle = isCyclePlan(bundle.plan);
+  const auto = bundle.plan.repeat_mode !== "custom";
   const slots = planSlots(bundle.plan);
 
   /** One entry per slot of the block on screen — `null` where nothing is set up. */
@@ -138,6 +141,25 @@ export function PlanEditor({
     setWeek(1);
   }
 
+  /**
+   * Switch between repeating the first block and cycling through several.
+   *
+   * Going custom seeds a second block from the first, because "varying blocks"
+   * with one block is the state the user just left. Going back to auto keeps
+   * the extra blocks on the row rather than deleting them — the plan simply
+   * stops scheduling them, so flipping back and forth costs no work.
+   */
+  function setRepeatMode(mode: RepeatMode) {
+    if (mode === bundle.plan.repeat_mode) return;
+    setWeek(1);
+    if (mode === "auto") {
+      onChange({ ...bundle, plan: { ...bundle.plan, repeat_mode: "auto" } });
+      return;
+    }
+    updatePlan({ repeat_mode: "custom" });
+    if (editableBlockCount(bundle.plan) < 2) setWeeks(2, "custom");
+  }
+
   /** Grow or shrink the cycle, dropping any day that falls off the end. */
   function setCycleLength(count: number) {
     const length = Math.max(2, Math.min(60, count));
@@ -160,7 +182,7 @@ export function PlanEditor({
    * "4" straight into the field produced a plan claiming four blocks with two
    * of them empty.
    */
-  function setWeeks(count: number) {
+  function setWeeks(count: number, repeatMode: RepeatMode = bundle.plan.repeat_mode) {
     const weeks = Math.max(1, Math.min(52, count));
     const days = bundle.days.filter((d) => d.week_index <= weeks);
     const segments = [...bundle.segments];
@@ -204,7 +226,7 @@ export function PlanEditor({
     const keptIds = new Set(days.map((d) => d.id));
     onChange({
       ...bundle,
-      plan: { ...bundle.plan, weeks },
+      plan: { ...bundle.plan, weeks, repeat_mode: repeatMode },
       days,
       segments: segments.filter((s) => keptIds.has(s.plan_day_id)),
       exercises: exercises.filter((e) => keptIds.has(e.plan_day_id)),
@@ -255,6 +277,30 @@ export function PlanEditor({
               onChange={(e) => updatePlan({ start_date: e.target.value })}
             />
           </Field>
+          {/* Optional: an open-ended plan is still the common case, so this
+              stays empty until someone means it. */}
+          <Field
+            label="Ends"
+            hint={
+              bundle.plan.end_date
+                ? "Moves to past plans after this day"
+                : "Optional — runs until you stop it"
+            }
+          >
+            <div className="flex items-center gap-1.5">
+              <TextField
+                type="date"
+                value={bundle.plan.end_date ?? ""}
+                min={bundle.plan.start_date}
+                onChange={(e) => updatePlan({ end_date: e.target.value || null })}
+              />
+              {bundle.plan.end_date && (
+                <IconButton label="Clear end date" onClick={() => updatePlan({ end_date: null })}>
+                  <Icon.close className="h-4 w-4" />
+                </IconButton>
+              )}
+            </div>
+          </Field>
           {cycle && (
             <Field label="Days per split" hint="Starts over on the next day">
               <NumberField
@@ -265,8 +311,30 @@ export function PlanEditor({
               />
             </Field>
           )}
-          {/* Both modes repeat in blocks; only the length of a block differs.
-              4 splits of 9 days is 36 days before the plan starts over. */}
+        </div>
+
+        {/* How the plan repeats. The block count alone can't say: four weeks
+            with only week 1 filled in means "repeat this week", not "three
+            blank weeks then back to the first". */}
+        <Field
+          label="Repeats"
+          hint={
+            auto
+              ? `The same ${cycle ? "split" : "week"} runs again every time`
+              : `${blockCount(bundle.plan)} ${cycle ? "splits" : "weeks"} in turn, then back to the first`
+          }
+        >
+          <Segmented
+            value={bundle.plan.repeat_mode}
+            onChange={setRepeatMode}
+            options={[
+              { value: "auto", label: cycle ? "Same split" : "Same week" },
+              { value: "custom", label: "Varying blocks" },
+            ]}
+          />
+        </Field>
+
+        {!auto && (
           <Field
             label={cycle ? "Splits in the plan" : "Week blocks"}
             hint={
@@ -275,9 +343,9 @@ export function PlanEditor({
                 : "Weeks cycle after the last one"
             }
           >
-            <NumberField value={bundle.plan.weeks} min={1} max={52} onChange={(v) => setWeeks(v ?? 1)} />
+            <NumberField value={bundle.plan.weeks} min={2} max={52} onChange={(v) => setWeeks(v ?? 2)} />
           </Field>
-        </div>
+        )}
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm font-bold text-ink">Active plan</p>

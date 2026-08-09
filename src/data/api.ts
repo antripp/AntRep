@@ -121,6 +121,14 @@ export interface Api {
     status: PlanAssignment["status"],
     startDate?: string | null,
   ): Promise<void>;
+  /**
+   * Move one athlete's run of a plan. Separate from the plan's own dates so a
+   * coach can restart or end a shared plan for one person only.
+   */
+  setAssignmentDates(
+    assignmentId: string,
+    dates: { start_date?: string | null; end_date?: string | null },
+  ): Promise<void>;
 
   // ---- sessions ----
   saveSession(session: Session): Promise<Session>;
