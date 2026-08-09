@@ -7,6 +7,7 @@ import { makePlan, makePreset, newId } from "../../data/factories";
 import type { PlanBundle } from "../../data/types";
 import { localDate, startOfWeek } from "../../domain/dates";
 import {
+  blockCount,
   emptyDays,
   isCyclePlan,
   planSlots,
@@ -249,10 +250,14 @@ export default function PlansScreen() {
   );
 }
 
-/** "3 weeks" / "9-day split" — how a plan repeats, in a phrase. */
+/** "3 weeks" / "9-day split × 4" — how a plan repeats, in a phrase. */
 export function planShape(bundle: PlanBundle): string {
-  if (isCyclePlan(bundle.plan)) return `${bundle.plan.cycle_length}-day split`;
-  return plural(bundle.plan.weeks, "week");
+  const blocks = blockCount(bundle.plan);
+  if (isCyclePlan(bundle.plan)) {
+    const base = `${bundle.plan.cycle_length}-day split`;
+    return blocks > 1 ? `${base} × ${blocks}` : base;
+  }
+  return plural(blocks, "week");
 }
 
 /**
@@ -261,9 +266,10 @@ export function planShape(bundle: PlanBundle): string {
  */
 export function WeekStrip({ bundle }: { bundle: PlanBundle }) {
   const cycle = isCyclePlan(bundle.plan);
-  const pool = cycle
-    ? bundle.days.filter((d) => d.cycle_day !== null)
-    : bundle.days.filter((d) => d.cycle_day === null && d.week_index === 1);
+  // The first block: this strip is a shape preview, not the whole programme.
+  const pool = bundle.days.filter(
+    (d) => (cycle ? d.cycle_day !== null : d.cycle_day === null) && d.week_index === 1,
+  );
   const slots = planSlots(bundle.plan);
   const scrolls = slots.length > 7;
 

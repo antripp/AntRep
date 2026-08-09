@@ -376,9 +376,10 @@ export function RpeSlider({
   target?: number | null;
   compact?: boolean;
 }) {
-  const MIN = 5;
+  const MIN = 0;
   const MAX = 10;
-  const rated = value !== null && value > 0;
+  // 0 is a real rating, so only null counts as unrated.
+  const rated = value !== null;
   const shown = rated ? value : 7;
   const pct = ((shown - MIN) / (MAX - MIN)) * 100;
   const targetPct =

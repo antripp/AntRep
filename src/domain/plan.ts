@@ -190,20 +190,64 @@ export function occurrenceDate(
   return localDate(addDays(start, offset + nth * 7));
 }
 
+// ------------------------------------------------------------------
+// Blocks — how many passes the plan runs before repeating itself
+// ------------------------------------------------------------------
+//
+// `plan.weeks` counts the blocks in BOTH modes. A weekly plan's block is one
+// calendar week; a cycle's block is one pass through `cycle_length` days. The
+// column keeps its name for compatibility, but every screen should go through
+// `blockCount` / `blockLabel` so a 4 × 9-day plan reads as "Split 3", not
+// "Week 3".
+
+export function blockCount(plan: Pick<Plan, "weeks">): number {
+  return Math.max(1, plan.weeks || 1);
+}
+
+/** "Week 3" for a calendar plan, "Split 3" for a custom cycle. */
+export function blockLabel(
+  plan: Pick<Plan, "schedule_mode" | "cycle_length">,
+  index: number,
+  short = false,
+): string {
+  const noun = isCyclePlan(plan) ? "Split" : "Week";
+  return short ? `${noun.charAt(0)}${index}` : `${noun} ${index}`;
+}
+
+/**
+ * Which block of the plan `date` falls in, 1-based, cycling.
+ *
+ * The unified form of `planWeekIndex`: a cycle's blocks are `cycle_length` days
+ * long rather than 7 and are counted from the start date rather than from a
+ * Monday, but the modulo is the same idea.
+ */
+export function planBlockIndex(
+  plan: Pick<Plan, "start_date" | "weeks" | "schedule_mode" | "cycle_length">,
+  date: Date,
+  startOverride?: string | null,
+): number {
+  if (!isCyclePlan(plan)) return planWeekIndex(plan, date, startOverride);
+
+  const startStr = startOverride ?? plan.start_date;
+  if (!startStr) return 1;
+  const offset = daysBetween(startStr, localDate(date));
+  if (offset < 0) return 1;
+  return (Math.floor(offset / slotCount(plan)) % blockCount(plan)) + 1;
+}
+
 /** The plan's days that are in play on `date`, in slot order. */
 export function daysForDate(bundle: PlanBundle, date: Date, startOverride?: string | null): PlanDay[] {
   const { plan } = bundle;
   const bySlot = (a: PlanDay, b: PlanDay) => slotIndex(plan, a) - slotIndex(plan, b);
+  const block = planBlockIndex(plan, date, startOverride);
 
-  // A cycle has no week blocks — every day of the cycle is always in play.
-  if (isCyclePlan(plan)) {
-    return [...bundle.days].filter((d) => d.cycle_day !== null).sort(bySlot);
-  }
-
-  const week = planWeekIndex(plan, date, startOverride);
-  const weekly = bundle.days.filter((d) => d.cycle_day === null);
-  const inWeek = weekly.filter((d) => d.week_index === week);
-  const source = inWeek.length > 0 ? inWeek : weekly.filter((d) => d.week_index === 1);
+  const pool = bundle.days.filter((d) =>
+    isCyclePlan(plan) ? d.cycle_day !== null : d.cycle_day === null,
+  );
+  // A plan whose later blocks were never filled in falls back to the first, so
+  // "4 splits" doesn't leave three of them blank until they're edited.
+  const inBlock = pool.filter((d) => d.week_index === block);
+  const source = inBlock.length > 0 ? inBlock : pool.filter((d) => d.week_index === 1);
   return [...source].sort(bySlot);
 }
 

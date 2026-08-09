@@ -13,26 +13,28 @@ import { DAY_TYPE_COLORS, DAY_TYPE_LABELS } from "../../data/types";
 import { formatShortDate } from "../../domain/dates";
 import {
   DAY_METRIC_LABELS,
-  dayGroupExercises,
   formatDayMetric,
   groupSessionsByDay,
   type DayGroup,
   type DaySession,
 } from "../../domain/dayTrends";
 import { typeIcon } from "../../domain/plan";
-import { formatVolume } from "../../domain/sessionTable";
+import { buildLogTable } from "../../domain/planLog";
 import { plural } from "../../domain/text";
 import { Sparkline } from "../../ui/charts";
 import { Card, EmptyState, Icon, IconTile, Pill } from "../../ui/kit";
+import { LogTable } from "../shared/LogTable";
 
 export function DaysTab({
   sessions,
   logs,
   onOpenSession,
+  onOpenExercise,
 }: {
   sessions: Session[];
   logs: SetLog[];
   onOpenSession: (id: string) => void;
+  onOpenExercise: (name: string) => void;
 }) {
   const groups = useMemo(() => groupSessionsByDay(sessions, logs), [sessions, logs]);
   const [openKey, setOpenKey] = useState<string | null>(null);
@@ -56,6 +58,7 @@ export function DaysTab({
           open={openKey === group.key}
           onToggle={() => setOpenKey(openKey === group.key ? null : group.key)}
           onOpenSession={onOpenSession}
+          onOpenExercise={onOpenExercise}
         />
       ))}
     </div>
@@ -82,16 +85,24 @@ function DayGroupCard({
   open,
   onToggle,
   onOpenSession,
+  onOpenExercise,
 }: {
   group: DayGroup;
   logs: SetLog[];
   open: boolean;
   onToggle: () => void;
   onOpenSession: (id: string) => void;
+  onOpenExercise: (name: string) => void;
 }) {
   const tint = DAY_TYPE_COLORS[group.dayType] ?? "var(--t-accent)";
-  const exercises = useMemo(
-    () => (open ? dayGroupExercises(group, logs) : []),
+  // Built only while expanded — one grid per group up front would walk every
+  // log in the workspace for cards nobody has opened.
+  const table = useMemo(
+    () =>
+      buildLogTable({
+        sessions: open ? group.sessions.map((s) => s.session) : [],
+        logs: open ? logs : [],
+      }),
     [open, group, logs],
   );
 
@@ -129,32 +140,18 @@ function DayGroupCard({
 
       {open && (
         <div className="mt-3 border-t border-line pt-3">
-          {exercises.length > 0 && (
-            <>
-              <p className="mb-1.5 text-[10px] font-black uppercase tracking-wide text-muted">
-                Across every {group.title}
-              </p>
-              <div className="mb-3 space-y-1">
-                {exercises.slice(0, 8).map((exercise) => (
-                  <div
-                    key={exercise.name}
-                    className="flex items-baseline gap-2 rounded-xl bg-inset px-3 py-1.5"
-                  >
-                    <span className="min-w-0 flex-1 truncate text-xs font-bold text-ink">
-                      {exercise.name}
-                    </span>
-                    <span className="shrink-0 text-[11px] font-semibold text-muted">
-                      {plural(exercise.sets, "set")}
-                      {exercise.bestWeight > 0 && ` · best ${exercise.bestWeight} kg`}
-                    </span>
-                    <span className="shrink-0 text-[11px] font-black text-ink">
-                      {formatVolume(exercise.volume)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
+          {/* The same exercise × session grid the Plans tab uses, scoped to this
+              day — so every repeat of it sits side by side in one row. */}
+          <p className="mb-1.5 text-[10px] font-black uppercase tracking-wide text-muted">
+            Across every {group.title}
+          </p>
+          <div className="mb-3">
+            <LogTable
+              table={table}
+              onOpenExercise={onOpenExercise}
+              emptyMessage={`Nothing logged against ${group.title} yet.`}
+            />
+          </div>
 
           <p className="mb-1.5 text-[10px] font-black uppercase tracking-wide text-muted">
             Every session

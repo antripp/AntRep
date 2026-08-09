@@ -206,24 +206,3 @@ export function groupSessionsByDay(sessions: Session[], logs: SetLog[]): DayGrou
 
   return out.sort((a, b) => b.count - a.count || b.lastDate.localeCompare(a.lastDate));
 }
-
-/** Per-exercise totals inside one grouped day, best lift first. */
-export function dayGroupExercises(
-  group: DayGroup,
-  logs: SetLog[],
-): { name: string; sets: number; volume: number; bestWeight: number }[] {
-  const ids = new Set(group.sessions.map((s) => s.session.id));
-  const byName = new Map<string, { name: string; sets: number; volume: number; bestWeight: number }>();
-
-  for (const log of logs) {
-    if (!ids.has(log.session_id) || !setHasData(log)) continue;
-    const key = nameKey(log.exercise_name);
-    const row = byName.get(key) ?? { name: log.exercise_name, sets: 0, volume: 0, bestWeight: 0 };
-    row.sets += 1;
-    row.volume += (log.weight_kg ?? 0) * (log.reps ?? 0);
-    row.bestWeight = Math.max(row.bestWeight, log.weight_kg ?? 0);
-    byName.set(key, row);
-  }
-
-  return [...byName.values()].sort((a, b) => b.volume - a.volume);
-}

@@ -223,7 +223,12 @@ export function ProgressBody({
           )}
 
           {tab === "days" && (
-            <DaysTab sessions={sessions} logs={logs} onOpenSession={setOpenSessionId} />
+            <DaysTab
+              sessions={sessions}
+              logs={logs}
+              onOpenSession={setOpenSessionId}
+              onOpenExercise={setOpenKey}
+            />
           )}
 
           {tab === "exercises" && <ExercisesTab stats={stats} onOpenExercise={setOpenKey} />}

@@ -17,6 +17,8 @@ import {
   type SetDetail,
 } from "../../data/types";
 import {
+  blockCount,
+  blockLabel,
   isCyclePlan,
   planSlots,
   resolveSegments,
@@ -73,12 +75,12 @@ export function PlanEditor({
   const cycle = isCyclePlan(bundle.plan);
   const slots = planSlots(bundle.plan);
 
-  /** One entry per slot of the plan — `null` where nothing has been set up yet. */
+  /** One entry per slot of the block on screen — `null` where nothing is set up. */
   const slotDays = useMemo(() => {
-    // A cycle has no week blocks, so every cycle day is always on screen.
-    const pool = cycle
-      ? bundle.days.filter((d) => d.cycle_day !== null)
-      : bundle.days.filter((d) => d.cycle_day === null && d.week_index === week);
+    // Both modes block by `week_index`; only the length of a block differs.
+    const pool = bundle.days.filter(
+      (d) => (cycle ? d.cycle_day !== null : d.cycle_day === null) && d.week_index === week,
+    );
     return slots.map((slot) => pool.find((d) => slotIndex(bundle.plan, d) === slot) ?? null);
   }, [bundle.days, bundle.plan, cycle, slots, week]);
 
@@ -90,7 +92,7 @@ export function PlanEditor({
     const existing = slotDays[slot - 1];
     if (existing) return existing;
     const day = makeDay(bundle.plan.id, slot, {
-      week_index: cycle ? 1 : week,
+      week_index: week,
       ...slotFields(bundle.plan, slot),
     });
     onChange({ ...bundle, days: [...bundle.days, day] });
@@ -102,7 +104,8 @@ export function PlanEditor({
    *
    * The days are re-addressed rather than thrown away: slot 1 stays slot 1, so
    * a 7-day week becomes days 1–7 of a cycle with all its exercises intact.
-   * Only weeks 2+ are dropped, since a cycle has no week blocks to hold them.
+   * Blocks 2+ are dropped and the count reset — the two modes measure a block
+   * differently, so carrying them across would silently change their length.
    */
   function setScheduleMode(mode: ScheduleMode) {
     if (mode === bundle.plan.schedule_mode) return;
@@ -149,40 +152,63 @@ export function PlanEditor({
     });
   }
 
+  /**
+   * Set how many blocks the plan runs — weeks, or passes through the split.
+   *
+   * Every missing block is filled in one pass. This used to build one block and
+   * return, which the +/− stepper hid because it only ever moves by one; typing
+   * "4" straight into the field produced a plan claiming four blocks with two
+   * of them empty.
+   */
   function setWeeks(count: number) {
     const weeks = Math.max(1, Math.min(52, count));
-    let days = bundle.days.filter((d) => d.week_index <= weeks);
-    // New weeks start as a copy of week 1 so a block is quick to tweak.
+    const days = bundle.days.filter((d) => d.week_index <= weeks);
+    const segments = [...bundle.segments];
+    const exercises = [...bundle.exercises];
+
+    // A new block starts as a copy of the first, so it is quick to tweak.
+    const base = bundle.days.filter((d) => d.week_index === 1);
     for (let w = 2; w <= weeks; w += 1) {
       if (days.some((d) => d.week_index === w)) continue;
-      const base = bundle.days.filter((d) => d.week_index === 1);
-      const copies = base.map((d) => ({ ...d, id: newId(), week_index: w }));
-      const idMap = new Map(base.map((d, i) => [d.id, copies[i].id]));
-      days = [...days, ...copies];
-      const segCopies = bundle.segments
-        .filter((s) => idMap.has(s.plan_day_id))
-        .map((s) => ({ ...s, id: newId(), plan_day_id: idMap.get(s.plan_day_id)! }));
-      const segMap = new Map(
-        bundle.segments.filter((s) => idMap.has(s.plan_day_id)).map((s, i) => [s.id, segCopies[i].id]),
-      );
-      const exCopies = bundle.exercises
-        .filter((e) => idMap.has(e.plan_day_id))
-        .map((e) => ({
-          ...e,
+
+      const dayIds = new Map<string, string>();
+      for (const day of base) {
+        const id = newId();
+        dayIds.set(day.id, id);
+        days.push({ ...day, id, week_index: w });
+      }
+
+      const segmentIds = new Map<string, string>();
+      for (const segment of bundle.segments) {
+        const dayId = dayIds.get(segment.plan_day_id);
+        if (!dayId) continue;
+        const id = newId();
+        segmentIds.set(segment.id, id);
+        segments.push({ ...segment, id, plan_day_id: dayId });
+      }
+
+      for (const exercise of bundle.exercises) {
+        const dayId = dayIds.get(exercise.plan_day_id);
+        if (!dayId) continue;
+        exercises.push({
+          ...exercise,
           id: newId(),
-          plan_day_id: idMap.get(e.plan_day_id)!,
-          plan_segment_id: e.plan_segment_id ? (segMap.get(e.plan_segment_id) ?? null) : null,
-        }));
-      onChange({
-        ...bundle,
-        plan: { ...bundle.plan, weeks },
-        days,
-        segments: [...bundle.segments, ...segCopies],
-        exercises: [...bundle.exercises, ...exCopies],
-      });
-      return;
+          plan_day_id: dayId,
+          plan_segment_id: exercise.plan_segment_id
+            ? (segmentIds.get(exercise.plan_segment_id) ?? null)
+            : null,
+        });
+      }
     }
-    onChange({ ...bundle, plan: { ...bundle.plan, weeks }, days });
+
+    const keptIds = new Set(days.map((d) => d.id));
+    onChange({
+      ...bundle,
+      plan: { ...bundle.plan, weeks },
+      days,
+      segments: segments.filter((s) => keptIds.has(s.plan_day_id)),
+      exercises: exercises.filter((e) => keptIds.has(e.plan_day_id)),
+    });
   }
 
   const editing = bundle.days.find((d) => d.id === editingDay) ?? null;
@@ -229,7 +255,7 @@ export function PlanEditor({
               onChange={(e) => updatePlan({ start_date: e.target.value })}
             />
           </Field>
-          {cycle ? (
+          {cycle && (
             <Field label="Days per split" hint="Starts over on the next day">
               <NumberField
                 value={bundle.plan.cycle_length}
@@ -238,11 +264,19 @@ export function PlanEditor({
                 onChange={(v) => setCycleLength(v ?? 2)}
               />
             </Field>
-          ) : (
-            <Field label="Week blocks" hint="Weeks cycle after the last one">
-              <NumberField value={bundle.plan.weeks} min={1} max={52} onChange={(v) => setWeeks(v ?? 1)} />
-            </Field>
           )}
+          {/* Both modes repeat in blocks; only the length of a block differs.
+              4 splits of 9 days is 36 days before the plan starts over. */}
+          <Field
+            label={cycle ? "Splits in the plan" : "Week blocks"}
+            hint={
+              cycle
+                ? `${blockCount(bundle.plan) * (bundle.plan.cycle_length || 0)} days, then back to split 1`
+                : "Weeks cycle after the last one"
+            }
+          >
+            <NumberField value={bundle.plan.weeks} min={1} max={52} onChange={(v) => setWeeks(v ?? 1)} />
+          </Field>
         </div>
         <div className="flex items-center justify-between">
           <div>
@@ -257,9 +291,9 @@ export function PlanEditor({
         </div>
       </Card>
 
-      {!cycle && bundle.plan.weeks > 1 && (
+      {blockCount(bundle.plan) > 1 && (
         <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1">
-          {Array.from({ length: bundle.plan.weeks }, (_, i) => i + 1).map((w) => (
+          {Array.from({ length: blockCount(bundle.plan) }, (_, i) => i + 1).map((w) => (
             <button
               key={w}
               onClick={() => setWeek(w)}
@@ -267,7 +301,7 @@ export function PlanEditor({
                 w === week ? "bg-accent text-white" : "border border-line bg-surface text-muted"
               }`}
             >
-              Week {w}
+              {blockLabel(bundle.plan, w)}
             </button>
           ))}
         </div>
@@ -965,9 +999,11 @@ function SetTargetsEditor({
 
 export function PlanSummaryPill({ bundle }: { bundle: PlanBundle }) {
   const exercises = bundle.exercises.length;
-  const firstPass = isCyclePlan(bundle.plan)
-    ? bundle.days.filter((d) => d.cycle_day !== null)
-    : bundle.days.filter((d) => d.cycle_day === null && d.week_index === 1);
+  // The first block only — later blocks are variations on it, and counting
+  // them all would report a 4-split plan as having four times the days.
+  const firstPass = bundle.days.filter(
+    (d) => (isCyclePlan(bundle.plan) ? d.cycle_day !== null : d.cycle_day === null) && d.week_index === 1,
+  );
   const trainingDays = new Set(
     firstPass.filter((d) => d.day_type !== "rest").map((d) => slotIndex(bundle.plan, d)),
   ).size;

@@ -5,6 +5,8 @@ import { DAY_TYPE_LABELS, type PlanBundle, type PlanDay } from "../../data/types
 import { formatShortDate } from "../../domain/dates";
 import { loggingSlots } from "../../domain/logging";
 import {
+  blockCount,
+  blockLabel,
   isCyclePlan,
   planSlots,
   resolveSegments,
@@ -32,12 +34,11 @@ export function PlanDetail({
 }) {
   const [week, setWeek] = useState(1);
   const cycle = isCyclePlan(bundle.plan);
-  // A cycle has no week blocks: all of its days are one pass through the split.
   // Walk the slots rather than the rows, so a day nobody has filled in yet
   // still shows as the rest day it is instead of going missing.
   const slots = useMemo(() => {
-    const pool = bundle.days.filter((d) =>
-      cycle ? d.cycle_day !== null : d.cycle_day === null && d.week_index === week,
+    const pool = bundle.days.filter(
+      (d) => (cycle ? d.cycle_day !== null : d.cycle_day === null) && d.week_index === week,
     );
     return planSlots(bundle.plan).map((slot) => ({
       slot,
@@ -64,7 +65,9 @@ export function PlanDetail({
             {subtitle ??
               `${
                 cycle
-                  ? `${bundle.plan.cycle_length}-day split`
+                  ? `${bundle.plan.cycle_length}-day split${
+                      blockCount(bundle.plan) > 1 ? ` × ${blockCount(bundle.plan)}` : ""
+                    }`
                   : plural(bundle.plan.weeks, "week")
               } · ${plural(bundle.exercises.length, "exercise")}`}
           </p>
@@ -79,11 +82,11 @@ export function PlanDetail({
       <Card className="mb-3">
         <div className="flex flex-wrap gap-x-6 gap-y-2">
           <Detail label="Starts" value={formatShortDate(bundle.plan.start_date)} />
-          {cycle ? (
-            <Detail label="Split length" value={`${bundle.plan.cycle_length} days`} />
-          ) : (
-            <Detail label="Week blocks" value={String(bundle.plan.weeks)} />
-          )}
+          {cycle && <Detail label="Split length" value={`${bundle.plan.cycle_length} days`} />}
+          <Detail
+            label={cycle ? "Splits" : "Week blocks"}
+            value={String(blockCount(bundle.plan))}
+          />
           <Detail label="Training days" value={String(trainingDays)} />
           <Detail label={cycle ? "Exercises / split" : "Exercises / week"} value={String(weekExercises)} />
           <Detail label="Status" value={bundle.plan.is_active ? "Active" : "Inactive"} />
@@ -95,9 +98,9 @@ export function PlanDetail({
         )}
       </Card>
 
-      {!cycle && bundle.plan.weeks > 1 && (
+      {blockCount(bundle.plan) > 1 && (
         <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1">
-          {Array.from({ length: bundle.plan.weeks }, (_, i) => i + 1).map((w) => (
+          {Array.from({ length: blockCount(bundle.plan) }, (_, i) => i + 1).map((w) => (
             <button
               key={w}
               onClick={() => setWeek(w)}
@@ -105,7 +108,7 @@ export function PlanDetail({
                 w === week ? "bg-accent text-white" : "border border-line bg-surface text-muted"
               }`}
             >
-              Week {w}
+              {blockLabel(bundle.plan, w)}
             </button>
           ))}
         </div>
@@ -113,10 +116,10 @@ export function PlanDetail({
 
       <SectionHeader
         title={
-          cycle
-            ? `The ${bundle.plan.cycle_length}-day split`
-            : bundle.plan.weeks > 1
-              ? `Week ${week}`
+          blockCount(bundle.plan) > 1
+            ? blockLabel(bundle.plan, week)
+            : cycle
+              ? `The ${bundle.plan.cycle_length}-day split`
               : "The week"
         }
       />

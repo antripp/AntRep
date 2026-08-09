@@ -405,7 +405,7 @@ export function ExerciseLogCard({
                         <Icon.check className="h-3 w-3" /> {targetText}
                       </button>
                     )}
-                    {logged && set.rpe ? (
+                    {logged && set.rpe !== null ? (
                       <span
                         className="rounded-full px-2 py-0.5 text-[10px] font-black"
                         style={{ background: `${rpeColor(set.rpe)}22`, color: rpeColor(set.rpe) }}
