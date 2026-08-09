@@ -373,20 +373,24 @@ grant execute on function public.can_read_segment(uuid) to authenticated;
 
 -- plans: owner (either role) has full control; readers per the helper above.
 drop policy if exists "plans_coach_all" on public.plans;
+drop policy if exists "plans_owner_all" on public.plans;
 create policy "plans_owner_all" on public.plans for all
   using (public.owns_any_profile(coalesce(owner_id, trainer_id)))
   with check (public.owns_any_profile(coalesce(owner_id, trainer_id)));
 
 drop policy if exists "plans_athlete_select" on public.plans;
+drop policy if exists "plans_shared_select" on public.plans;
 create policy "plans_shared_select" on public.plans for select
   using (public.can_athlete_read_plan(id));
 
 drop policy if exists "plan_days_coach_all" on public.plan_days;
+drop policy if exists "plan_days_owner_all" on public.plan_days;
 create policy "plan_days_owner_all" on public.plan_days for all
   using (public.is_plan_owner(plan_id))
   with check (public.is_plan_owner(plan_id));
 
 drop policy if exists "plan_exercises_coach_all" on public.plan_exercises;
+drop policy if exists "plan_exercises_owner_all" on public.plan_exercises;
 create policy "plan_exercises_owner_all" on public.plan_exercises for all
   using (exists (
     select 1 from public.plan_days d

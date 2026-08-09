@@ -99,12 +99,14 @@ revoke all on function public.coach_owns_session(uuid, uuid) from public, anon;
 grant execute on function public.coach_owns_session(uuid, uuid) to authenticated;
 
 -- Both sides read the reactions on their own link.
+drop policy if exists activity_reactions_select on public.activity_reactions;
 create policy activity_reactions_select on public.activity_reactions for select
   using (
     public.link_is_coach(coach_link_id) or public.link_is_athlete(coach_link_id)
   );
 
 -- Only the coach writes them, only as themselves, and only on their own work.
+drop policy if exists activity_reactions_insert on public.activity_reactions;
 create policy activity_reactions_insert on public.activity_reactions for insert
   with check (
     public.link_is_coach(coach_link_id)
@@ -118,6 +120,8 @@ create policy activity_reactions_insert on public.activity_reactions for insert
     )
   );
 
+drop policy if exists activity_reactions_update on public.activity_reactions;
+
 create policy activity_reactions_update on public.activity_reactions for update
   using (
     public.link_is_coach(coach_link_id)
@@ -126,6 +130,8 @@ create policy activity_reactions_update on public.activity_reactions for update
       where p.id = sender_profile_id and p.user_id = auth.uid()
     )
   );
+
+drop policy if exists activity_reactions_delete on public.activity_reactions;
 
 create policy activity_reactions_delete on public.activity_reactions for delete
   using (

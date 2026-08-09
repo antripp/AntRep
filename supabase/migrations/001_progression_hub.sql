@@ -137,44 +137,60 @@ alter table public.coach_notes enable row level security;
 alter table public.messages enable row level security;
 
 -- athlete_programs
+drop policy if exists athlete_programs_select on public.athlete_programs;
 create policy athlete_programs_select on public.athlete_programs for select
   using (public.link_is_coach(coach_link_id) or public.link_is_athlete(coach_link_id));
+drop policy if exists athlete_programs_insert on public.athlete_programs;
 create policy athlete_programs_insert on public.athlete_programs for insert
   with check (public.link_is_coach(coach_link_id));
+drop policy if exists athlete_programs_update on public.athlete_programs;
 create policy athlete_programs_update on public.athlete_programs for update
   using (public.link_is_coach(coach_link_id));
 
 -- progression_exercises
+drop policy if exists progression_exercises_select on public.progression_exercises;
 create policy progression_exercises_select on public.progression_exercises for select
   using (public.link_is_coach(coach_link_id) or public.link_is_athlete(coach_link_id));
+drop policy if exists progression_exercises_insert on public.progression_exercises;
 create policy progression_exercises_insert on public.progression_exercises for insert
   with check (public.link_is_coach(coach_link_id));
+drop policy if exists progression_exercises_update on public.progression_exercises;
 create policy progression_exercises_update on public.progression_exercises for update
   using (public.link_is_coach(coach_link_id));
+drop policy if exists progression_exercises_delete on public.progression_exercises;
 create policy progression_exercises_delete on public.progression_exercises for delete
   using (public.link_is_coach(coach_link_id));
 
 -- check_ins
+drop policy if exists check_ins_select on public.check_ins;
 create policy check_ins_select on public.check_ins for select
   using (public.link_is_coach(coach_link_id) or public.link_is_athlete(coach_link_id));
+drop policy if exists check_ins_insert on public.check_ins;
 create policy check_ins_insert on public.check_ins for insert
   with check (public.link_is_athlete(coach_link_id));
+drop policy if exists check_ins_update on public.check_ins;
 create policy check_ins_update on public.check_ins for update
   using (public.link_is_athlete(coach_link_id));
 
 -- coach_notes
+drop policy if exists coach_notes_select on public.coach_notes;
 create policy coach_notes_select on public.coach_notes for select
   using (public.link_is_coach(coach_link_id) or public.link_is_athlete(coach_link_id));
+drop policy if exists coach_notes_insert on public.coach_notes;
 create policy coach_notes_insert on public.coach_notes for insert
   with check (public.link_is_coach(coach_link_id));
+drop policy if exists coach_notes_update on public.coach_notes;
 create policy coach_notes_update on public.coach_notes for update
   using (public.link_is_coach(coach_link_id));
+drop policy if exists coach_notes_delete on public.coach_notes;
 create policy coach_notes_delete on public.coach_notes for delete
   using (public.link_is_coach(coach_link_id));
 
 -- messages
+drop policy if exists messages_select on public.messages;
 create policy messages_select on public.messages for select
   using (public.link_is_coach(coach_link_id) or public.link_is_athlete(coach_link_id));
+drop policy if exists messages_insert on public.messages;
 create policy messages_insert on public.messages for insert
   with check (
     (public.link_is_coach(coach_link_id) or public.link_is_athlete(coach_link_id))
@@ -183,5 +199,6 @@ create policy messages_insert on public.messages for insert
       where p.id = sender_profile_id and p.user_id = auth.uid()
     )
   );
+drop policy if exists messages_update on public.messages;
 create policy messages_update on public.messages for update
   using (public.link_is_coach(coach_link_id) or public.link_is_athlete(coach_link_id));
