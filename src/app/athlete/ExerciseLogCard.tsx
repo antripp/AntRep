@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { makeSet } from "../../data/factories";
 import type { PlanExercise, Session, SetLog } from "../../data/types";
-import { formatDuration, formatShortDate } from "../../domain/dates";
+import { formatShortDate } from "../../domain/dates";
 import {
   lastPerformance,
   namesMatch,
@@ -17,6 +17,7 @@ import { typeColor } from "../../domain/plan";
 import { rpeColor, rpeMeaning } from "../../domain/rpe";
 import { plural } from "../../domain/text";
 import { Icon, IconTile, NumberField, Pill, RpeSlider } from "../../ui/kit";
+import { RestTimerBar, RestTimerPill, useRestTimer } from "./RestTimer";
 import { setsForExercise, useWorkspace } from "../workspace";
 import type { ResolvedSegment } from "../../domain/plan";
 
@@ -111,6 +112,9 @@ export function ExerciseLogCard({
   /** True while the row holds edits that haven't reached the backend yet. */
   const [dirty, setDirty] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
+  // Lives on the card, not inside the collapsible body, so collapsing the
+  // exercise to look at the next one doesn't cancel a rest already running.
+  const restTimer = useRestTimer(exercise.rest_sec);
 
   // While the card is open the rows on screen stay put — including one you've
   // just emptied, so you can fill it back in. Saved sets re-sync on reopen,
@@ -290,7 +294,12 @@ export function ExerciseLogCard({
           </p>
         </button>
 
-        {exercise.rpe_target > 0 && <Pill tint={tint}>RPE {exercise.rpe_target}</Pill>}
+        {/* Only while collapsed — open, the full bar below already shows it. */}
+        {!open && <RestTimerPill timer={restTimer} tint={tint} />}
+
+        {exercise.rpe_target > 0 && (open || !(restTimer.running || restTimer.finished)) && (
+          <Pill tint={tint}>RPE {exercise.rpe_target}</Pill>
+        )}
 
         {editable && onRemove && (
           <button
@@ -538,9 +547,7 @@ export function ExerciseLogCard({
               </button>
             )}
             {exercise.rest_sec > 0 && (
-              <span className="ml-auto inline-flex items-center gap-1 text-[11px] font-bold text-muted">
-                <Icon.clock className="h-3.5 w-3.5" /> {formatDuration(exercise.rest_sec)} rest
-              </span>
+              <RestTimerBar timer={restTimer} seconds={exercise.rest_sec} tint={tint} />
             )}
           </div>
         </div>
