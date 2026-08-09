@@ -14,6 +14,7 @@ import {
   typeIcon,
 } from "../../domain/plan";
 import { plural } from "../../domain/text";
+import { DayBoard } from "./DayBoard";
 import { Button, Card, Icon, IconButton, IconTile, Pill, SectionHeader } from "../../ui/kit";
 
 export function PlanDetail({
@@ -119,15 +120,19 @@ export function PlanDetail({
               : "The week"
         }
       />
-      <div className="space-y-3">
-        {slots.map(({ slot, day }) =>
-          day ? (
-            <DayCard key={day.id} bundle={bundle} day={day} />
+      <DayBoard
+        label="Plan days"
+        columns={slots.map(({ slot, day }) => ({
+          key: day?.id ?? `slot-${slot}`,
+          chip: slotLabel(bundle.plan, slot, true),
+          empty: !day || resolveSegments(bundle, day).every((s) => s.exercises.length === 0),
+          content: day ? (
+            <DayCard bundle={bundle} day={day} />
           ) : (
-            <EmptySlotCard key={`slot-${slot}`} plan={bundle.plan} slot={slot} />
+            <EmptySlotCard plan={bundle.plan} slot={slot} />
           ),
-        )}
-      </div>
+        }))}
+      />
 
       {footer && <div className="mt-6">{footer}</div>}
     </>
@@ -146,7 +151,7 @@ function Detail({ label, value }: { label: string; value: string }) {
 /** A slot of the plan nobody has set up yet — a rest day by default. */
 function EmptySlotCard({ plan, slot }: { plan: PlanBundle["plan"]; slot: number }) {
   return (
-    <Card>
+    <Card className="h-full">
       <div className="flex items-center gap-3">
         <IconTile emoji={typeIcon("rest")} tint={typeColor("rest")} />
         <div className="min-w-0 flex-1">
@@ -166,7 +171,7 @@ function DayCard({ bundle, day }: { bundle: PlanBundle; day: PlanDay }) {
   const total = segments.reduce((t, s) => t + s.exercises.length, 0);
 
   return (
-    <Card tint={tint}>
+    <Card tint={tint} className="h-full">
       <div className="flex items-center gap-3">
         <IconTile emoji={typeIcon(day.day_type, day.icon_name)} tint={tint} />
         <div className="min-w-0 flex-1">

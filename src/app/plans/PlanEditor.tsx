@@ -27,9 +27,9 @@ import {
   typeColor,
   typeIcon,
 } from "../../domain/plan";
-import { setDetails } from "../../domain/logging";
+import { prescriptionLabel, setDetails } from "../../domain/logging";
 import { rpeColor, rpeMeaning } from "../../domain/rpe";
-import { plural } from "../../domain/text";
+import { DayBoard } from "./DayBoard";
 import { CustomFieldsEditor, LogTypePicker } from "./LoggingFields";
 import { PasteImport } from "./PasteImport";
 import {
@@ -274,36 +274,35 @@ export function PlanEditor({
       )}
 
       <SectionHeader title={cycle ? `${bundle.plan.cycle_length}-day split` : "Week schedule"} />
-      <div className="space-y-2">
-        {slotDays.map((day, index) => {
+      <DayBoard
+        label="Plan days"
+        columns={slotDays.map((day, index) => {
           const slot = index + 1;
           const segments = day ? resolveSegments(bundle, day) : [];
-          const count = segments.reduce((t, s) => t + s.exercises.length, 0);
+          const exercises = segments.flatMap((s) => s.exercises);
           const type = day?.day_type ?? "rest";
-          return (
-            <button
-              key={slot}
-              onClick={() => setEditingDay(ensureDay(slot).id)}
-              className="flex w-full items-center gap-3 rounded-2xl border border-line bg-surface p-3 text-left"
-            >
-              <span className="w-9 shrink-0 text-xs font-black uppercase text-muted">
-                {slotLabel(bundle.plan, slot, true)}
-              </span>
-              <IconTile emoji={typeIcon(type, day?.icon_name)} tint={typeColor(type, day?.color_hex)} size={34} />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-black text-ink">{day?.title || DAY_TYPE_LABELS[type]}</p>
-                <p className="truncate text-[11px] font-bold text-muted">
-                  {DAY_TYPE_LABELS[type]}
-                  {segments.length > 1 && ` · ${segments.length} blocks`}
-                  {count > 0 && ` · ${plural(count, "exercise")}`}
-                  {day?.is_optional && " · optional"}
-                </p>
-              </div>
-              <Icon.chevron className="h-4 w-4 text-muted" />
-            </button>
-          );
+          return {
+            key: String(slot),
+            chip: slotLabel(bundle.plan, slot, true),
+            empty: exercises.length === 0,
+            content: (
+              <DayColumn
+                title={day?.title || DAY_TYPE_LABELS[type]}
+                subtitle={
+                  DAY_TYPE_LABELS[type] +
+                  (segments.length > 1 ? ` · ${segments.length} blocks` : "") +
+                  (day?.is_optional ? " · optional" : "")
+                }
+                slotLabel={slotLabel(bundle.plan, slot, true)}
+                emoji={typeIcon(type, day?.icon_name)}
+                tint={typeColor(type, day?.color_hex)}
+                exercises={exercises}
+                onOpen={() => setEditingDay(ensureDay(slot).id)}
+              />
+            ),
+          };
         })}
-      </div>
+      />
 
       {onDelete && (
         <Button variant="danger" full className="mt-6" onClick={onDelete}>
@@ -800,6 +799,75 @@ export function ExerciseEditor({
         Done
       </Button>
     </Sheet>
+  );
+}
+
+/**
+ * One day of the board: the header opens the day editor, and the exercises are
+ * listed underneath so the column shows what's actually in the day rather than
+ * just how many things are.
+ */
+function DayColumn({
+  title,
+  subtitle,
+  slotLabel: slot,
+  emoji,
+  tint,
+  exercises,
+  onOpen,
+}: {
+  title: string;
+  subtitle: string;
+  slotLabel: string;
+  emoji: string;
+  tint: string;
+  exercises: PlanExercise[];
+  onOpen: () => void;
+}) {
+  const sorted = [...exercises].sort((a, b) => a.sort_order - b.sort_order);
+  // Columns sit side by side, so one long day must not stretch the whole board.
+  const shown = sorted.slice(0, 7);
+
+  return (
+    <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-line bg-surface">
+      <button onClick={onOpen} className="flex items-center gap-2 p-2.5 text-left">
+        <IconTile emoji={emoji} tint={tint} size={32} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[13px] font-black text-ink">{title}</p>
+          <p className="truncate text-[10px] font-bold text-muted">{subtitle}</p>
+        </div>
+        <span className="shrink-0 text-[10px] font-black uppercase text-muted">{slot}</span>
+      </button>
+
+      <div className="flex-1 space-y-1 px-2.5">
+        {shown.map((exercise) => (
+          <div key={exercise.id} className="rounded-lg bg-inset px-2 py-1.5">
+            <p className="truncate text-[11px] font-bold text-ink">{exercise.name}</p>
+            <p className="truncate text-[10px] font-semibold text-muted">
+              {prescriptionLabel(exercise)}
+            </p>
+          </div>
+        ))}
+        {sorted.length > shown.length && (
+          <p className="px-1 text-[10px] font-black text-muted">
+            +{sorted.length - shown.length} more
+          </p>
+        )}
+        {sorted.length === 0 && (
+          <p className="rounded-lg bg-inset px-2 py-3 text-center text-[10px] font-bold text-muted">
+            Nothing scheduled
+          </p>
+        )}
+      </div>
+
+      <button
+        onClick={onOpen}
+        className="m-2.5 mt-2 rounded-lg border border-dashed border-line py-1.5 text-[11px] font-black text-muted active:text-ink"
+      >
+        <Icon.plus className="mr-1 inline h-3 w-3" />
+        {sorted.length === 0 ? "Set up day" : "Edit day"}
+      </button>
+    </div>
   );
 }
 
