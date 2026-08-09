@@ -111,6 +111,7 @@ export function makeExercise(
     category: (preset?.category ?? categoryFor(name)) as ExerciseCategory,
     tempo: "",
     rpe_target: 0,
+    set_details: [],
     repeat_rule: "weekly",
     scheduled_date: null,
     icon_name: "",

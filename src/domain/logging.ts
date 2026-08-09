@@ -5,7 +5,7 @@
  * plan edits, exactly like the iOS app.
  */
 
-import type { PlanExercise, Session, SetLog } from "../data/types";
+import type { PlanExercise, Session, SetDetail, SetLog } from "../data/types";
 import { loggingSlots, slotPrimary, visibleExercises, type ResolvedSegment } from "./plan";
 
 /** Case/space-insensitive identity for an exercise name. */
@@ -187,9 +187,103 @@ export function canResumeTimer(session: Session | undefined): boolean {
   return !isLive(session) && hasEndedTimer(session);
 }
 
-/** Planned target for set N, honouring the plan's per-set breakdown. */
-export function targetForSet(exercise: PlanExercise): { reps: number; weight: number } {
-  return { reps: exercise.target_reps, weight: exercise.target_weight_kg };
+/**
+ * How many sets the plan asks for — the per-set breakdown if the coach wrote
+ * one, otherwise `target_sets`. This is the number of rows the logger opens
+ * with, so a lifter sees the prescription rather than an empty card.
+ */
+export function plannedSetCount(exercise: PlanExercise): number {
+  if (setDetails(exercise).length > 0) return setDetails(exercise).length;
+  return Math.max(0, Math.min(20, exercise.target_sets));
+}
+
+/**
+ * The per-set breakdown, tolerating exercises that predate the field.
+ *
+ * `set_details` is only mapped in on rows read through `toExercise`; anything
+ * cached earlier — the offline demo store, a plan draft saved in localStorage
+ * before this shipped — has no such key, and reading `.length` off it crashes
+ * the whole logger.
+ */
+export function setDetails(exercise: PlanExercise): SetDetail[] {
+  return exercise.set_details ?? [];
+}
+
+/**
+ * Planned target for set N (1-based), honouring the per-set breakdown.
+ *
+ * Cardio and timed work have no rep/load prescription, so they seed empty
+ * rather than being pre-filled with a meaningless 10 × 0.
+ */
+export function targetForSet(
+  exercise: PlanExercise,
+  setNumber = 1,
+): { reps: number | null; weight: number | null; rpe: number | null } {
+  const detail = setDetails(exercise)[setNumber - 1];
+  const rpe = detail?.rpe || exercise.rpe_target || null;
+
+  if (detail) {
+    return { reps: detail.reps || null, weight: detail.weight_kg || null, rpe };
+  }
+  if (exercise.log_type === "cardio" || exercise.log_type === "timed") {
+    return { reps: null, weight: null, rpe };
+  }
+  return {
+    reps: exercise.target_reps || null,
+    weight: exercise.target_weight_kg || null,
+    rpe,
+  };
+}
+
+/** "3 × 10 · 60 kg" or "12@40 / 10@45 / 8@50" — the prescription in one line. */
+export function prescriptionLabel(exercise: PlanExercise): string {
+  if (exercise.rep_scheme.trim()) return exercise.rep_scheme.trim();
+  const details = setDetails(exercise);
+  if (details.length > 0) {
+    return details
+      .map((d) => `${d.reps}${d.weight_kg > 0 ? `@${d.weight_kg}` : ""}`)
+      .join(" / ");
+  }
+  const base = `${exercise.target_sets} × ${exercise.target_reps}`;
+  return exercise.target_weight_kg > 0 ? `${base} · ${exercise.target_weight_kg} kg` : base;
+}
+
+/**
+ * What was done the last time this exercise was trained, before `excludeId`.
+ *
+ * The single most useful thing to see while logging: you pick today's load by
+ * remembering last week's, and remembering is exactly what an app should do.
+ */
+export function lastPerformance(
+  sessions: Session[],
+  logs: SetLog[],
+  exerciseName: string,
+  excludeSessionId?: string,
+): { date: string; sets: SetLog[] } | null {
+  const byId = new Map(sessions.map((s) => [s.id, s]));
+  const order = (s: Session) => `${s.date} ${s.started_at}`;
+  const current = excludeSessionId ? byId.get(excludeSessionId) : undefined;
+
+  const candidates = new Map<string, SetLog[]>();
+  for (const log of logs) {
+    if (log.session_id === excludeSessionId) continue;
+    if (!namesMatch(log.exercise_name, exerciseName) || !setHasData(log)) continue;
+    const session = byId.get(log.session_id);
+    if (!session) continue;
+    // Only look backwards — a session logged for a later date isn't "last time".
+    if (current && order(session) >= order(current)) continue;
+    candidates.set(log.session_id, [...(candidates.get(log.session_id) ?? []), log]);
+  }
+  if (candidates.size === 0) return null;
+
+  const newest = [...candidates.keys()]
+    .map((id) => byId.get(id)!)
+    .sort((a, b) => order(b).localeCompare(order(a)))[0];
+
+  return {
+    date: newest.date,
+    sets: (candidates.get(newest.id) ?? []).sort((a, b) => a.set_index - b.set_index),
+  };
 }
 
 /** Total volume (kg) of a list of sets. */

@@ -3,11 +3,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { makeSet } from "../../data/factories";
 import type { PlanExercise, Session, SetLog } from "../../data/types";
-import { formatDuration } from "../../domain/dates";
-import { namesMatch, setHasData } from "../../domain/logging";
+import { formatDuration, formatShortDate } from "../../domain/dates";
+import {
+  lastPerformance,
+  namesMatch,
+  plannedSetCount,
+  prescriptionLabel,
+  setHasData,
+  targetForSet,
+} from "../../domain/logging";
+import { formatSetCell } from "../../domain/planLog";
 import { typeColor } from "../../domain/plan";
+import { rpeColor, rpeMeaning } from "../../domain/rpe";
 import { plural } from "../../domain/text";
-import { Icon, IconTile, NumberField, Pill } from "../../ui/kit";
+import { Icon, IconTile, NumberField, Pill, RpeSlider } from "../../ui/kit";
 import { setsForExercise, useWorkspace } from "../workspace";
 import type { ResolvedSegment } from "../../domain/plan";
 
@@ -29,9 +38,8 @@ const CATEGORY_EMOJI: Record<string, string> = {
 function defaultTarget(exercise: PlanExercise): string {
   switch (exercise.log_type) {
     case "strength":
-      return `${exercise.target_sets} × ${exercise.target_reps}`;
     case "bodyweight":
-      return `${exercise.target_sets} × ${exercise.target_reps || "max"} reps`;
+      return prescriptionLabel(exercise);
     case "cardio":
       return "Distance & time";
     case "timed":
@@ -65,9 +73,39 @@ export function ExerciseLogCard({
   tint?: string;
   onRemove?: () => void;
 }) {
-  const { logs, saveSets, setExerciseDone } = useWorkspace();
+  const { logs, sessions, saveSets, setExerciseDone } = useWorkspace();
   const stored = useMemo(() => setsForExercise(logs, session?.id, exercise.name), [logs, session?.id, exercise.name]);
-  const [draft, setDraft] = useState<SetLog[]>(stored);
+  const lastTime = useMemo(
+    () => lastPerformance(sessions, logs, exercise.name, session?.id),
+    [sessions, logs, exercise.name, session?.id],
+  );
+
+  /**
+   * The rows the card opens with: one per planned set, so the prescription is
+   * visible without having to build the card up a tap at a time.
+   *
+   * They are deliberately EMPTY. The target shows as placeholder text and the
+   * per-set tick fills it in — because a row carrying real numbers would count
+   * as data to `setHasData`, and the autosave would quietly log sets nobody
+   * performed. Showing the plan and claiming it happened are different things.
+   */
+  const rowsFor = useMemo(() => {
+    return (logged: SetLog[]): SetLog[] => {
+      // Top the logged sets up to the number the plan asks for, so set 2 and 3
+      // are already waiting once set 1 is in — rather than making you press
+      // "Add set" for work the plan already prescribed.
+      const missing = plannedSetCount(exercise) - logged.length;
+      if (missing <= 0) return logged;
+      return [
+        ...logged,
+        ...Array.from({ length: missing }, (_, i) =>
+          makeSet(session?.id ?? "", exercise.name, logged.length + i + 1),
+        ),
+      ];
+    };
+  }, [exercise, session?.id]);
+
+  const [draft, setDraft] = useState<SetLog[]>(() => rowsFor(stored));
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   /** True while the row holds edits that haven't reached the backend yet. */
@@ -75,10 +113,11 @@ export function ExerciseLogCard({
   const [hint, setHint] = useState<string | null>(null);
 
   // While the card is open the rows on screen stay put — including one you've
-  // just emptied, so you can fill it back in. Saved sets re-sync on reopen.
+  // just emptied, so you can fill it back in. Saved sets re-sync on reopen,
+  // falling back to the prescription once everything logged has been removed.
   useEffect(() => {
-    if (!dirty && !open) setDraft(stored);
-  }, [stored, dirty, open]);
+    if (!dirty && !open) setDraft(rowsFor(stored));
+  }, [stored, rowsFor, dirty, open]);
 
   const done = Boolean(session?.completed_names.some((n) => namesMatch(n, exercise.name)));
   const tint =
@@ -118,20 +157,28 @@ export function ExerciseLogCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dirty, draft]);
 
-  /** A fresh row, carrying forward whatever the last real set used. */
+  /**
+   * A fresh row beyond the prescription, carrying forward whatever the last
+   * real set used. This one IS pre-filled: you asked for an extra set, so the
+   * last set's numbers are the best guess at what it will be.
+   */
   function seedSet(active: Session) {
     const previous = [...draft].reverse().find(setHasData);
+    const target = targetForSet(exercise, draft.length + 1);
     const seeded = makeSet(active.id, exercise.name, draft.length + 1, {
-      weight_kg: previous?.weight_kg ?? (exercise.target_weight_kg || null),
-      reps:
-        previous?.reps ??
-        (exercise.log_type === "strength" || exercise.log_type === "bodyweight"
-          ? exercise.target_reps
-          : null),
-      rpe: previous?.rpe ?? (exercise.rpe_target || null),
+      weight_kg: previous?.weight_kg ?? target.weight,
+      reps: previous?.reps ?? target.reps,
+      rpe: previous?.rpe ?? target.rpe,
     });
     setDraft((current) => [...current, seeded]);
     setDirty(true);
+  }
+
+  /** Fill a prescribed row with exactly what the plan asked for. */
+  function confirmTarget(index: number) {
+    const target = targetForSet(exercise, index + 1);
+    if (target.reps === null && target.weight === null) return;
+    updateSet(index, { weight_kg: target.weight, reps: target.reps, rpe: target.rpe });
   }
 
   async function addSet() {
@@ -279,6 +326,21 @@ export function ExerciseLogCard({
             </p>
           )}
 
+          {/* What you did last time — the number today's load is chosen from. */}
+          {lastTime && (
+            <div className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-1 rounded-xl bg-inset px-3 py-2">
+              <span className="text-[10px] font-black uppercase tracking-wide text-muted">
+                Last time
+              </span>
+              <span className="text-[11px] font-bold text-muted">
+                {formatShortDate(lastTime.date)}
+              </span>
+              <span className="text-[11px] font-black text-ink">
+                {lastTime.sets.map((s) => formatSetCell(s, exercise.log_type, true)).join("  ·  ")}
+              </span>
+            </div>
+          )}
+
           {alternates && alternates.length > 1 && onPickAlternate && (
             <div className="mb-2 flex flex-wrap gap-1.5">
               {alternates.map((alt) => (
@@ -297,120 +359,164 @@ export function ExerciseLogCard({
           )}
 
           <div className="space-y-2">
-            {draft.map((set, index) => (
-              <div key={set.id} className="flex flex-wrap items-center gap-2">
-                <span
-                  className={`w-9 shrink-0 text-[11px] font-black uppercase ${
-                    setHasData(set) ? "text-muted" : "text-muted/60"
-                  }`}
-                  title={setHasData(set) ? undefined : "Empty — fill it in or remove it"}
+            {draft.map((set, index) => {
+              const target = targetForSet(exercise, index + 1);
+              const logged = setHasData(set);
+              const canConfirm = !logged && (target.weight !== null || target.reps !== null);
+              const targetText = [
+                target.weight !== null ? `${target.weight} kg` : null,
+                target.reps !== null ? `${target.reps} reps` : null,
+              ]
+                .filter(Boolean)
+                .join(" × ");
+
+              return (
+                <div
+                  key={set.id}
+                  className="rounded-2xl border p-2.5"
+                  style={{
+                    borderColor: logged ? `${tint}55` : "var(--t-line)",
+                    background: logged ? `${tint}0f` : "transparent",
+                  }}
                 >
-                  Set {index + 1}
-                </span>
+                  <div className="mb-2 flex items-center gap-2">
+                    <span
+                      className={`text-[11px] font-black uppercase ${logged ? "text-ink" : "text-muted/70"}`}
+                    >
+                      Set {index + 1}
+                    </span>
 
-                {/* Built-in fields for the exercise's logging method */}
-                {(exercise.log_type === "strength" || exercise.log_type === "bodyweight") && (
-                  <>
-                    <NumberField
-                      value={set.weight_kg}
-                      step={2.5}
-                      suffix={exercise.log_type === "bodyweight" ? "+kg" : "kg"}
-                      onChange={(v) => updateSet(index, { weight_kg: v })}
-                    />
-                    <NumberField
-                      value={set.reps}
-                      step={1}
-                      suffix="reps"
-                      onChange={(v) => updateSet(index, { reps: v })}
-                    />
-                  </>
-                )}
+                    {/* The prescription, and one tap to say you hit it. */}
+                    {canConfirm && (
+                      <button
+                        onClick={() => confirmTarget(index)}
+                        className="inline-flex items-center gap-1 rounded-full border border-line bg-inset px-2 py-0.5 text-[11px] font-black text-muted active:scale-95"
+                        title={`Log this set as ${targetText}`}
+                      >
+                        <Icon.check className="h-3 w-3" /> {targetText}
+                      </button>
+                    )}
+                    {logged && set.rpe ? (
+                      <span
+                        className="rounded-full px-2 py-0.5 text-[10px] font-black"
+                        style={{ background: `${rpeColor(set.rpe)}22`, color: rpeColor(set.rpe) }}
+                      >
+                        RPE {set.rpe}
+                      </span>
+                    ) : null}
 
-                {exercise.log_type === "cardio" && (
-                  <>
-                    <NumberField
-                      value={set.distance_km}
-                      step={0.5}
-                      suffix="km"
-                      onChange={(v) => updateSet(index, { distance_km: v })}
-                    />
-                    <NumberField
-                      value={set.duration_sec ? Math.round(set.duration_sec / 60) : null}
-                      step={5}
-                      suffix="min"
-                      onChange={(v) => updateSet(index, { duration_sec: v === null ? null : v * 60 })}
-                    />
-                  </>
-                )}
+                    <button
+                      aria-label={`Remove set ${index + 1}`}
+                      onClick={() => removeSet(index)}
+                      className="ml-auto shrink-0 text-muted active:text-danger"
+                    >
+                      <Icon.trash className="h-4 w-4" />
+                    </button>
+                  </div>
 
-                {exercise.log_type === "timed" && (
-                  <NumberField
-                    value={set.duration_sec}
-                    step={5}
-                    suffix="sec"
-                    onChange={(v) => updateSet(index, { duration_sec: v })}
-                  />
-                )}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* Built-in fields for the exercise's logging method. The
+                        target shows as placeholder, so an empty row reads as
+                        "this is what was asked for" rather than as a result. */}
+                    {(exercise.log_type === "strength" || exercise.log_type === "bodyweight") && (
+                      <>
+                        <NumberField
+                          value={set.weight_kg}
+                          step={2.5}
+                          suffix={exercise.log_type === "bodyweight" ? "+kg" : "kg"}
+                          placeholder={target.weight !== null ? String(target.weight) : undefined}
+                          onChange={(v) => updateSet(index, { weight_kg: v })}
+                        />
+                        <NumberField
+                          value={set.reps}
+                          step={1}
+                          suffix="reps"
+                          placeholder={target.reps !== null ? String(target.reps) : undefined}
+                          onChange={(v) => updateSet(index, { reps: v })}
+                        />
+                      </>
+                    )}
 
-                {exercise.log_type === "interval" && (
-                  <>
-                    <NumberField
-                      value={set.reps}
-                      step={1}
-                      suffix="rounds"
-                      onChange={(v) => updateSet(index, { reps: v })}
-                    />
-                    <NumberField
-                      value={set.duration_sec}
-                      step={10}
-                      suffix="sec"
-                      onChange={(v) => updateSet(index, { duration_sec: v })}
-                    />
-                  </>
-                )}
+                    {exercise.log_type === "cardio" && (
+                      <>
+                        <NumberField
+                          value={set.distance_km}
+                          step={0.5}
+                          suffix="km"
+                          onChange={(v) => updateSet(index, { distance_km: v })}
+                        />
+                        <NumberField
+                          value={set.duration_sec ? Math.round(set.duration_sec / 60) : null}
+                          step={5}
+                          suffix="min"
+                          onChange={(v) => updateSet(index, { duration_sec: v === null ? null : v * 60 })}
+                        />
+                      </>
+                    )}
 
-                {/* Effort. Applies to every logging method, and the plan's
-                    target seeds it so the usual case is one tap to confirm. */}
-                <NumberField
-                  value={set.rpe}
-                  step={0.5}
-                  min={0}
-                  max={10}
-                  suffix="RPE"
-                  placeholder={exercise.rpe_target > 0 ? String(exercise.rpe_target) : "—"}
-                  onChange={(v) => updateSet(index, { rpe: v })}
-                />
+                    {exercise.log_type === "timed" && (
+                      <NumberField
+                        value={set.duration_sec}
+                        step={5}
+                        suffix="sec"
+                        onChange={(v) => updateSet(index, { duration_sec: v })}
+                      />
+                    )}
 
-                {/* Whatever the coach (or you) defined for this exercise */}
-                {exercise.custom_fields.map((field) =>
-                  field.type === "number" ? (
-                    <NumberField
-                      key={field.key}
-                      value={toNumberOrNull(set.extra?.[field.key])}
-                      step={1}
-                      suffix={field.unit || field.label}
-                      onChange={(v) => updateSet(index, {}, { [field.key]: v === null ? "" : v })}
-                    />
-                  ) : (
-                    <input
-                      key={field.key}
-                      value={String(set.extra?.[field.key] ?? "")}
-                      placeholder={field.label}
-                      onChange={(e) => updateSet(index, {}, { [field.key]: e.target.value })}
-                      className="h-11 min-w-24 flex-1 rounded-2xl border border-line bg-inset px-3 text-[15px] font-bold text-ink outline-none placeholder:font-semibold placeholder:text-muted focus:border-accent"
-                    />
-                  ),
-                )}
+                    {exercise.log_type === "interval" && (
+                      <>
+                        <NumberField
+                          value={set.reps}
+                          step={1}
+                          suffix="rounds"
+                          placeholder={target.reps !== null ? String(target.reps) : undefined}
+                          onChange={(v) => updateSet(index, { reps: v })}
+                        />
+                        <NumberField
+                          value={set.duration_sec}
+                          step={10}
+                          suffix="sec"
+                          onChange={(v) => updateSet(index, { duration_sec: v })}
+                        />
+                      </>
+                    )}
 
-                <button
-                  aria-label={`Remove set ${index + 1}`}
-                  onClick={() => removeSet(index)}
-                  className="shrink-0 text-muted active:text-danger"
-                >
-                  <Icon.trash className="h-4 w-4" />
-                </button>
-              </div>
-            ))}
+                    {/* Whatever the coach (or you) defined for this exercise */}
+                    {exercise.custom_fields.map((field) =>
+                      field.type === "number" ? (
+                        <NumberField
+                          key={field.key}
+                          value={toNumberOrNull(set.extra?.[field.key])}
+                          step={1}
+                          suffix={field.unit || field.label}
+                          onChange={(v) => updateSet(index, {}, { [field.key]: v === null ? "" : v })}
+                        />
+                      ) : (
+                        <input
+                          key={field.key}
+                          value={String(set.extra?.[field.key] ?? "")}
+                          placeholder={field.label}
+                          onChange={(e) => updateSet(index, {}, { [field.key]: e.target.value })}
+                          className="h-11 min-w-24 flex-1 rounded-2xl border border-line bg-inset px-3 text-[15px] font-bold text-ink outline-none placeholder:font-semibold placeholder:text-muted focus:border-accent"
+                        />
+                      ),
+                    )}
+                  </div>
+
+                  {/* Effort, per set. On its own line so the scale has room to
+                      be read and thumbed mid-workout. */}
+                  <div className="mt-2">
+                    <RpeSlider
+                      value={set.rpe}
+                      onChange={(v) => updateSet(index, { rpe: v })}
+                      meaning={rpeMeaning(set.rpe ?? target.rpe)}
+                      color={rpeColor(set.rpe)}
+                      target={exercise.rpe_target || null}
+                    />
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           {hint && <p className="mt-2 text-[11px] font-black text-accent">{hint}</p>}

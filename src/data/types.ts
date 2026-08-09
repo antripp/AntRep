@@ -108,6 +108,18 @@ export interface CustomField {
   unit?: string;
 }
 
+/**
+ * One prescribed set. A coach who wants "12 @ 40, 10 @ 45, 8 @ 50" writes three
+ * of these; an exercise with none falls back to `target_sets` × `target_reps`.
+ * Stored as jsonb, so extra keys cost no migration.
+ */
+export interface SetDetail {
+  reps: number;
+  weight_kg: number;
+  /** Prescribed effort for this set specifically. 0 = use the exercise target. */
+  rpe?: number;
+}
+
 export function fieldKey(label: string): string {
   return (
     label
@@ -245,7 +257,10 @@ export interface PlanExercise {
   priority: number;
   category: ExerciseCategory;
   tempo: string;
+  /** Effort to aim for, 0.5 steps. 0 = none prescribed. */
   rpe_target: number;
+  /** Per-set prescription. Empty = every set uses the targets above. */
+  set_details: SetDetail[];
   repeat_rule: RepeatRule;
   scheduled_date: string | null;
   icon_name: string;

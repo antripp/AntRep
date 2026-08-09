@@ -331,7 +331,10 @@ export function NumberField({
           }
         }}
         onBlur={() => setDraft(null)}
-        className="h-full w-full min-w-0 bg-transparent text-center text-[15px] font-black text-ink outline-none"
+        // The placeholder is often a prescribed target sitting in an empty
+        // field. It has to read as "what was asked for", not as a recorded
+        // number, so it is deliberately lighter than an entered value.
+        className="h-full w-full min-w-0 bg-transparent text-center text-[15px] font-black text-ink outline-none placeholder:font-bold placeholder:text-muted/50"
       />
       {suffix && <span className="pr-1 text-xs font-bold text-muted">{suffix}</span>}
       <button
@@ -342,6 +345,101 @@ export function NumberField({
       >
         +
       </button>
+    </div>
+  );
+}
+
+/**
+ * Effort, on the reps-in-reserve scale.
+ *
+ * A slider rather than a number field: the useful range is 5–10 in half steps,
+ * which is 11 positions — quicker to thumb than to type, and it shows the whole
+ * scale so the number has context. The meaning is spelled out under it, because
+ * "8" only means something once you know it's "2 reps left".
+ *
+ * `null` is a real state (not rated), so the track stays grey until touched.
+ */
+export function RpeSlider({
+  value,
+  onChange,
+  meaning,
+  color = "var(--t-accent)",
+  target,
+  compact = false,
+}: {
+  value: number | null;
+  onChange: (v: number | null) => void;
+  /** Text for the current value — from `rpeMeaning()`. */
+  meaning: string;
+  color?: string;
+  /** The coach's prescribed effort, marked on the track. */
+  target?: number | null;
+  compact?: boolean;
+}) {
+  const MIN = 5;
+  const MAX = 10;
+  const rated = value !== null && value > 0;
+  const shown = rated ? value : 7;
+  const pct = ((shown - MIN) / (MAX - MIN)) * 100;
+  const targetPct =
+    target && target >= MIN && target <= MAX ? ((target - MIN) / (MAX - MIN)) * 100 : null;
+
+  return (
+    <div className="w-full">
+      <div className="flex items-baseline gap-2">
+        <span className="text-[10px] font-black uppercase tracking-wide text-muted">RPE</span>
+        <span
+          className="text-[15px] font-black tabular-nums"
+          style={{ color: rated ? color : "var(--t-muted)" }}
+        >
+          {rated ? shown : "—"}
+        </span>
+        {!compact && (
+          <span className="min-w-0 flex-1 truncate text-[11px] font-bold text-muted">{meaning}</span>
+        )}
+        {rated && (
+          <button
+            type="button"
+            onClick={() => onChange(null)}
+            className="shrink-0 text-[10px] font-black uppercase text-muted active:text-ink"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+
+      <div className="relative mt-1.5 h-5">
+        {/* Track */}
+        <div className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-inset" />
+        {rated && (
+          <div
+            className="absolute left-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full transition-[width]"
+            style={{ width: `${pct}%`, background: color }}
+          />
+        )}
+        {/* What the coach asked for */}
+        {targetPct !== null && (
+          <div
+            className="absolute top-1/2 h-3.5 w-0.5 -translate-y-1/2 rounded-full bg-ink/40"
+            style={{ left: `${targetPct}%` }}
+            title={`Target RPE ${target}`}
+          />
+        )}
+        <input
+          type="range"
+          min={MIN}
+          max={MAX}
+          step={0.5}
+          value={shown}
+          aria-label="RPE"
+          aria-valuetext={rated ? `RPE ${shown}, ${meaning}` : "Not rated"}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className="rpe-range absolute inset-0 w-full cursor-pointer appearance-none bg-transparent"
+          style={{ ["--rpe-thumb" as string]: rated ? color : "var(--t-muted)" }}
+        />
+      </div>
+
+      {compact && <p className="mt-0.5 truncate text-[11px] font-bold text-muted">{meaning}</p>}
     </div>
   );
 }

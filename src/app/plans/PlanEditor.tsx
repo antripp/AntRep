@@ -14,6 +14,7 @@ import {
   type PlanDay,
   type PlanExercise,
   type ScheduleMode,
+  type SetDetail,
 } from "../../data/types";
 import {
   isCyclePlan,
@@ -26,6 +27,8 @@ import {
   typeColor,
   typeIcon,
 } from "../../domain/plan";
+import { setDetails } from "../../domain/logging";
+import { rpeColor, rpeMeaning } from "../../domain/rpe";
 import { plural } from "../../domain/text";
 import { CustomFieldsEditor, LogTypePicker } from "./LoggingFields";
 import { PasteImport } from "./PasteImport";
@@ -38,6 +41,7 @@ import {
   IconTile,
   NumberField,
   Pill,
+  RpeSlider,
   SectionHeader,
   Segmented,
   Sheet,
@@ -710,14 +714,20 @@ export function ExerciseEditor({
           />
         </Field>
 
-        <div className="grid grid-cols-2 gap-2">
-          <Field label="Rest">
-            <NumberField value={exercise.rest_sec} step={15} max={600} suffix="sec" onChange={(v) => onChange({ rest_sec: v ?? 0 })} />
-          </Field>
-          <Field label="Target RPE">
-            <NumberField value={exercise.rpe_target} max={10} onChange={(v) => onChange({ rpe_target: v ?? 0 })} />
-          </Field>
-        </div>
+        <Field label="Rest">
+          <NumberField value={exercise.rest_sec} step={15} max={600} suffix="sec" onChange={(v) => onChange({ rest_sec: v ?? 0 })} />
+        </Field>
+
+        <Field label="Target effort" hint="Marked on the athlete's slider as they log each set">
+          <RpeSlider
+            value={exercise.rpe_target || null}
+            onChange={(v) => onChange({ rpe_target: v ?? 0 })}
+            meaning={rpeMeaning(exercise.rpe_target)}
+            color={rpeColor(exercise.rpe_target)}
+          />
+        </Field>
+
+        <SetTargetsEditor exercise={exercise} onChange={onChange} />
 
         <Field label="Notes for the athlete">
           <TextField
@@ -790,6 +800,98 @@ export function ExerciseEditor({
         Done
       </Button>
     </Sheet>
+  );
+}
+
+/**
+ * Per-set targets — "12 @ 40, 10 @ 45, 8 @ 50" instead of a flat 3 × 10.
+ *
+ * Off by default: most exercises are the same every set, and the flat targets
+ * above say so more clearly. Switching on seeds the rows from those targets, so
+ * turning it on and editing one number is the common case.
+ */
+function SetTargetsEditor({
+  exercise,
+  onChange,
+}: {
+  exercise: PlanExercise;
+  onChange: (patch: Partial<PlanExercise>) => void;
+}) {
+  const details = setDetails(exercise);
+  const on = details.length > 0;
+
+  function toggle(next: boolean) {
+    onChange({
+      set_details: next
+        ? Array.from({ length: Math.max(1, exercise.target_sets) }, () => ({
+            reps: exercise.target_reps,
+            weight_kg: exercise.target_weight_kg,
+          }))
+        : [],
+    });
+  }
+
+  function patchSet(index: number, patch: Partial<SetDetail>) {
+    onChange({ set_details: details.map((d, i) => (i === index ? { ...d, ...patch } : d)) });
+  }
+
+  return (
+    <div className="rounded-2xl border border-line p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-bold text-ink">Different targets per set</p>
+          <p className="text-xs font-semibold text-muted">
+            For pyramids and ramp-ups — the athlete's logger opens with these
+          </p>
+        </div>
+        <Toggle label="Different targets per set" checked={on} onChange={toggle} />
+      </div>
+
+      {on && (
+        <div className="mt-3 space-y-1.5">
+          {details.map((detail, index) => (
+            <div key={index} className="flex items-center gap-2">
+              <span className="w-10 shrink-0 text-[11px] font-black uppercase text-muted">
+                Set {index + 1}
+              </span>
+              <NumberField
+                value={detail.reps}
+                step={1}
+                max={100}
+                suffix="reps"
+                onChange={(v) => patchSet(index, { reps: v ?? 0 })}
+              />
+              <NumberField
+                value={detail.weight_kg}
+                step={2.5}
+                max={500}
+                suffix="kg"
+                onChange={(v) => patchSet(index, { weight_kg: v ?? 0 })}
+              />
+              <button
+                aria-label={`Remove set ${index + 1}`}
+                className="shrink-0 text-muted active:text-danger"
+                onClick={() => onChange({ set_details: details.filter((_, i) => i !== index) })}
+              >
+                <Icon.trash className="h-4 w-4" />
+              </button>
+            </div>
+          ))}
+
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() =>
+              onChange({
+                set_details: [...details, details.at(-1) ?? { reps: exercise.target_reps, weight_kg: 0 }],
+              })
+            }
+          >
+            <Icon.plus className="h-4 w-4" /> Add set
+          </Button>
+        </div>
+      )}
+    </div>
   );
 }
 

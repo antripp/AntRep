@@ -24,6 +24,7 @@ import type {
   Profile,
   Role,
   Session,
+  SetDetail,
   SetLog,
   TrackerEntry,
   TrackerTemplate,
@@ -209,6 +210,13 @@ function toExercise(r: Row): PlanExercise {
     priority: num(r.priority, 1),
     category: str(r.category, "push") as PlanExercise["category"],
     tempo: str(r.tempo),
+    // Present in the schema since the beginning, but the port to this tree
+    // never mapped it, so per-set prescriptions silently stopped loading.
+    set_details: arr<SetDetail>(r.set_details).map((d) => ({
+      reps: num(d?.reps),
+      weight_kg: num(d?.weight_kg),
+      rpe: num(d?.rpe) || undefined,
+    })),
     rpe_target: num(r.rpe_target),
     repeat_rule: str(r.repeat_rule, "weekly") as PlanExercise["repeat_rule"],
     scheduled_date: (r.scheduled_date as string) ?? null,
