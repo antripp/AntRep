@@ -627,7 +627,7 @@ export const supabaseApi: Api = {
   },
 
   async updateProfile(id, patch) {
-    await supabase.from("profiles").update(patch).eq("id", id);
+    write("update your profile", await supabase.from("profiles").update(patch).eq("id", id));
   },
 
   async createInvite() {
