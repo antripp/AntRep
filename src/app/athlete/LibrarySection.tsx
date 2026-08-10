@@ -10,9 +10,13 @@ import { LOG_TYPE_LABELS, type ExercisePreset } from "../../data/types";
 import { Button, Card, Field, Icon, NumberField, Pill, SectionHeader, Sheet, TextField } from "../../ui/kit";
 import { CustomFieldsEditor, LogTypePicker } from "../plans/LoggingFields";
 import { useWorkspace } from "../workspace";
+import { MatchExerciseSheet } from "./ExerciseLibrarySheets";
+import { MuscleFigure } from "./MuscleFigure";
+import { useExerciseLibrary } from "./useExerciseLibrary";
 
 export default function LibrarySection() {
   const { profile, presets, reload, showToast } = useWorkspace();
+  const library = useExerciseLibrary();
   const [editing, setEditing] = useState<ExercisePreset | null>(null);
 
   const sorted = useMemo(
@@ -79,6 +83,7 @@ export default function LibrarySection() {
       {editing && (
         <PresetSheet
           preset={editing}
+          library={library.exercises}
           onClose={() => setEditing(null)}
           onSave={save}
           onDelete={
@@ -99,21 +104,49 @@ export default function LibrarySection() {
 
 function PresetSheet({
   preset,
+  library,
   onSave,
   onDelete,
   onClose,
 }: {
   preset: ExercisePreset;
+  library: ReturnType<typeof useExerciseLibrary>["exercises"];
   onSave: (p: ExercisePreset) => Promise<void>;
   onDelete?: () => Promise<void>;
   onClose: () => void;
 }) {
   const [draft, setDraft] = useState(preset);
+  const [matching, setMatching] = useState(false);
   const set = (patch: Partial<ExercisePreset>) => setDraft((d) => ({ ...d, ...patch }));
+  const linked = library.find((item) => item.wgerId === draft.wger_exercise_id);
 
   return (
     <Sheet open onClose={onClose} title={preset.name || "New exercise"}>
       <div className="space-y-3">
+        <div className="rounded-2xl border border-line bg-inset p-3">
+          {linked ? (
+            <>
+              <MuscleFigure exercise={linked} />
+              <p className="mt-2 text-xs font-black uppercase tracking-wide text-muted">Database match</p>
+              <p className="text-sm font-black text-ink">{linked.name}</p>
+              <div className="mt-2 flex gap-2">
+                <Button size="sm" variant="secondary" onClick={() => setMatching(true)}>Change match</Button>
+                <Button size="sm" variant="ghost" onClick={() => set({ wger_exercise_id: null })}>Unlink</Button>
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-black text-ink">No database match</p>
+                <p className="text-xs font-semibold text-muted">Match manually to add canonical muscle figures.</p>
+              </div>
+              <Button size="sm" variant="secondary" onClick={() => setMatching(true)}>
+                <Icon.link className="h-4 w-4" /> Match
+              </Button>
+            </div>
+          )}
+        </div>
+
         <Field label="Exercise name">
           <TextField
             value={draft.name}
@@ -169,6 +202,17 @@ function PresetSheet({
         <Button full variant="danger" className="mt-2" onClick={onDelete}>
           <Icon.trash className="h-4 w-4" /> Remove from library
         </Button>
+      )}
+      {matching && (
+        <MatchExerciseSheet
+          currentName={draft.name}
+          exercises={library}
+          onClose={() => setMatching(false)}
+          onMatch={(exercise) => {
+            set({ wger_exercise_id: exercise.wgerId });
+            setMatching(false);
+          }}
+        />
       )}
     </Sheet>
   );

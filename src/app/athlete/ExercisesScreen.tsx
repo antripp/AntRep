@@ -1,65 +1,61 @@
 /**
- * Library — the movements available to log, in two views.
- *
- *   Mine     what you've saved, and how each one is logged
- *   Browse   the built-in catalogue, to save more from
- *
- * Your own history, trends and per-exercise pages live under Progress →
- * Exercises; this screen is about what you *can* log, not what you have.
+ * Exercise library: user-owned logging presets plus the canonical paginated
+ * wger catalogue used by antrip.health. The canonical ID supplies only name
+ * and muscle metadata; logged data and progression remain keyed as before.
  */
 
 import { useMemo, useState } from "react";
 import { api } from "../../data";
-import { CATALOG, categoryFor } from "../../data/catalog";
+import type { LibraryExercise } from "../../data/exerciseLibrary";
 import { makePreset } from "../../data/factories";
-import { CATEGORY_EMOJI } from "../progress/ExercisesTab";
 import {
   Button,
   EmptyState,
   Icon,
-  IconTile,
   ScreenTitle,
   SectionHeader,
   Segmented,
+  Spinner,
   TextField,
 } from "../../ui/kit";
 import { useWorkspace } from "../workspace";
+import { LibraryExerciseSheet, PageButtons } from "./ExerciseLibrarySheets";
 import LibrarySection from "./LibrarySection";
+import { MuscleFigure } from "./MuscleFigure";
+import { useExerciseLibrary } from "./useExerciseLibrary";
+
+const PAGE_SIZE = 20;
 
 export default function ExercisesScreen() {
   const { profile, sessions, logs, presets, reload, showToast } = useWorkspace();
+  const canonical = useExerciseLibrary();
   const [view, setView] = useState<"mine" | "browse">("mine");
-  const [query, setQuery] = useState("");
 
-  // Names the athlete has actually logged, so the library can flag them.
   const logged = useMemo(() => {
-    const ids = new Set(sessions.map((s) => s.id));
+    const ids = new Set(sessions.map((session) => session.id));
     return new Set(
-      logs.filter((l) => ids.has(l.session_id)).map((l) => l.exercise_name.trim().toLowerCase()),
+      logs.filter((log) => ids.has(log.session_id)).map((log) => log.exercise_name.trim().toLowerCase()),
     );
   }, [sessions, logs]);
 
-  const library = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const names = new Set(presets.map((p) => p.name.toLowerCase()));
-    const merged = [
-      ...presets.map((p) => ({ name: p.name, category: p.category, saved: true })),
-      ...CATALOG.filter((c) => !names.has(c.name.toLowerCase())).map((c) => ({
-        name: c.name,
-        category: c.category,
-        saved: false,
-      })),
-    ];
-    return q ? merged.filter((m) => m.name.toLowerCase().includes(q)) : merged;
-  }, [presets, query]);
+  async function saveOrMatch(exercise: LibraryExercise) {
+    const linked = presets.find((preset) => preset.wger_exercise_id === exercise.wgerId);
+    if (linked) return;
 
-  async function toggleSaved(name: string, saved: boolean) {
-    if (saved) {
-      const preset = presets.find((p) => p.name.toLowerCase() === name.toLowerCase());
-      if (preset) await api.deletePreset(preset.id);
-      showToast("Removed from your library");
+    const legacy = presets.find(
+      (preset) => !preset.wger_exercise_id && preset.name.trim().toLowerCase() === exercise.name.toLowerCase(),
+    );
+    if (legacy) {
+      await api.savePreset({ ...legacy, wger_exercise_id: exercise.wgerId });
+      showToast(`${legacy.name} matched to the exercise database`);
     } else {
-      await api.savePreset(makePreset(profile.id, name));
+      await api.savePreset(makePreset(profile.id, exercise.name, {
+        wger_exercise_id: exercise.wgerId,
+        category: exercise.category,
+        log_type: exercise.logType,
+        target_sets: exercise.sets,
+        target_reps: exercise.reps,
+      }));
       showToast("Saved to your library");
     }
     await reload();
@@ -68,7 +64,6 @@ export default function ExercisesScreen() {
   return (
     <>
       <ScreenTitle title="Library" />
-
       <div className="mb-4">
         <Segmented
           value={view}
@@ -81,14 +76,15 @@ export default function ExercisesScreen() {
       </div>
 
       {view === "mine" && <LibrarySection />}
-
       {view === "browse" && (
         <BrowseList
-          library={library}
+          exercises={canonical.exercises}
+          loading={canonical.loading}
+          error={canonical.error}
           logged={logged}
-          query={query}
-          onQuery={setQuery}
-          onToggle={toggleSaved}
+          presets={presets}
+          onRetry={canonical.retry}
+          onSave={saveOrMatch}
         />
       )}
     </>
@@ -96,67 +92,113 @@ export default function ExercisesScreen() {
 }
 
 function BrowseList({
-  library,
+  exercises,
+  loading,
+  error,
   logged,
-  query,
-  onQuery,
-  onToggle,
+  presets,
+  onRetry,
+  onSave,
 }: {
-  library: { name: string; category: string; saved: boolean }[];
+  exercises: LibraryExercise[];
+  loading: boolean;
+  error: string;
   logged: Set<string>;
-  query: string;
-  onQuery: (q: string) => void;
-  onToggle: (name: string, saved: boolean) => void;
+  presets: ReturnType<typeof useWorkspace>["presets"];
+  onRetry: () => void;
+  onSave: (exercise: LibraryExercise) => Promise<void>;
 }) {
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [selected, setSelected] = useState<LibraryExercise | null>(null);
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return q ? exercises.filter((item) => item.name.toLowerCase().includes(q)) : exercises;
+  }, [exercises, query]);
+  const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const shown = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const linkedIds = useMemo(
+    () => new Set(presets.map((preset) => preset.wger_exercise_id).filter(Boolean)),
+    [presets],
+  );
+  const legacyNames = useMemo(
+    () => new Set(presets.filter((preset) => !preset.wger_exercise_id).map((preset) => preset.name.trim().toLowerCase())),
+    [presets],
+  );
+
   return (
     <>
-      <div className="mb-3">
-        <TextField
-          placeholder="Search exercises"
-          value={query}
-          onChange={(e) => onQuery(e.target.value)}
-        />
-      </div>
+      <TextField
+        placeholder="Search the exercise database"
+        value={query}
+        onChange={(event) => { setQuery(event.target.value); setPage(1); }}
+      />
 
-      <SectionHeader title={`${library.length} exercises`} />
-
-      {library.length === 0 ? (
-        <EmptyState title="No match" subtitle="Nothing in the catalogue under that name." />
-      ) : (
-        <div className="space-y-1.5">
-          {library.map((entry) => (
-            <div
-              key={entry.name}
-              className="flex items-center gap-3 rounded-2xl border border-line bg-surface p-3"
-            >
-              <IconTile
-                emoji={CATEGORY_EMOJI[entry.category] ?? CATEGORY_EMOJI[categoryFor(entry.name)] ?? "🏋️"}
-                tint="var(--t-accent)"
-                size={34}
-              />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-black text-ink">{entry.name}</p>
-                <p className="text-[11px] font-bold uppercase text-muted">
-                  {entry.category}
-                  {logged.has(entry.name.trim().toLowerCase()) && " · logged"}
-                </p>
-              </div>
-              <Button
-                size="sm"
-                variant={entry.saved ? "secondary" : "ghost"}
-                onClick={() => onToggle(entry.name, entry.saved)}
-              >
-                {entry.saved ? <Icon.check className="h-4 w-4" /> : <Icon.plus className="h-4 w-4" />}
-                {entry.saved ? "Saved" : "Save"}
-              </Button>
-            </div>
-          ))}
+      {loading ? (
+        <div className="flex flex-col items-center gap-3 py-16 text-sm font-bold text-muted">
+          <Spinner /> Loading exercise database…
         </div>
+      ) : error ? (
+        <EmptyState
+          title="Library unavailable"
+          subtitle={error}
+          action={<Button variant="secondary" onClick={onRetry}>Try again</Button>}
+        />
+      ) : (
+        <>
+          <SectionHeader title={`${filtered.length} exercises`} />
+          {shown.length === 0 ? (
+            <EmptyState title="No match" subtitle="Try a shorter or different exercise name." />
+          ) : (
+            <div className="space-y-1.5">
+              {shown.map((exercise) => {
+                const saved = linkedIds.has(exercise.wgerId);
+                const legacy = legacyNames.has(exercise.name.toLowerCase());
+                return (
+                  <div key={exercise.wgerId} className="flex items-center gap-2 rounded-2xl border border-line bg-surface p-2.5">
+                    <button className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={() => setSelected(exercise)}>
+                      <MuscleFigure exercise={exercise} compact />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-black text-ink">{exercise.name}</p>
+                        <p className="truncate text-[11px] font-bold uppercase text-muted">
+                          {exercise.wgerCategoryName || exercise.category}
+                          {logged.has(exercise.name.trim().toLowerCase()) && " · logged"}
+                        </p>
+                      </div>
+                    </button>
+                    <Button
+                      size="sm"
+                      variant={saved ? "secondary" : "ghost"}
+                      disabled={saved}
+                      onClick={() => void onSave(exercise)}
+                    >
+                      {saved ? <Icon.check className="h-4 w-4" /> : legacy ? <Icon.link className="h-4 w-4" /> : <Icon.plus className="h-4 w-4" />}
+                      {saved ? "Saved" : legacy ? "Match" : "Save"}
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <PageButtons page={Math.min(page, pages)} pages={pages} onPage={setPage} />
+        </>
       )}
 
       <p className="mt-6 text-center text-[11px] font-semibold text-muted">
-        Your history, trends and records live under Progress → Exercises.
+        Database matching adds canonical names and muscle figures only. Your logged data and progression stay unchanged.
       </p>
+
+      {selected && (
+        <LibraryExerciseSheet
+          exercise={selected}
+          actionLabel={linkedIds.has(selected.wgerId) ? undefined : legacyNames.has(selected.name.toLowerCase()) ? "Match existing exercise" : "Save to my library"}
+          onAction={linkedIds.has(selected.wgerId) ? undefined : async () => {
+            await onSave(selected);
+            setSelected(null);
+          }}
+          onClose={() => setSelected(null)}
+        />
+      )}
     </>
   );
 }

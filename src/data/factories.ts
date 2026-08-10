@@ -195,6 +195,7 @@ export function makePreset(ownerId: string, name: string, patch: Partial<Exercis
     id: newId(),
     owner_id: ownerId,
     name,
+    wger_exercise_id: null,
     category: (entry?.category ?? categoryFor(name)) as ExerciseCategory,
     log_type: entry?.logType ?? inferLogType(name),
     target_sets: entry?.sets ?? 3,

@@ -364,6 +364,8 @@ export interface ExercisePreset {
   id: string;
   owner_id: string;
   name: string;
+  /** Optional canonical metadata link. The user's name and logging shape remain authoritative. */
+  wger_exercise_id: number | null;
   category: ExerciseCategory;
   log_type: LogType;
   target_sets: number;

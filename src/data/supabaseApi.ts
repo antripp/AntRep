@@ -342,6 +342,7 @@ function toPreset(r: Row): ExercisePreset {
     id: str(r.id),
     owner_id: str(r.owner_id),
     name: str(r.name),
+    wger_exercise_id: numOrNull(r.wger_exercise_id),
     category: str(r.category, "push") as ExercisePreset["category"],
     log_type: str(r.log_type, "strength") as ExercisePreset["log_type"],
     target_sets: num(r.target_sets, 3),
