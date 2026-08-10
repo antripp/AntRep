@@ -51,7 +51,7 @@ import {
 import { exportAthleteCsv, exportAthleteWorkbook } from "../../domain/export";
 import { writeImport } from "../../data/importWriter";
 import { ImportSheet } from "../shared/ImportSheet";
-import { BatchLogSheet } from "../shared/BatchLogSheet";
+import { BatchLogPage } from "../shared/BatchLogSheet";
 import { AthletePlanCustomizer } from "./AthletePlanCustomizer";
 
 export default function AthleteDetailScreen({
@@ -163,6 +163,33 @@ export default function AthleteDetailScreen({
     await api.clearExercise(sessionId, exerciseName);
     await load();
     onToast(`${exerciseName} sets cleared`);
+  }
+
+  if ((showBatch || editingSession !== null) && training) {
+    return (
+      <BatchLogPage
+        onBack={() => {
+          setShowBatch(false);
+          setEditingSession(null);
+        }}
+        athleteId={athlete.profile.id}
+        athleteName={athlete.profile.display_name || "this athlete"}
+        initialDate={editingSession?.date ?? todayStr}
+        initialPlanId={editingSession?.plan_id}
+        plans={training.plans.map((bundle) => {
+          const assignment = training.assignments.find((item) => item.plan_id === bundle.plan.id);
+          return {
+            bundle,
+            start: assignment?.start_date ?? bundle.plan.start_date,
+            end: planEnd(bundle.plan, assignment),
+          };
+        })}
+        sessions={training.sessions}
+        logs={training.logs}
+        onSaved={load}
+        onToast={onToast}
+      />
+    );
   }
 
   if (viewingPlan) {
@@ -521,30 +548,6 @@ export default function AthleteDetailScreen({
           await load();
           return outcome;
         }}
-        onToast={onToast}
-      />
-
-      <BatchLogSheet
-        open={showBatch || editingSession !== null}
-        onClose={() => {
-          setShowBatch(false);
-          setEditingSession(null);
-        }}
-        athleteId={athlete.profile.id}
-        athleteName={athlete.profile.display_name || "this athlete"}
-        initialDate={editingSession?.date ?? todayStr}
-        initialPlanId={editingSession?.plan_id}
-        plans={(training?.plans ?? []).map((bundle) => {
-          const assignment = training?.assignments.find((item) => item.plan_id === bundle.plan.id);
-          return {
-            bundle,
-            start: assignment?.start_date ?? bundle.plan.start_date,
-            end: planEnd(bundle.plan, assignment),
-          };
-        })}
-        sessions={training?.sessions ?? []}
-        logs={training?.logs ?? []}
-        onSaved={load}
         onToast={onToast}
       />
 

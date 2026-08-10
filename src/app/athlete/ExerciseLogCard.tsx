@@ -289,7 +289,8 @@ export function ExerciseLogCard({
     }
   }
 
-  const loggedCount = draft.filter(setHasData).length;
+  const performedSets = draft.filter(setHasData);
+  const loggedCount = performedSets.length;
 
   return (
     <div
@@ -306,6 +307,19 @@ export function ExerciseLogCard({
             {loggedCount > 0 && ` · ${loggedCount} set${loggedCount === 1 ? "" : "s"} logged`}
             {!exercise.is_mandatory && " · optional"}
           </p>
+          {performedSets.length > 0 && (
+            <span className="ui-exercise-summary mt-1.5" aria-label={`${loggedCount} logged sets`}>
+              {performedSets.slice(0, 4).map((set, index) => (
+                <span key={set.id} className="ui-exercise-summary-row">
+                  <b>{index + 1}</b>
+                  {formatSetCell(set, exercise.log_type, true)}
+                </span>
+              ))}
+              {performedSets.length > 4 && (
+                <span className="ui-exercise-summary-more">+{performedSets.length - 4}</span>
+              )}
+            </span>
+          )}
         </button>
 
         {/* Only while collapsed — open, the full bar below already shows it. */}
@@ -329,7 +343,7 @@ export function ExerciseLogCard({
           <button
             onClick={toggleDone}
             aria-label={done ? `Mark ${exercise.name} not done` : `Mark ${exercise.name} done`}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition active:scale-95"
+            className="ui-exercise-done flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition active:scale-95"
             style={{
               background: done ? tint : "var(--t-inset)",
               borderColor: done ? tint : "var(--t-line)",

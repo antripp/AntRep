@@ -397,7 +397,7 @@ function DateSwitcher({
 
   return (
     <>
-      <div className="flex items-center gap-1 rounded-full border border-line bg-surface p-1">
+      <div className="ui-date-switcher flex items-center gap-1 rounded-full border border-line bg-surface p-1">
         <button
           aria-label="Previous day"
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted active:text-ink"
@@ -560,7 +560,7 @@ function SegmentBlock({
       className="ui-segment-block rounded-card border p-3"
       style={{ borderColor: `${segment.color}38`, background: "color-mix(in srgb, var(--t-surface) 55%, transparent)" }}
     >
-      <div className="mb-3 flex items-center gap-3">
+      <div className="ui-segment-header mb-3 flex items-center gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h3 className="truncate text-[16px] font-black text-ink">{segment.title}</h3>

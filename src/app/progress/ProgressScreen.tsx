@@ -14,8 +14,9 @@ import { useMemo, useState } from "react";
 import type { PlanBundle, Session, SetLog } from "../../data/types";
 import { exerciseStats } from "../../domain/analytics";
 import { restDayPredicate } from "../../domain/plan";
+import { namesMatch, setHasData } from "../../domain/logging";
 import { plural } from "../../domain/text";
-import { EmptyState, Icon, ScreenTitle, Segmented } from "../../ui/kit";
+import { Button, EmptyState, Icon, ScreenTitle, Segmented } from "../../ui/kit";
 import { useWorkspace } from "../workspace";
 import { ExerciseDetail } from "./ExerciseDetail";
 import { ExercisesTab } from "./ExercisesTab";
@@ -36,7 +37,7 @@ const TABS = [
 
 export type ProgressTab = (typeof TABS)[number]["value"];
 
-export default function ProgressScreen() {
+export default function ProgressScreen({ onBatchLog }: { onBatchLog?: (planId: string | null) => void }) {
   const { profile, sessions, logs, allBundles, clearExercise, clearSession } = useWorkspace();
   return (
     <ProgressBody
@@ -47,6 +48,7 @@ export default function ProgressScreen() {
       totalXp={profile.total_xp}
       onClearExercise={clearExercise}
       onClearSession={(session) => clearSession(session.id)}
+      onBatchLog={onBatchLog}
     />
   );
 }
@@ -63,6 +65,7 @@ export function ProgressBody({
   onClearSession,
   onClearExercise,
   onEditSession,
+  onBatchLog,
 }: {
   sessions: Session[];
   logs: SetLog[];
@@ -77,6 +80,8 @@ export function ProgressBody({
   onClearSession?: (session: Session) => Promise<void>;
   onClearExercise?: (session: Session, exerciseName: string) => Promise<void>;
   onEditSession?: (session: Session) => void;
+  /** Offered only when plan-linked analytics contain missing set data. */
+  onBatchLog?: (planId: string | null) => void;
 }) {
   const [tab, setTab] = useState<ProgressTab>(initialTab);
   const [openKey, setOpenKey] = useState<string | null>(null);
@@ -88,6 +93,17 @@ export function ProgressBody({
 
   const scope = useProgressScope({ sessions: allSessions, logs: allLogs, plans });
   const { activeBundle, scopePlans, sessions, logs } = scope;
+
+  const incompletePlanSessions = useMemo(() => sessions.filter((session) => {
+    if (!session.plan_id) return false;
+    const sessionLogs = logs.filter((log) => log.session_id === session.id);
+    const performed = sessionLogs.filter(setHasData);
+    if (performed.length === 0) return true;
+    return session.completed_names.some((name) =>
+      !performed.some((log) => namesMatch(log.exercise_name, name)),
+    );
+  }), [sessions, logs]);
+  const repairPlanId = activeBundle?.plan.id ?? incompletePlanSessions.find((session) => session.plan_id)?.plan_id ?? null;
 
   // The one derivation every tab needs — the exercise detail page reads it too,
   // so it lives above the tabs rather than inside each of them.
@@ -179,7 +195,15 @@ export function ProgressBody({
     return (
       <>
         {title && <ScreenTitle title={title} />}
-        <EmptyState title="Nothing logged yet" subtitle="Your charts appear after the first session." />
+        <EmptyState
+          title="Nothing logged yet"
+          subtitle="Your charts appear after the first session."
+          action={onBatchLog && plans.length > 0 ? (
+            <Button onClick={() => onBatchLog(plans[0].plan.id)}>
+              <Icon.edit className="h-4 w-4" /> Batch log a plan
+            </Button>
+          ) : undefined}
+        />
       </>
     );
   }
@@ -220,6 +244,24 @@ export function ProgressBody({
         </div>
       )}
 
+      {onBatchLog && repairPlanId && incompletePlanSessions.length > 0 && (
+        <button
+          type="button"
+          onClick={() => onBatchLog(repairPlanId)}
+          className="mb-4 flex w-full items-center gap-3 rounded-2xl border border-[color-mix(in_srgb,var(--color-gold)_45%,var(--t-line))] bg-[color-mix(in_srgb,var(--color-gold)_12%,var(--t-surface))] px-4 py-3 text-left transition active:scale-[0.99]"
+        >
+          <Icon.edit className="h-5 w-5 shrink-0 text-accent" />
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-black text-ink">Review missing training data</span>
+            <span className="block text-xs font-semibold text-muted">
+              {plural(incompletePlanSessions.length, "planned session")} contain incomplete or missing set logs.
+            </span>
+          </span>
+          <span className="shrink-0 text-xs font-black text-accent">Batch log</span>
+          <Icon.chevron className="h-4 w-4 shrink-0 text-accent" />
+        </button>
+      )}
+
       <div className="mb-4">
         <Segmented value={tab} onChange={setTab} options={TABS.map((t) => ({ ...t }))} />
       </div>
@@ -228,6 +270,11 @@ export function ProgressBody({
         <EmptyState
           title="Nothing logged against this plan"
           subtitle="Switch back to Overall, or log a session under this plan."
+          action={onBatchLog && activeBundle ? (
+            <Button onClick={() => onBatchLog(activeBundle.plan.id)}>
+              <Icon.edit className="h-4 w-4" /> Batch log this plan
+            </Button>
+          ) : undefined}
         />
       ) : (
         <>

@@ -11,14 +11,12 @@ import { exportAthleteCsv, exportAthleteWorkbook, exportImportTemplate } from ".
 import { plural } from "../../domain/text";
 import { Button, Card, Icon, SectionHeader, Sheet } from "../../ui/kit";
 import { ImportSheet } from "../shared/ImportSheet";
-import { BatchLogSheet } from "../shared/BatchLogSheet";
 import { useWorkspace } from "../workspace";
 
-export function DataSection() {
-  const { profile, sessions, logs, planViews, pastViews, importSessions, reload, showToast } = useWorkspace();
+export function DataSection({ onOpenBatch }: { onOpenBatch: () => void }) {
+  const { profile, sessions, logs, planViews, pastViews, importSessions, showToast } = useWorkspace();
   const [showExport, setShowExport] = useState(false);
   const [showImport, setShowImport] = useState(false);
-  const [showBatch, setShowBatch] = useState(false);
 
   const name = profile.display_name || "me";
   const batchViews = [...planViews, ...pastViews];
@@ -28,7 +26,7 @@ export function DataSection() {
       <SectionHeader title="Your data" />
       <Card className="p-0">
         <button
-          onClick={() => setShowBatch(true)}
+          onClick={onOpenBatch}
           className="flex w-full items-center gap-3 border-b border-line p-3 text-left"
           disabled={batchViews.length === 0}
         >
@@ -118,17 +116,6 @@ export function DataSection() {
         bundles={planViews.map((view) => ({ bundle: view.bundle, start: view.start }))}
         existingSessions={sessions}
         onImport={importSessions}
-        onToast={showToast}
-      />
-
-      <BatchLogSheet
-        open={showBatch}
-        onClose={() => setShowBatch(false)}
-        athleteId={profile.id}
-        plans={batchViews.map((view) => ({ bundle: view.bundle, start: view.start, end: view.end }))}
-        sessions={sessions}
-        logs={logs}
-        onSaved={reload}
         onToast={showToast}
       />
     </>

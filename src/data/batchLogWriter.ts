@@ -48,6 +48,9 @@ export async function writeBatchLog({
   for (const group of groups.values()) {
     const first = group[0];
     const existing = group.find((change) => change.session)?.session;
+    if (existing && existing.athlete_id !== athleteId) {
+      throw new Error("This session belongs to a different athlete and cannot be batch edited.");
+    }
     const validByExercise = new Map(
       group.map((change) => [change.exercise.id, change.sets.filter(setHasData)] as const),
     );
@@ -86,10 +89,16 @@ export async function writeBatchLog({
     });
     const saved = await api.saveSession({
       ...base,
+      // The editor may be operated by a linked coach, but the training record
+      // always belongs to the athlete whose workspace was opened.
+      athlete_id: athleteId,
       completed_names: completedNames,
       status: progress.isComplete ? "complete" : "in_progress",
       ended_at: progress.isComplete ? (base.ended_at ?? new Date().toISOString()) : null,
     });
+    if (saved.athlete_id !== athleteId) {
+      throw new Error("The saved session was not attributed to the selected athlete.");
+    }
 
     for (const change of group) {
       const sets = (validByExercise.get(change.exercise.id) ?? []).map((set, index) => ({

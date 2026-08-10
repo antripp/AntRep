@@ -35,7 +35,7 @@ import GuideScreen from "./GuideScreen";
 const INTERFACE_OPTIONS: { value: UIMode; label: string; description: string }[] = [
   { value: "classic", label: "Classic", description: "Playful and gamified" },
   { value: "minimal", label: "Minimal", description: "Calm and content-first" },
-  { value: "compact", label: "Modern compact", description: "Dense and quick to scan" },
+  { value: "compact", label: "Modern", description: "Soft, clear and focused" },
 ];
 
 export default function SettingsScreen({

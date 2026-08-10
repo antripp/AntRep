@@ -162,6 +162,38 @@ interface ThemeState extends Omit<ThemePref, "mode"> {
 
 const STORAGE_KEY = "antrep-theme";
 
+/** Build a readable chart series from the active UI accent. The first colour
+ * stays on-brand; the remaining hues rotate around it so every saved palette
+ * gets a distinct but related analytics system instead of fixed app colours. */
+function chartPalette(accent: string): string[] {
+  const hex = accent.replace("#", "");
+  if (!/^[0-9a-f]{6}$/i.test(hex)) return [accent, "#1cb0f6", "#a560f8", "#ff9600", "#ff4b8b"];
+
+  const [r, g, b] = [0, 2, 4].map((offset) => parseInt(hex.slice(offset, offset + 2), 16) / 255);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const delta = max - min;
+  const lightness = (max + min) / 2;
+  const saturation = delta === 0 ? 0 : delta / (1 - Math.abs(2 * lightness - 1));
+  let hue = 0;
+  if (delta !== 0) {
+    if (max === r) hue = 60 * (((g - b) / delta) % 6);
+    else if (max === g) hue = 60 * ((b - r) / delta + 2);
+    else hue = 60 * ((r - g) / delta + 4);
+  }
+  if (hue < 0) hue += 360;
+
+  const secondarySaturation = Math.max(48, Math.min(76, saturation * 100));
+  const secondaryLightness = Math.max(46, Math.min(62, lightness * 100 + 5));
+  return [
+    accent,
+    `hsl(${(hue + 52) % 360} ${secondarySaturation}% ${secondaryLightness}%)`,
+    `hsl(${(hue + 116) % 360} ${secondarySaturation}% ${secondaryLightness}%)`,
+    `hsl(${(hue + 198) % 360} ${secondarySaturation}% ${secondaryLightness}%)`,
+    `hsl(${(hue + 292) % 360} ${secondarySaturation}% ${secondaryLightness}%)`,
+  ];
+}
+
 function defaultPref(): ThemePref {
   return {
     mode: "auto",
@@ -316,6 +348,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const root = document.documentElement;
     root.dataset.theme = mode;
     root.dataset.ui = uiMode;
+    root.dataset.themeStyle = pref.style;
     if (pref.accent === "auto") delete root.dataset.accent;
     else root.dataset.accent = pref.accent;
     root.dataset.pattern = pref.pattern.style;
@@ -381,6 +414,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       root.style.setProperty("--t-accent", accent.swatch);
       root.style.setProperty("--t-accent-deep", accent.deep);
     }
+
+    const activeAccent = accent?.swatch ?? (paired && pref.style === "duotone" ? paired[mode].accent : palette[mode].accent);
+    chartPalette(activeAccent).forEach((color, index) => {
+      root.style.setProperty(`--t-chart-${index + 1}`, color);
+    });
 
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...pref, accountId: cacheOwner }));
   }, [pref, mode, uiMode, cacheOwner]);

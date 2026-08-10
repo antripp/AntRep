@@ -1,6 +1,6 @@
 /** Small dependency-free SVG charts, themed with the app tokens. */
 
-import { useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useId, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 
 export interface Point {
   label: string;
@@ -44,10 +44,11 @@ export function BarChart({
   const max = niceMax(Math.max(...data.map((d) => d.value), goal ?? 0));
   const plot = height - 24;
   const shown = active ?? data.length - 1;
+  const chartStyle = { "--chart-color": color } as CSSProperties;
 
   return (
-    <div>
-      <div className="mb-1 flex items-baseline justify-between gap-2">
+    <div className="ui-chart ui-bar-chart" style={chartStyle}>
+      <div className="ui-chart-readout mb-1 flex items-baseline justify-between gap-2">
         <span className="text-lg font-black text-ink">{format(data[shown]?.value ?? 0)}</span>
         <span className="truncate text-[11px] font-bold text-muted">
           {data[shown]?.detail ?? data[shown]?.label}
@@ -55,15 +56,15 @@ export function BarChart({
       </div>
 
       <div
-        className="relative flex items-end gap-1.5 touch-pan-y"
+        className="ui-chart-plot relative flex items-end gap-1.5 touch-pan-y"
         style={{ height: plot }}
         onPointerDown={(e) => setActive(indexFromPointer(e, data.length))}
-        onPointerMove={(e) => (e.buttons ? setActive(indexFromPointer(e, data.length)) : undefined)}
+        onPointerMove={(e) => setActive(indexFromPointer(e, data.length))}
         onPointerLeave={() => setActive(null)}
       >
         {goal !== undefined && goal > 0 && (
           <div
-            className="pointer-events-none absolute inset-x-0 border-t border-dashed border-muted/50"
+            className="ui-chart-goal pointer-events-none absolute inset-x-0 border-t border-dashed border-muted/50"
             style={{ bottom: (goal / max) * plot }}
           >
             {goalLabel && (
@@ -75,11 +76,10 @@ export function BarChart({
         {data.map((d, i) => (
           <div key={`${d.label}-${i}`} className="flex h-full flex-1 flex-col justify-end">
             <div
-              className="w-full rounded-t-md transition-[height,opacity] duration-500"
+              className="ui-chart-bar w-full rounded-t-md transition-[height,opacity,transform] duration-500"
+              data-active={i === shown || undefined}
               style={{
                 height: `${Math.max(2, (d.value / max) * plot)}px`,
-                background: color,
-                opacity: i === shown ? 1 : 0.4,
               }}
             />
           </div>
@@ -116,6 +116,7 @@ export function LineChart({
   emptyMessage?: string;
 }) {
   const [active, setActive] = useState<number | null>(null);
+  const gradientId = `line-fill-${useId().replace(/:/g, "")}`;
 
   if (data.length < 2) {
     return <p className="py-6 text-center text-sm font-semibold text-muted">{emptyMessage}</p>;
@@ -140,10 +141,11 @@ export function LineChart({
   const line = data.map((d, i) => `${i === 0 ? "M" : "L"} ${x(i)} ${y(d.value)}`).join(" ");
   const area = `${line} L ${x(data.length - 1)} ${height - padBottom} L ${x(0)} ${height - padBottom} Z`;
   const shown = active ?? data.length - 1;
+  const chartStyle = { "--chart-color": color } as CSSProperties;
 
   return (
-    <div>
-      <div className="mb-1 flex items-baseline justify-between gap-2">
+    <div className="ui-chart ui-line-chart" style={chartStyle}>
+      <div className="ui-chart-readout mb-1 flex items-baseline justify-between gap-2">
         <span className="text-lg font-black text-ink">{format(data[shown].value)}</span>
         <span className="truncate text-[11px] font-bold text-muted">
           {data[shown].detail ?? data[shown].label}
@@ -152,15 +154,22 @@ export function LineChart({
 
       <svg
         viewBox={`0 0 ${width} ${height}`}
-        className="w-full touch-pan-y"
+        className="ui-chart-plot w-full touch-pan-y"
         role="img"
         aria-label="Progress chart"
         onPointerDown={(e) => setActive(indexFromPointer(e, data.length))}
-        onPointerMove={(e) => (e.buttons ? setActive(indexFromPointer(e, data.length)) : undefined)}
+        onPointerMove={(e) => setActive(indexFromPointer(e, data.length))}
         onPointerLeave={() => setActive(null)}
       >
+        <defs>
+          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--chart-color)" stopOpacity="0.32" />
+            <stop offset="100%" stopColor="var(--chart-color)" stopOpacity="0" />
+          </linearGradient>
+        </defs>
         {[0, 0.5, 1].map((t) => (
           <line
+            className="ui-chart-grid"
             key={t}
             x1={0}
             x2={width}
@@ -171,26 +180,29 @@ export function LineChart({
           />
         ))}
 
-        <path d={area} fill={color} opacity={0.12} />
-        <path d={line} fill="none" stroke={color} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+        <path className="ui-chart-area" d={area} fill={`url(#${gradientId})`} />
+        <path className="ui-chart-line" d={line} fill="none" stroke="var(--chart-color)" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
 
         <line
           x1={x(shown)}
           x2={x(shown)}
           y1={padTop}
           y2={height - padBottom}
-          stroke={color}
+          className="ui-chart-cursor"
+          stroke="var(--chart-color)"
           strokeOpacity={0.35}
           strokeWidth={1}
         />
         {data.map((d, i) => (
           <circle
+            className="ui-chart-point"
+            data-active={i === shown || undefined}
             key={`${d.label}-${i}`}
             cx={x(i)}
             cy={y(d.value)}
             r={i === shown ? 4.5 : 2.5}
-            fill={i === shown ? color : "var(--t-surface)"}
-            stroke={color}
+            fill={i === shown ? "var(--chart-color)" : "var(--t-surface)"}
+            stroke="var(--chart-color)"
             strokeWidth={2}
           />
         ))}
@@ -225,16 +237,22 @@ export function Sparkline({
   const path = values.map((v, i) => `${i === 0 ? "M" : "L"} ${x(i)} ${y(v)}`).join(" ");
 
   return (
-    <svg width={width} height={height} className="shrink-0" aria-hidden="true">
-      <path d={path} fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx={x(values.length - 1)} cy={y(values.at(-1)!)} r={2.5} fill={color} />
+    <svg
+      width={width}
+      height={height}
+      className="ui-sparkline shrink-0"
+      style={{ "--chart-color": color } as CSSProperties}
+      aria-hidden="true"
+    >
+      <path d={path} fill="none" stroke="var(--chart-color)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={x(values.length - 1)} cy={y(values.at(-1)!)} r={2.5} fill="var(--chart-color)" />
     </svg>
   );
 }
 
 export function DotRow({ dots }: { dots: { date: string; level: 0 | 1 | 2 }[] }) {
   return (
-    <div className="flex items-center gap-1">
+    <div className="ui-dot-row flex items-center gap-1">
       {dots.map((d) => (
         <span
           key={d.date}
@@ -258,8 +276,8 @@ export function ShareBar({
 }) {
   const total = parts.reduce((t, p) => t + p.value, 0) || 1;
   return (
-    <div>
-      <div className="flex h-3 overflow-hidden rounded-full bg-inset">
+    <div className="ui-share-chart">
+      <div className="ui-share-bar flex h-3 overflow-hidden rounded-full bg-inset">
         {parts.map((p) => (
           <div key={p.label} style={{ width: `${(p.value / total) * 100}%`, background: p.color }} />
         ))}
@@ -284,8 +302,8 @@ export function AdherenceBars({
 }) {
   const max = Math.max(1, ...weeks.map((w) => Math.max(w.planned, w.completed + w.extra)));
   return (
-    <div>
-      <div className="flex items-end gap-2" style={{ height: 84 }}>
+    <div className="ui-adherence-chart">
+      <div className="ui-adherence-bars flex items-end gap-2" style={{ height: 84 }}>
         {weeks.map((week) => (
           <div key={week.label} className="flex h-full flex-1 flex-col justify-end gap-0.5">
             <div className="relative w-full" style={{ height: `${(week.planned / max) * 76 || 4}px` }}>

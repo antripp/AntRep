@@ -17,6 +17,7 @@ import { WorkspaceProvider, useWorkspace } from "../workspace";
 import AthleteDetailScreen from "./AthleteDetailScreen";
 import AthletesScreen from "./AthletesScreen";
 import CoachPlansScreen from "./CoachPlansScreen";
+import { BatchLogPage } from "../shared/BatchLogSheet";
 
 const TABS = [
   { key: "athletes", label: "Athletes", icon: Icon.people },
@@ -136,10 +137,46 @@ export default function CoachApp({
 
 /** The coach's own Home + plans, powered by their athlete profile. */
 function CoachTraining() {
-  const { loading, toast, clearToast } = useWorkspace();
+  const {
+    loading,
+    profile,
+    planViews,
+    pastViews,
+    sessions,
+    logs,
+    reload,
+    showToast,
+    toast,
+    clearToast,
+  } = useWorkspace();
   const [view, setView] = useState<"home" | "plans" | "progress">("home");
+  const [batchPlanId, setBatchPlanId] = useState<string | null | undefined>(undefined);
 
   if (loading) return <LoadingScreen />;
+
+  if (batchPlanId !== undefined) {
+    return (
+      <>
+        <Screen className="ui-batch-log-screen">
+          <BatchLogPage
+            onBack={() => setBatchPlanId(undefined)}
+            athleteId={profile.id}
+            initialPlanId={batchPlanId}
+            plans={[...planViews, ...pastViews].map((item) => ({
+              bundle: item.bundle,
+              start: item.start,
+              end: item.end,
+            }))}
+            sessions={sessions}
+            logs={logs}
+            onSaved={reload}
+            onToast={showToast}
+          />
+        </Screen>
+        <Toast message={toast} onDone={clearToast} />
+      </>
+    );
+  }
 
   return (
     <>
@@ -158,8 +195,8 @@ function CoachTraining() {
           ))}
         </div>
         {view === "home" && <HomeScreen onGoPlans={() => setView("plans")} />}
-        {view === "plans" && <PlansScreen />}
-        {view === "progress" && <ProgressScreen />}
+        {view === "plans" && <PlansScreen onBatchLog={setBatchPlanId} />}
+        {view === "progress" && <ProgressScreen onBatchLog={setBatchPlanId} />}
       </Screen>
       <Toast message={toast} onDone={clearToast} />
     </>

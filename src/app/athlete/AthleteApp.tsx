@@ -1,5 +1,6 @@
 /** Athlete portal shell: Home · Plans · Progress · Library · Settings. */
 
+import { useState } from "react";
 import { usePersisted } from "../usePersisted";
 import type { Profile, Role } from "../../data/types";
 import { Icon, LoadingScreen, Screen, TabBar, Toast } from "../../ui/kit";
@@ -12,6 +13,7 @@ import CoachScreen from "./CoachScreen";
 import ExercisesScreen from "./ExercisesScreen";
 import HomeScreen from "./HomeScreen";
 import PlansScreen from "./PlansScreen";
+import { BatchLogPage } from "../shared/BatchLogSheet";
 
 const TABS = [
   { key: "home", label: "Home", icon: Icon.home },
@@ -37,31 +39,74 @@ export default function AthleteApp({
 }
 
 function AthleteShell({ onSwitchPortal }: { onSwitchPortal: (role: Role) => void }) {
-  const { loading, profile, workspace, reload, toast, clearToast } = useWorkspace();
+  const {
+    loading,
+    profile,
+    workspace,
+    planViews,
+    pastViews,
+    sessions,
+    logs,
+    reload,
+    showToast,
+    toast,
+    clearToast,
+  } = useWorkspace();
   const [tab, setTab] = usePersisted("athlete-tab", "home");
+  const [batchOpen, setBatchOpen] = useState(false);
+  const [batchPlanId, setBatchPlanId] = useState<string | null>(null);
+
+  function openBatchLog(planId: string | null = null) {
+    setBatchPlanId(planId);
+    setBatchOpen(true);
+  }
+
+  function closeBatchLog() {
+    setBatchOpen(false);
+    setBatchPlanId(null);
+  }
 
   if (loading) return <LoadingScreen />;
 
   return (
     <>
       <DbFaultBanner />
-      <Screen>
-        {tab === "home" && <HomeScreen onGoPlans={() => setTab("plans")} />}
-        {tab === "plans" && <PlansScreen />}
-        {tab === "coach" && <CoachScreen />}
-        {tab === "progress" && <ProgressScreen />}
-        {tab === "exercises" && <ExercisesScreen />}
-        {tab === "settings" && (
-          <SettingsScreen
-            profile={profile}
-            coaches={workspace.coaches}
-            onReload={reload}
-            onSwitchPortal={onSwitchPortal}
-            extra={<DataSection />}
+      <Screen className={batchOpen ? "ui-batch-log-screen" : ""}>
+        {batchOpen ? (
+          <BatchLogPage
+            onBack={closeBatchLog}
+            athleteId={profile.id}
+            initialPlanId={batchPlanId}
+            plans={[...planViews, ...pastViews].map((view) => ({
+              bundle: view.bundle,
+              start: view.start,
+              end: view.end,
+            }))}
+            sessions={sessions}
+            logs={logs}
+            onSaved={reload}
+            onToast={showToast}
           />
+        ) : (
+          <>
+            {tab === "home" && <HomeScreen onGoPlans={() => setTab("plans")} />}
+            {tab === "plans" && <PlansScreen onBatchLog={openBatchLog} />}
+            {tab === "coach" && <CoachScreen />}
+            {tab === "progress" && <ProgressScreen onBatchLog={openBatchLog} />}
+            {tab === "exercises" && <ExercisesScreen />}
+            {tab === "settings" && (
+              <SettingsScreen
+                profile={profile}
+                coaches={workspace.coaches}
+                onReload={reload}
+                onSwitchPortal={onSwitchPortal}
+                extra={<DataSection onOpenBatch={() => openBatchLog()} />}
+              />
+            )}
+          </>
         )}
       </Screen>
-      <TabBar tabs={TABS} active={tab} onSelect={setTab} />
+      {!batchOpen && <TabBar tabs={TABS} active={tab} onSelect={setTab} />}
       <Toast message={toast} onDone={clearToast} />
     </>
   );

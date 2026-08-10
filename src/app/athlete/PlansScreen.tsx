@@ -1,10 +1,10 @@
 /** Plans — sync what a coach assigned, or build your own. */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useDraft } from "../usePersisted";
 import { api } from "../../data";
 import { makePlan, makePreset, newId } from "../../data/factories";
-import type { PlanBundle, Session } from "../../data/types";
+import type { AssignedPlan, PlanBundle, Session } from "../../data/types";
 import { formatShortDate, localDate, startOfWeek } from "../../domain/dates";
 import {
   blockCount,
@@ -31,13 +31,16 @@ import {
   Pill,
   ScreenTitle,
   SectionHeader,
+  Segmented,
   Spinner,
 } from "../../ui/kit";
 import { PlanDetail } from "../plans/PlanDetail";
 import { PlanEditor } from "../plans/PlanEditor";
 import { useWorkspace } from "../workspace";
 
-export default function PlansScreen() {
+type PlanTab = "active" | "coaches" | "mine" | "past";
+
+export default function PlansScreen({ onBatchLog }: { onBatchLog: (planId: string) => void }) {
   const { profile, workspace, sessions, logs, reload, showToast } = useWorkspace();
   const loggedIds = loggedSessionIds(logs);
   // A plan is a lot of typing. Keep it across reloads, per profile, and drop it
@@ -47,6 +50,7 @@ export default function PlansScreen() {
   const setDraft = plan.set;
   const [viewing, setViewing] = useState<PlanBundle | null>(null);
   const [saving, setSaving] = useState(false);
+  const [tab, setTab] = useState<PlanTab>("active");
 
   // Say so when work comes back, or a restored draft looks like a bug.
   const announced = useRef(false);
@@ -94,6 +98,24 @@ export default function PlansScreen() {
   const pastOwn = workspace.ownPlans.filter(
     (b) => !b.plan.is_archived && !planIsLive(b.plan, today),
   );
+  const currentAssigned = workspace.assigned.filter(({ bundle, assignment }) =>
+    planIsLive(bundle.plan, today, assignment),
+  );
+  const activeAssigned = currentAssigned.filter(({ assignment }) => assignment.status === "active");
+  const pastAssigned = workspace.assigned.filter(({ bundle, assignment }) =>
+    !planIsLive(bundle.plan, today, assignment),
+  );
+  const coachGroups = useMemo(() => {
+    const groups = new Map<string, { name: string; plans: AssignedPlan[] }>();
+    for (const assigned of currentAssigned) {
+      const key = assigned.coach?.id ?? assigned.bundle.plan.owner_id;
+      const name = assigned.coach?.display_name || "Coach";
+      const group = groups.get(key) ?? { name, plans: [] };
+      group.plans.push(assigned);
+      groups.set(key, group);
+    }
+    return [...groups.entries()].map(([id, group]) => ({ id, ...group }));
+  }, [currentAssigned]);
 
   function createPlan() {
     const plan = makePlan(profile.id, {
@@ -208,134 +230,262 @@ export default function PlansScreen() {
     <>
       <ScreenTitle title="Plans" />
 
-      <SectionHeader title="From your coach" />
-      {workspace.assigned.length === 0 ? (
-        <EmptyState
-          title="No coach plans yet"
-          subtitle="Link a coach in Settings, then their plans show up here to sync."
+      <div className="mb-4">
+        <Segmented
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: "active", label: `Active (${activeAssigned.length + runningOwn.length})` },
+            { value: "coaches", label: "Coaches" },
+            { value: "mine", label: "My plans" },
+            { value: "past", label: `Past (${pastAssigned.length + pastOwn.length})` },
+          ]}
         />
-      ) : (
-        <div className="space-y-2">
-          {workspace.assigned.map(({ bundle, assignment, coach }) => (
-            <Card key={assignment.id}>
-              <div className="flex items-center gap-3">
-                <IconTile emoji="📋" tint="var(--t-accent)" />
-                <button className="min-w-0 flex-1 text-left" onClick={() => setViewing(bundle)}>
-                  <p className="truncate text-[15px] font-black text-ink">{bundle.plan.name}</p>
-                  <p className="truncate text-xs font-bold text-muted">
-                    {coach?.display_name ?? "Coach"} · {planShape(bundle)} ·{" "}
-                    {planIsLive(bundle.plan, today, assignment)
-                      ? plural(bundle.exercises.length, "exercise")
-                      : `ended ${formatShortDate(planEnd(bundle.plan, assignment) ?? bundle.plan.start_date)} — your coach can restart it`}
-                  </p>
-                  <span className="mt-1 inline-flex items-center gap-1 text-[11px] font-black text-accent">
-                    View plan <Icon.chevron className="h-3 w-3" />
-                  </span>
-                </button>
-                {/* A finished coach plan is read-only here: restarting someone
-                    else's programme is the coach's call, not the athlete's. */}
-                {planIsLive(bundle.plan, today, assignment) ? (
-                  assignment.status === "active" ? (
-                    <Pill tint="var(--t-accent)">Synced</Pill>
-                  ) : (
-                    <Button size="sm" onClick={() => syncPlan(assignment.id, "active")}>
-                      Sync
-                    </Button>
-                  )
-                ) : (
-                  <Pill tint="var(--t-muted)">Finished</Pill>
-                )}
-              </div>
+      </div>
 
-              <WeekStrip bundle={bundle} />
-              <PreservedLogWarning
-                bundle={bundle}
-                sessions={sessions}
-                loggedIds={loggedIds}
-                startOverride={assignment.start_date}
-                endOverride={assignment.end_date}
-              />
-
-              {assignment.status === "active" && (
-                <button
-                  className="mt-2 text-xs font-black text-muted"
-                  onClick={() => syncPlan(assignment.id, "declined")}
-                >
-                  Stop following this plan
-                </button>
-              )}
-            </Card>
-          ))}
-        </div>
+      {tab === "active" && (
+        <>
+          <SectionHeader title="Current plans" />
+          {activeAssigned.length === 0 && runningOwn.length === 0 ? (
+            <EmptyState
+              title="No active plans"
+              subtitle="Sync a coach plan or activate one of your own plans."
+            />
+          ) : (
+            <div className="space-y-2">
+              {activeAssigned.map((assigned) => (
+                <CoachPlanCard
+                  key={assigned.assignment.id}
+                  assigned={assigned}
+                  today={today}
+                  sessions={sessions}
+                  loggedIds={loggedIds}
+                  onView={() => setViewing(assigned.bundle)}
+                  onSync={syncPlan}
+                  onBatchLog={onBatchLog}
+                />
+              ))}
+              {runningOwn.map((bundle) => (
+                <OwnPlanCard
+                  key={bundle.plan.id}
+                  bundle={bundle}
+                  sessions={sessions}
+                  loggedIds={loggedIds}
+                  onView={() => setViewing(bundle)}
+                  onBatchLog={onBatchLog}
+                />
+              ))}
+            </div>
+          )}
+        </>
       )}
 
-      <SectionHeader
-        title="My plans"
-        action={
-          <Button size="sm" variant="ghost" onClick={createPlan}>
-            <Icon.plus className="h-4 w-4" /> New
-          </Button>
-        }
-      />
-      {runningOwn.length === 0 && pastOwn.length === 0 ? (
-        <EmptyState
-          title="Build your own plan"
-          subtitle="Set up your week, add exercises, and log against it — with or without a coach."
-          action={<Button onClick={createPlan}>Create a plan</Button>}
-        />
-      ) : (
-        <div className="space-y-2">
-          {runningOwn.map((bundle) => (
-            <Card key={bundle.plan.id} onClick={() => setViewing(bundle)}>
-              <div className="flex items-center gap-3">
-                <IconTile emoji="🗓️" tint="var(--t-accent)" />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[15px] font-black text-ink">{bundle.plan.name}</p>
-                  <p className="truncate text-xs font-bold text-muted">
-                    {planShape(bundle)} · {plural(bundle.exercises.length, "exercise")}
-                    {bundle.plan.end_date && ` · ends ${formatShortDate(bundle.plan.end_date)}`}
-                  </p>
+      {tab === "coaches" && (
+        <>
+          {coachGroups.length === 0 ? (
+            <EmptyState
+              title="No current coach plans"
+              subtitle="Link a coach in Settings, then their assigned plans appear here under their name."
+            />
+          ) : (
+            coachGroups.map((group) => (
+              <div key={group.id}>
+                <SectionHeader title={group.name} />
+                <div className="space-y-2">
+                  {group.plans.map((assigned) => (
+                    <CoachPlanCard
+                      key={assigned.assignment.id}
+                      assigned={assigned}
+                      today={today}
+                      sessions={sessions}
+                      loggedIds={loggedIds}
+                      onView={() => setViewing(assigned.bundle)}
+                      onSync={syncPlan}
+                      onBatchLog={onBatchLog}
+                    />
+                  ))}
                 </div>
-                {bundle.plan.is_active && <Pill tint="var(--t-accent)">Active</Pill>}
-                <Icon.chevron className="h-4 w-4 text-muted" />
               </div>
-              <WeekStrip bundle={bundle} />
-              <PreservedLogWarning bundle={bundle} sessions={sessions} loggedIds={loggedIds} />
-            </Card>
-          ))}
-        </div>
+            ))
+          )}
+        </>
       )}
 
-      {/* Finished plans stay readable — and restartable, which is the whole
-          point of ending one rather than deleting it. */}
-      {pastOwn.length > 0 && (
+      {tab === "mine" && (
+        <>
+          <SectionHeader
+            title="My current plans"
+            action={
+              <Button size="sm" variant="ghost" onClick={createPlan}>
+                <Icon.plus className="h-4 w-4" /> New
+              </Button>
+            }
+          />
+          {runningOwn.length === 0 ? (
+            <EmptyState
+              title="Build your own plan"
+              subtitle="Set up your week, add exercises, and log against it — with or without a coach."
+              action={<Button onClick={createPlan}>Create a plan</Button>}
+            />
+          ) : (
+            <div className="space-y-2">
+              {runningOwn.map((bundle) => (
+                <OwnPlanCard
+                  key={bundle.plan.id}
+                  bundle={bundle}
+                  sessions={sessions}
+                  loggedIds={loggedIds}
+                  onView={() => setViewing(bundle)}
+                  onBatchLog={onBatchLog}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {tab === "past" && (
         <>
           <SectionHeader title="Past plans" />
-          <div className="space-y-2">
-            {pastOwn.map((bundle) => (
-              <Card key={bundle.plan.id}>
-                <div className="flex items-center gap-3">
-                  <IconTile emoji="📦" tint="var(--t-muted)" />
-                  <button className="min-w-0 flex-1 text-left" onClick={() => setViewing(bundle)}>
-                    <p className="truncate text-[15px] font-black text-ink">{bundle.plan.name}</p>
-                    <p className="truncate text-xs font-bold text-muted">
-                      {planShape(bundle)} ·{" "}
-                      {bundle.plan.end_date
-                        ? `ended ${formatShortDate(bundle.plan.end_date)}`
-                        : "not running"}
-                    </p>
-                  </button>
-                  <Button size="sm" variant="secondary" onClick={() => restartPlan(bundle)}>
-                    Restart
-                  </Button>
-                </div>
-                <PreservedLogWarning bundle={bundle} sessions={sessions} loggedIds={loggedIds} />
-              </Card>
-            ))}
-          </div>
+          {pastAssigned.length === 0 && pastOwn.length === 0 ? (
+            <EmptyState title="No past plans" subtitle="Plans appear here after they finish or are switched off." />
+          ) : (
+            <div className="space-y-2">
+              {pastAssigned.map((assigned) => (
+                <CoachPlanCard
+                  key={assigned.assignment.id}
+                  assigned={assigned}
+                  today={today}
+                  sessions={sessions}
+                  loggedIds={loggedIds}
+                  onView={() => setViewing(assigned.bundle)}
+                  onSync={syncPlan}
+                  onBatchLog={onBatchLog}
+                />
+              ))}
+              {pastOwn.map((bundle) => (
+                <OwnPlanCard
+                  key={bundle.plan.id}
+                  bundle={bundle}
+                  past
+                  sessions={sessions}
+                  loggedIds={loggedIds}
+                  onView={() => setViewing(bundle)}
+                  onBatchLog={onBatchLog}
+                  onRestart={() => restartPlan(bundle)}
+                />
+              ))}
+            </div>
+          )}
         </>
       )}
     </>
+  );
+}
+
+function CoachPlanCard({
+  assigned,
+  today,
+  sessions,
+  loggedIds,
+  onView,
+  onSync,
+  onBatchLog,
+}: {
+  assigned: AssignedPlan;
+  today: string;
+  sessions: Session[];
+  loggedIds: Set<string>;
+  onView: () => void;
+  onSync: (assignmentId: string, status: "active" | "declined") => Promise<void>;
+  onBatchLog: (planId: string) => void;
+}) {
+  const { bundle, assignment, coach } = assigned;
+  const live = planIsLive(bundle.plan, today, assignment);
+  return (
+    <Card>
+      <div className="flex items-center gap-3">
+        <IconTile emoji={live ? "📋" : "📦"} tint={live ? "var(--t-accent)" : "var(--t-muted)"} />
+        <button className="min-w-0 flex-1 text-left" onClick={onView}>
+          <p className="truncate text-[15px] font-black text-ink">{bundle.plan.name}</p>
+          <p className="truncate text-xs font-bold text-muted">
+            {coach?.display_name ?? "Coach"} · {planShape(bundle)} ·{" "}
+            {live
+              ? plural(bundle.exercises.length, "exercise")
+              : `ended ${formatShortDate(planEnd(bundle.plan, assignment) ?? bundle.plan.start_date)}`}
+          </p>
+        </button>
+        {live && assignment.status !== "active" ? (
+          <Button size="sm" onClick={() => onSync(assignment.id, "active")}>Sync</Button>
+        ) : (
+          <Pill tint={live ? "var(--t-accent)" : "var(--t-muted)"}>{live ? "Active" : "Past"}</Pill>
+        )}
+      </div>
+      <WeekStrip bundle={bundle} />
+      <PreservedLogWarning
+        bundle={bundle}
+        sessions={sessions}
+        loggedIds={loggedIds}
+        startOverride={assignment.start_date}
+        endOverride={assignment.end_date}
+      />
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <Button size="sm" variant="secondary" onClick={onView}>View plan</Button>
+        {assignment.status === "active" && (
+          <Button size="sm" variant="secondary" onClick={() => onBatchLog(bundle.plan.id)}>
+            <Icon.edit className="h-3.5 w-3.5" /> Batch log
+          </Button>
+        )}
+        {live && assignment.status === "active" && (
+          <button className="ml-auto text-xs font-black text-muted" onClick={() => onSync(assignment.id, "declined")}>
+            Stop following
+          </button>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function OwnPlanCard({
+  bundle,
+  past = false,
+  sessions,
+  loggedIds,
+  onView,
+  onBatchLog,
+  onRestart,
+}: {
+  bundle: PlanBundle;
+  past?: boolean;
+  sessions: Session[];
+  loggedIds: Set<string>;
+  onView: () => void;
+  onBatchLog: (planId: string) => void;
+  onRestart?: () => void;
+}) {
+  return (
+    <Card>
+      <div className="flex items-center gap-3">
+        <IconTile emoji={past ? "📦" : "🗓️"} tint={past ? "var(--t-muted)" : "var(--t-accent)"} />
+        <button className="min-w-0 flex-1 text-left" onClick={onView}>
+          <p className="truncate text-[15px] font-black text-ink">{bundle.plan.name}</p>
+          <p className="truncate text-xs font-bold text-muted">
+            {planShape(bundle)} · {plural(bundle.exercises.length, "exercise")}
+            {bundle.plan.end_date && ` · ended ${formatShortDate(bundle.plan.end_date)}`}
+          </p>
+        </button>
+        <Pill tint={past ? "var(--t-muted)" : "var(--t-accent)"}>{past ? "Past" : "Active"}</Pill>
+      </div>
+      {!past && <WeekStrip bundle={bundle} />}
+      <PreservedLogWarning bundle={bundle} sessions={sessions} loggedIds={loggedIds} />
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button size="sm" variant="secondary" onClick={onView}>View plan</Button>
+        <Button size="sm" variant="secondary" onClick={() => onBatchLog(bundle.plan.id)}>
+          <Icon.edit className="h-3.5 w-3.5" /> Batch log
+        </Button>
+        {onRestart && <Button size="sm" variant="secondary" onClick={onRestart}>Restart</Button>}
+      </div>
+    </Card>
   );
 }
 
