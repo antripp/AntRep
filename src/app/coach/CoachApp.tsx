@@ -12,6 +12,7 @@ import { DbFaultBanner } from "../shared/DbFaultBanner";
 import HomeScreen from "../athlete/HomeScreen";
 import { ExerciseLibraryScreen } from "../athlete/ExercisesScreen";
 import PlansScreen from "../athlete/PlansScreen";
+import ProgressScreen from "../progress/ProgressScreen";
 import { WorkspaceProvider, useWorkspace } from "../workspace";
 import AthleteDetailScreen from "./AthleteDetailScreen";
 import AthletesScreen from "./AthletesScreen";
@@ -136,7 +137,7 @@ export default function CoachApp({
 /** The coach's own Home + plans, powered by their athlete profile. */
 function CoachTraining() {
   const { loading, toast, clearToast } = useWorkspace();
-  const [view, setView] = useState<"home" | "plans">("home");
+  const [view, setView] = useState<"home" | "plans" | "progress">("home");
 
   if (loading) return <LoadingScreen />;
 
@@ -144,7 +145,7 @@ function CoachTraining() {
     <>
       <Screen>
         <div className="mb-4 flex gap-1.5">
-          {(["home", "plans"] as const).map((key) => (
+          {(["home", "plans", "progress"] as const).map((key) => (
             <button
               key={key}
               onClick={() => setView(key)}
@@ -152,11 +153,13 @@ function CoachTraining() {
                 view === key ? "bg-accent text-white" : "border border-line bg-surface text-muted"
               }`}
             >
-              {key === "home" ? "Today" : "My plans"}
+              {key === "home" ? "Today" : key === "plans" ? "My plans" : "Progress"}
             </button>
           ))}
         </div>
-        {view === "home" ? <HomeScreen onGoPlans={() => setView("plans")} /> : <PlansScreen />}
+        {view === "home" && <HomeScreen onGoPlans={() => setView("plans")} />}
+        {view === "plans" && <PlansScreen />}
+        {view === "progress" && <ProgressScreen />}
       </Screen>
       <Toast message={toast} onDone={clearToast} />
     </>

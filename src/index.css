@@ -100,6 +100,17 @@ body {
   transition: background-color 0.25s ease, color 0.25s ease;
 }
 
+/* Keep every app surface scrollable without showing platform scrollbars. */
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+*::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
 /* Background texture — style comes from <html data-pattern="…">, tile size
    from --pattern-size and ink from --t-checker (both set by ThemeProvider,
    tunable in the dev-mode Pattern lab). */
