@@ -3,8 +3,9 @@
  * athlete builds their own. Same data, same editor.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { LibraryExercise } from "../../data/exerciseLibrary";
+import type { PlanLoggedSession } from "../../data/api";
 import { makeDay, makeExercise, makeSegment, newId } from "../../data/factories";
 import {
   DAY_TYPES,
@@ -17,6 +18,7 @@ import {
   type RepeatMode,
   type ScheduleMode,
   type SetDetail,
+  type Session,
 } from "../../data/types";
 import {
   blockCount,
@@ -34,6 +36,7 @@ import {
 } from "../../domain/plan";
 import { prescriptionLabel, setDetails } from "../../domain/logging";
 import { rpeColor, rpeMeaning } from "../../domain/rpe";
+import { newTimelineImpacts } from "../../domain/timelineSafety";
 import { DayBoard } from "./DayBoard";
 import { CustomFieldsEditor, LogTypePicker } from "./LoggingFields";
 import { PasteImport } from "./PasteImport";
@@ -77,6 +80,9 @@ export function PlanEditor({
   saving,
   onSaveExerciseToLibrary,
   exerciseLibrary = [],
+  timelineBaseline,
+  loggedSessions = [],
+  timelineSessionContexts = [],
 }: {
   bundle: PlanBundle;
   onChange: (next: PlanBundle) => void;
@@ -88,13 +94,46 @@ export function PlanEditor({
   onSaveExerciseToLibrary?: (exercise: PlanExercise) => Promise<void> | void;
   /** Saved setups appear first in the exercise picker and seed logging fields. */
   exerciseLibrary?: ExercisePreset[];
+  /** Existing saved shape + real logs enable the accidental-date-change guard. */
+  timelineBaseline?: PlanBundle;
+  loggedSessions?: Session[];
+  /** Coach view: each athlete may have independent assignment dates. */
+  timelineSessionContexts?: PlanLoggedSession[];
 }) {
   const [week, setWeek] = useState(1);
   const [editingDay, setEditingDay] = useState<string | null>(null);
+  const [timelineAcknowledged, setTimelineAcknowledged] = useState(false);
 
   const cycle = isCyclePlan(bundle.plan);
   const auto = bundle.plan.repeat_mode !== "custom";
   const slots = planSlots(bundle.plan);
+  const dateImpacts = timelineBaseline
+    ? [
+        ...newTimelineImpacts({ before: timelineBaseline, after: bundle, sessions: loggedSessions }),
+        ...timelineSessionContexts.flatMap(({ session, start, end }) =>
+          newTimelineImpacts({
+            before: timelineBaseline,
+            after: bundle,
+            sessions: [session],
+            beforeStart: start,
+            afterStart: start,
+            beforeEnd: end,
+            afterEnd: end,
+          }),
+        ),
+      ]
+    : [];
+
+  useEffect(() => {
+    setTimelineAcknowledged(false);
+  }, [
+    bundle.plan.start_date,
+    bundle.plan.end_date,
+    bundle.plan.schedule_mode,
+    bundle.plan.cycle_length,
+    bundle.plan.weeks,
+    bundle.plan.repeat_mode,
+  ]);
 
   /** One entry per slot of the block on screen — `null` where nothing is set up. */
   const slotDays = useMemo(() => {
@@ -260,10 +299,30 @@ export function PlanEditor({
           <Icon.back className="h-4 w-4" />
         </IconButton>
         <h1 className="min-w-0 flex-1 truncate text-xl font-black text-ink">{bundle.plan.name}</h1>
-        <Button size="sm" onClick={onSave} disabled={saving}>
+        <Button
+          size="sm"
+          onClick={onSave}
+          disabled={saving || (dateImpacts.length > 0 && !timelineAcknowledged)}
+        >
           {saving ? "Saving…" : "Save"}
         </Button>
       </div>
+
+      {dateImpacts.length > 0 && (
+        <Card className="mb-3" tint="var(--color-gold)">
+          <p className="text-sm font-black text-ink">
+            This date change affects {dateImpacts.length} recorded session{dateImpacts.length === 1 ? "" : "s"}
+          </p>
+          <p className="mt-1 text-xs font-semibold leading-relaxed text-muted">
+            Work logged on {dateImpacts.slice(0, 4).map(({ session }) => session.date).join(", ")}
+            {dateImpacts.length > 4 ? ` and ${dateImpacts.length - 4} more` : ""} will stay on
+            its original dates. AntRep will not move, overwrite, or delete it.
+          </p>
+          <Button className="mt-3" size="sm" variant="secondary" onClick={() => setTimelineAcknowledged(true)}>
+            {timelineAcknowledged ? "Safety confirmed" : "Preserve those logs and allow save"}
+          </Button>
+        </Card>
+      )}
 
       <Card className="mb-3 space-y-3">
         <Field label="Plan name">

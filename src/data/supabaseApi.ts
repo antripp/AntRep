@@ -4,7 +4,9 @@
  */
 
 import { supabase } from "../lib/supabase";
-import { localDate, startOfWeek } from "../domain/dates";
+import { localDate } from "../domain/dates";
+import { applyAssignmentOverrides } from "../domain/assignmentPlan";
+import { loggedSessionIds } from "../domain/logging";
 import { DbWriteError, recordFault } from "./dbHealth";
 import type { Api, AthleteTraining, AthleteWorkspace, AuthResult, CoachWorkspace } from "./api";
 import type {
@@ -365,6 +367,7 @@ function toAssignment(r: Row): PlanAssignment {
     start_date: (r.start_date as string) ?? null,
     end_date: (r.end_date as string) ?? null,
     status: str(r.status, "active") as PlanAssignment["status"],
+    exercise_overrides: obj(r.exercise_overrides),
     accepted_at: (r.accepted_at as string) ?? null,
     created_at: (r.created_at as string) ?? undefined,
   };
@@ -645,8 +648,20 @@ export const supabaseApi: Api = {
   },
 
   async athleteWorkspace(profile): Promise<AthleteWorkspace> {
+    // A dual-role account is one person. The coach and athlete rows are
+    // implementation identities for RLS/FKs, not two separate users. Plans
+    // owned through either identity are therefore "mine" in My training.
+    // A genuinely separate athlete still sees coach plans only via an explicit
+    // plan_assignment below.
+    const ownProfileRes = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("user_id", profile.user_id);
+    const ownProfileIds = readRows("load your account profiles", ownProfileRes).map((r) => str(r.id));
+    if (!ownProfileIds.includes(profile.id)) ownProfileIds.push(profile.id);
+
     const [ownPlansRes, assignmentsRes, presetsRes, linksRes] = await Promise.all([
-      supabase.from("plans").select("id").eq("owner_id", profile.id),
+      supabase.from("plans").select("id").in("owner_id", ownProfileIds),
       supabase.from("plan_assignments").select("*").eq("athlete_id", profile.id),
       supabase.from("exercise_presets").select("*").eq("owner_id", profile.id),
       supabase.from("coach_links").select("*").eq("athlete_id", profile.id).eq("status", "active"),
@@ -679,11 +694,14 @@ export const supabaseApi: Api = {
 
       return {
         ownPlans: ownBundles,
-        assigned: assignedBundles.map((bundle) => ({
-          bundle,
-          assignment: assignments.find((a) => a.plan_id === bundle.plan.id)!,
-          coach: profiles.find((p) => p.id === bundle.plan.owner_id) ?? null,
-        })),
+        assigned: assignedBundles.map((bundle) => {
+          const assignment = assignments.find((a) => a.plan_id === bundle.plan.id)!;
+          return {
+            bundle: applyAssignmentOverrides(bundle, assignment),
+            assignment,
+            coach: profiles.find((p) => p.id === bundle.plan.owner_id) ?? null,
+          };
+        }),
         sessions: training.sessions,
         logs: training.logs,
         presets: presetRows.map((r) => toPreset(r)),
@@ -709,7 +727,10 @@ export const supabaseApi: Api = {
     ]);
 
     const links = readRows("load your athletes", linksRes).map((r) => toLink(r));
-    const activeLinks = links.filter((l) => l.status === "active" && l.athlete_id);
+    // The self-link powers My training internally; it is not another client.
+    const activeLinks = links.filter(
+      (l) => l.status === "active" && l.athlete_id && !l.is_self_link,
+    );
     const athleteIds = activeLinks.map((l) => l.athlete_id as string);
 
     const [athletesRes, plans] = await Promise.all([
@@ -758,13 +779,53 @@ export const supabaseApi: Api = {
       ]),
     ];
 
+    const plans = await loadBundles(planIds);
     return {
       sessions: training.sessions,
       logs: training.logs,
-      plans: await loadBundles(planIds),
+      plans: plans.map((bundle) =>
+        applyAssignmentOverrides(
+          bundle,
+          assignments.find((assignment) => assignment.plan_id === bundle.plan.id),
+        ),
+      ),
       assignments,
       profile: profileRows[0] ? toProfile(profileRows[0]) : null,
     };
+  },
+
+  async planLoggedSessions(planId) {
+    const rows: Row[] = [];
+    for (let from = 0; ; ) {
+      const res = await supabase
+        .from("sessions")
+        .select("*")
+        .eq("plan_id", planId)
+        .order("date", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, from + HISTORY_PAGE_SIZE - 1);
+      const page = readRows("load plan sessions", res);
+      rows.push(...page);
+      if (page.length === 0) break;
+      from += page.length;
+    }
+    const sessions = rows.map((row) => toSession(row));
+    if (sessions.length === 0) return [];
+    const [logRows, assignmentRes] = await Promise.all([
+      loadSetRows(sessions.map((session) => session.id)),
+      supabase.from("plan_assignments").select("*").eq("plan_id", planId),
+    ]);
+    const logs = logRows.map((row) => toSetLog(row));
+    const logged = loggedSessionIds(logs);
+    const assignments = readRows("load plan assignment dates", assignmentRes).map((row) =>
+      toAssignment(row),
+    );
+    return sessions
+      .filter((session) => logged.has(session.id))
+      .map((session) => {
+        const assignment = assignments.find((item) => item.athlete_id === session.athlete_id);
+        return { session, start: assignment?.start_date ?? null, end: assignment?.end_date ?? null };
+      });
   },
 
   async savePlan(bundle) {
@@ -777,7 +838,9 @@ export const supabaseApi: Api = {
       is_active: plan.is_active,
       is_archived: plan.is_archived,
       start_date: plan.start_date,
+      end_date: plan.end_date,
       weeks: plan.weeks,
+      repeat_mode: plan.repeat_mode,
       schedule_mode: plan.schedule_mode,
       cycle_length: plan.cycle_length,
       icon_name: plan.icon_name,
@@ -814,7 +877,9 @@ export const supabaseApi: Api = {
         {
           plan_id: planId,
           athlete_id: athleteId,
-          start_date: localDate(startOfWeek()),
+          // NULL inherits plans.start_date. Only an explicit restart should
+          // create a per-athlete timeline override.
+          start_date: null,
           status: "offered",
         },
         { onConflict: "plan_id,athlete_id" },
@@ -845,6 +910,16 @@ export const supabaseApi: Api = {
     );
   },
 
+  async setAssignmentExerciseOverrides(assignmentId, overrides) {
+    write(
+      "customize the athlete plan",
+      await supabase
+        .from("plan_assignments")
+        .update({ exercise_overrides: overrides })
+        .eq("id", assignmentId),
+    );
+  },
+
   /**
    * Returning the un-saved `session` on failure used to make a dead write look
    * like a live one: the logger carried on against a session id the database
@@ -862,17 +937,34 @@ export const supabaseApi: Api = {
   },
 
   async deleteSession(sessionId) {
-    write("delete the session", await supabase.from("sessions").delete().eq("id", sessionId));
+    write(
+      "clear the session",
+      await supabase.rpc("clear_training_session", { p_session_id: sessionId }),
+    );
+  },
+
+  async clearExercise(sessionId, exerciseName) {
+    write(
+      "clear the exercise",
+      await supabase.rpc("clear_exercise_log", {
+        p_session_id: sessionId,
+        p_exercise_name: exerciseName,
+      }),
+    );
   },
 
   async replaceSets(sessionId, exerciseName, sets) {
+    // One database transaction: a failed insert cannot leave the exercise with
+    // its previous sets already deleted. The RPC also uses normalized exercise
+    // names and authorizes both the athlete and their currently linked coach.
     write(
-      "clear the old sets",
-      await supabase.from("set_logs").delete().eq("session_id", sessionId).eq("exercise_name", exerciseName),
+      "save your sets",
+      await supabase.rpc("replace_exercise_sets", {
+        p_session_id: sessionId,
+        p_exercise_name: exerciseName,
+        p_sets: sets,
+      }),
     );
-    if (sets.length > 0) {
-      write("save your sets", await supabase.from("set_logs").insert(sets));
-    }
   },
 
   async savePreset(preset) {

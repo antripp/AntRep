@@ -37,7 +37,7 @@ const TABS = [
 export type ProgressTab = (typeof TABS)[number]["value"];
 
 export default function ProgressScreen() {
-  const { profile, sessions, logs, allBundles } = useWorkspace();
+  const { profile, sessions, logs, allBundles, clearExercise, clearSession } = useWorkspace();
   return (
     <ProgressBody
       sessions={sessions}
@@ -45,6 +45,8 @@ export default function ProgressScreen() {
       plans={allBundles}
       weeklyGymGoal={profile.weekly_gym_goal}
       totalXp={profile.total_xp}
+      onClearExercise={clearExercise}
+      onClearSession={(session) => clearSession(session.id)}
     />
   );
 }
@@ -58,6 +60,9 @@ export function ProgressBody({
   totalXp = 0,
   title = "Progress",
   initialTab = "overview",
+  onClearSession,
+  onClearExercise,
+  onEditSession,
 }: {
   sessions: Session[];
   logs: SetLog[];
@@ -69,6 +74,9 @@ export function ProgressBody({
   /** Omit the heading when the host screen already has one. */
   title?: string | null;
   initialTab?: ProgressTab;
+  onClearSession?: (session: Session) => Promise<void>;
+  onClearExercise?: (session: Session, exerciseName: string) => Promise<void>;
+  onEditSession?: (session: Session) => void;
 }) {
   const [tab, setTab] = useState<ProgressTab>(initialTab);
   const [openKey, setOpenKey] = useState<string | null>(null);
@@ -156,6 +164,13 @@ export function ProgressBody({
         onSelectSession={setOpenSessionId}
         onBack={() => setOpenSessionId(null)}
         onOpenExercise={setOpenKey}
+        onClearSession={onClearSession}
+        onClearExercise={onClearExercise}
+        onEditSession={
+          onEditSession && openSession.plan_id && plans.some((plan) => plan.plan.id === openSession.plan_id)
+            ? onEditSession
+            : undefined
+        }
       />
     );
   }

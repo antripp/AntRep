@@ -296,9 +296,26 @@ export interface PlanAssignment {
   /** Per-athlete end override, so ending one run doesn't end everyone's. */
   end_date: string | null;
   status: "offered" | "active" | "declined";
+  /** Per-athlete prescription patches, keyed by the template exercise id. */
+  exercise_overrides: Record<string, PlanExerciseOverride>;
   accepted_at: string | null;
   created_at?: string;
 }
+
+export type PlanExerciseOverride = Partial<
+  Pick<
+    PlanExercise,
+    | "target_sets"
+    | "target_reps"
+    | "target_weight_kg"
+    | "rest_sec"
+    | "rpe_target"
+    | "set_details"
+    | "rep_scheme"
+    | "trainer_notes"
+    | "is_mandatory"
+  >
+>;
 
 /** One timed window of a session (start → end, minus pauses). */
 export interface TimerSegment {

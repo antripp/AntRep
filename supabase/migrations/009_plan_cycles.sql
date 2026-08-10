@@ -107,5 +107,5 @@ create unique index if not exists plan_days_week_slot
   where cycle_day is null;
 
 create unique index if not exists plan_days_cycle_slot
-  on public.plan_days (plan_id, cycle_day)
+  on public.plan_days (plan_id, week_index, cycle_day)
   where cycle_day is not null;

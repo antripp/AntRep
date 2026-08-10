@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { api } from "../../data";
-import type { CoachWorkspace } from "../../data/api";
+import type { CoachWorkspace, PlanLoggedSession } from "../../data/api";
 import { makePlan, makePreset, newId } from "../../data/factories";
 import type { PlanBundle, Profile } from "../../data/types";
 import { localDate, startOfWeek } from "../../domain/dates";
@@ -28,6 +28,8 @@ export default function CoachPlansScreen({
   const [viewing, setViewing] = useState<PlanBundle | null>(null);
   const [saving, setSaving] = useState(false);
   const [assigning, setAssigning] = useState<PlanBundle | null>(null);
+  const [timelineBaseline, setTimelineBaseline] = useState<PlanBundle | null>(null);
+  const [timelineSessions, setTimelineSessions] = useState<PlanLoggedSession[]>([]);
 
   function createPlan() {
     const plan = makePlan(coach.id, {
@@ -36,6 +38,8 @@ export default function CoachPlansScreen({
       is_active: true,
     });
     setDraft({ plan, days: emptyDays(plan, 1, newId), segments: [], exercises: [] });
+    setTimelineBaseline(null);
+    setTimelineSessions([]);
   }
 
   async function save() {
@@ -71,7 +75,10 @@ export default function CoachPlansScreen({
       <PlanDetail
         bundle={viewing}
         onClose={() => setViewing(null)}
-        onEdit={() => {
+        onEdit={async () => {
+          const logged = await api.planLoggedSessions(viewing.plan.id);
+          setTimelineBaseline(structuredClone(viewing));
+          setTimelineSessions(logged);
           setDraft(structuredClone(viewing));
           setViewing(null);
         }}
@@ -93,6 +100,8 @@ export default function CoachPlansScreen({
         onDelete={workspace.plans.some((p) => p.plan.id === draft.plan.id) ? remove : undefined}
         onClose={() => setDraft(null)}
         saving={saving}
+        timelineBaseline={timelineBaseline ?? undefined}
+        timelineSessionContexts={timelineSessions}
         exerciseLibrary={workspace.presets}
         onSaveExerciseToLibrary={async (exercise) => {
           const existing = workspace.presets.find(

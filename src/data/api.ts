@@ -70,6 +70,13 @@ export interface AthleteTraining {
   profile: Profile | null;
 }
 
+export interface PlanLoggedSession {
+  session: Session;
+  /** Assignment overrides; null means this session follows the template dates. */
+  start: string | null;
+  end: string | null;
+}
+
 export interface Api {
   readonly isDemo: boolean;
 
@@ -112,6 +119,8 @@ export interface Api {
   athleteWorkspace(profile: Profile): Promise<AthleteWorkspace>;
   coachWorkspace(profile: Profile): Promise<CoachWorkspace>;
   athleteTraining(athleteId: string): Promise<AthleteTraining>;
+  /** Real, data-bearing sessions on one template, across athletes visible to its coach. */
+  planLoggedSessions(planId: string): Promise<PlanLoggedSession[]>;
 
   // ---- plans ----
   savePlan(bundle: PlanBundle): Promise<void>;
@@ -131,9 +140,16 @@ export interface Api {
     assignmentId: string,
     dates: { start_date?: string | null; end_date?: string | null },
   ): Promise<void>;
+  /** Customize the shared template's workload for one assigned athlete. */
+  setAssignmentExerciseOverrides(
+    assignmentId: string,
+    overrides: PlanAssignment["exercise_overrides"],
+  ): Promise<void>;
 
   // ---- sessions ----
   saveSession(session: Session): Promise<Session>;
+  /** Clear one exercise and its completion marker without touching other work. */
+  clearExercise(sessionId: string, exerciseName: string): Promise<void>;
   deleteSession(sessionId: string): Promise<void>;
   replaceSets(sessionId: string, exerciseName: string, sets: SetLog[]): Promise<void>;
 

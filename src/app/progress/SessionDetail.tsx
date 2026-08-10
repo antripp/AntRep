@@ -17,6 +17,7 @@ import { buildSessionDetail, formatVolume, type SessionExerciseRow } from "../..
 import { plural } from "../../domain/text";
 import {
   Button,
+  ActionDialog,
   Card,
   Field,
   Icon,
@@ -38,6 +39,9 @@ export function SessionDetail({
   onSelectSession,
   onBack,
   onOpenExercise,
+  onClearSession,
+  onClearExercise,
+  onEditSession,
 }: {
   session: Session;
   /** The whole scope — the "vs last time" column reads back through it. */
@@ -49,8 +53,16 @@ export function SessionDetail({
   onSelectSession: (id: string) => void;
   onBack: () => void;
   onOpenExercise: (key: string) => void;
+  onClearSession?: (session: Session) => Promise<void>;
+  onClearExercise?: (session: Session, exerciseName: string) => Promise<void>;
+  onEditSession?: (session: Session) => void;
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  const [clearTarget, setClearTarget] = useState<
+    { kind: "session" } | { kind: "exercise"; name: string } | null
+  >(null);
+  const [clearError, setClearError] = useState<string | null>(null);
+  const [clearing, setClearing] = useState(false);
 
   // A different session is a different table — don't carry rows open into it.
   useEffect(() => setExpanded(new Set()), [session.id]);
@@ -70,6 +82,29 @@ export function SessionDetail({
       else next.add(key);
       return next;
     });
+
+  async function confirmClear() {
+    if (!clearTarget || clearing) return;
+    setClearing(true);
+    setClearError(null);
+    try {
+      if (clearTarget.kind === "session") {
+        await onClearSession?.(session);
+        onBack();
+      } else {
+        await onClearExercise?.(session, clearTarget.name);
+        setExpanded((current) => {
+          const next = new Set(current);
+          next.delete(clearTarget.name.trim().toLowerCase());
+          return next;
+        });
+      }
+    } catch (error) {
+      setClearError(error instanceof Error ? error.message : "Couldn't clear that training data.");
+    } finally {
+      setClearing(false);
+    }
+  }
 
   return (
     <>
@@ -93,7 +128,23 @@ export function SessionDetail({
         ) : (
           <Pill tint="var(--t-muted)">Open</Pill>
         )}
+        {onClearSession && (
+          <IconButton label="Clear logged session" onClick={() => setClearTarget({ kind: "session" })}>
+            <Icon.trash className="h-4 w-4 text-danger" />
+          </IconButton>
+        )}
+        {onEditSession && (
+          <IconButton label="Edit logged data" onClick={() => onEditSession(session)}>
+            <Icon.edit className="h-4 w-4 text-accent" />
+          </IconButton>
+        )}
       </div>
+
+      {clearError && (
+        <p className="mb-3 rounded-xl bg-danger/10 px-3 py-2 text-xs font-bold text-danger">
+          {clearError}
+        </p>
+      )}
 
       <div className="mb-3">
         <SessionSwitcher
@@ -182,6 +233,11 @@ export function SessionDetail({
                   expanded={expanded.has(row.key)}
                   onToggle={() => toggle(row.key)}
                   onOpen={() => onOpenExercise(row.key)}
+                  onClear={
+                    onClearExercise && row.sets.length > 0
+                      ? () => setClearTarget({ kind: "exercise", name: row.name })
+                      : undefined
+                  }
                 />
               ))}
             </tbody>
@@ -214,6 +270,32 @@ export function SessionDetail({
           <span>Tap a row for its sets</span>
         </div>
       </div>
+
+      <ActionDialog
+        open={clearTarget !== null}
+        title={
+          clearTarget?.kind === "exercise"
+            ? `Clear ${clearTarget.name}?`
+            : "Clear this logged session?"
+        }
+        message={
+          clearTarget?.kind === "exercise"
+            ? "Every logged set for this exercise will be removed. Other exercises stay unchanged."
+            : "The session and all of its logged sets will be removed from activity feeds, progressions, and analytics."
+        }
+        onClose={() => !clearing && setClearTarget(null)}
+        actions={[
+          {
+            label: clearing
+              ? "Clearing…"
+              : clearTarget?.kind === "exercise"
+                ? "Clear exercise sets"
+                : "Clear logged session",
+            tone: "danger",
+            onClick: confirmClear,
+          },
+        ]}
+      />
     </>
   );
 }
@@ -267,12 +349,14 @@ function ExerciseRows({
   expanded,
   onToggle,
   onOpen,
+  onClear,
 }: {
   row: SessionExerciseRow;
   zebra: boolean;
   expanded: boolean;
   onToggle: () => void;
   onOpen: () => void;
+  onClear?: () => void;
 }) {
   const background = zebra
     ? "color-mix(in srgb, var(--t-inset) 45%, var(--t-surface))"
@@ -335,6 +419,19 @@ function ExerciseRows({
             >
               <Icon.share className="h-3.5 w-3.5" />
             </button>
+            {onClear && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onClear();
+                }}
+                aria-label={`Clear logged sets for ${row.name}`}
+                title="Clear logged sets"
+                className="shrink-0 text-muted transition active:text-danger"
+              >
+                <Icon.trash className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
         </td>
 

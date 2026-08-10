@@ -54,7 +54,9 @@ export function setHasData(set: SetLog): boolean {
     (set.reps ?? 0) > 0 ||
     (set.weight_kg ?? 0) > 0 ||
     (set.distance_km ?? 0) > 0 ||
-    (set.duration_sec ?? 0) > 0
+    (set.duration_sec ?? 0) > 0 ||
+    (set.incline_percent ?? 0) > 0 ||
+    (set.pace_sec_per_km ?? 0) > 0
   ) {
     return true;
   }

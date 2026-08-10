@@ -11,19 +11,37 @@ import { exportAthleteCsv, exportAthleteWorkbook, exportImportTemplate } from ".
 import { plural } from "../../domain/text";
 import { Button, Card, Icon, SectionHeader, Sheet } from "../../ui/kit";
 import { ImportSheet } from "../shared/ImportSheet";
+import { BatchLogSheet } from "../shared/BatchLogSheet";
 import { useWorkspace } from "../workspace";
 
 export function DataSection() {
-  const { profile, sessions, logs, planViews, importSessions, showToast } = useWorkspace();
+  const { profile, sessions, logs, planViews, pastViews, importSessions, reload, showToast } = useWorkspace();
   const [showExport, setShowExport] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [showBatch, setShowBatch] = useState(false);
 
   const name = profile.display_name || "me";
+  const batchViews = [...planViews, ...pastViews];
 
   return (
     <>
       <SectionHeader title="Your data" />
       <Card className="p-0">
+        <button
+          onClick={() => setShowBatch(true)}
+          className="flex w-full items-center gap-3 border-b border-line p-3 text-left"
+          disabled={batchViews.length === 0}
+        >
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-black text-ink">Batch log a plan</p>
+            <p className="text-xs font-semibold text-muted">
+              {batchViews.length === 0
+                ? "Sync or create a plan first"
+                : "Edit scheduled days and sets in one grid"}
+            </p>
+          </div>
+          <Icon.chevron className="h-4 w-4 shrink-0 text-muted" />
+        </button>
         <button
           onClick={() => setShowImport(true)}
           className="flex w-full items-center gap-3 border-b border-line p-3 text-left"
@@ -100,6 +118,17 @@ export function DataSection() {
         bundles={planViews.map((view) => ({ bundle: view.bundle, start: view.start }))}
         existingSessions={sessions}
         onImport={importSessions}
+        onToast={showToast}
+      />
+
+      <BatchLogSheet
+        open={showBatch}
+        onClose={() => setShowBatch(false)}
+        athleteId={profile.id}
+        plans={batchViews.map((view) => ({ bundle: view.bundle, start: view.start, end: view.end }))}
+        sessions={sessions}
+        logs={logs}
+        onSaved={reload}
         onToast={showToast}
       />
     </>

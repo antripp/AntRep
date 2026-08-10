@@ -16,7 +16,7 @@ import { formatSetCell } from "../../domain/planLog";
 import { typeColor } from "../../domain/plan";
 import { rpeColor, rpeMeaning } from "../../domain/rpe";
 import { plural } from "../../domain/text";
-import { Icon, IconTile, NumberField, Pill, RpeSlider } from "../../ui/kit";
+import { ActionDialog, Icon, IconTile, NumberField, Pill, RpeSlider } from "../../ui/kit";
 import { RestTimerBar, RestTimerPill, useRestTimer } from "./RestTimer";
 import { setsForExercise, useWorkspace } from "../workspace";
 import type { ResolvedSegment } from "../../domain/plan";
@@ -74,7 +74,7 @@ export function ExerciseLogCard({
   tint?: string;
   onRemove?: () => void;
 }) {
-  const { logs, sessions, saveSets, setExerciseDone } = useWorkspace();
+  const { logs, sessions, saveSets, clearExercise, setExerciseDone } = useWorkspace();
   const stored = useMemo(() => setsForExercise(logs, session?.id, exercise.name), [logs, session?.id, exercise.name]);
   const lastTime = useMemo(
     () => lastPerformance(sessions, logs, exercise.name, session?.id),
@@ -112,6 +112,7 @@ export function ExerciseLogCard({
   /** True while the row holds edits that haven't reached the backend yet. */
   const [dirty, setDirty] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
   const [showEffort, setShowEffort] = useState(
     () => exercise.rpe_target > 0 || stored.some((set) => set.rpe !== null),
   );
@@ -146,6 +147,9 @@ export function ExerciseLogCard({
     await saveSets(active, exercise.name, valid);
     if (valid.length > 0) {
       await setExerciseDone(active, exercise, true, segment, valid.length);
+    } else if (active.completed_names.some((name) => namesMatch(name, exercise.name))) {
+      // Removing the last set must not leave a ghost completion behind.
+      await setExerciseDone(active, exercise, false, segment, 0);
     }
     setDirty(false);
     return valid.length;
@@ -217,6 +221,21 @@ export function ExerciseLogCard({
       await commit(draft.filter((_, i) => i !== index));
     } catch (error) {
       setHint(error instanceof Error ? error.message : "Couldn't remove that set.");
+    }
+  }
+
+  async function clearLoggedSets() {
+    if (!session || busy) return;
+    setBusy(true);
+    try {
+      await clearExercise(session, exercise.name);
+      setDraft(rowsFor([]));
+      setDirty(false);
+      setHint("Logged sets cleared. The rest of the session was not changed.");
+    } catch (error) {
+      setHint(error instanceof Error ? error.message : "Couldn't clear those sets.");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -565,6 +584,15 @@ export function ExerciseLogCard({
             {exercise.rest_sec > 0 && (
               <RestTimerBar timer={restTimer} seconds={exercise.rest_sec} tint={tint} />
             )}
+            {session && stored.some(setHasData) && (
+              <button
+                onClick={() => setConfirmClear(true)}
+                disabled={busy}
+                className="inline-flex h-10 items-center rounded-full px-3 text-xs font-black text-danger disabled:opacity-45"
+              >
+                Clear logged sets
+              </button>
+            )}
             <button
               onClick={saveNow}
               disabled={busy || loggedCount === 0 || (!dirty && done)}
@@ -577,6 +605,14 @@ export function ExerciseLogCard({
           </div>
         </div>
       )}
+
+      <ActionDialog
+        open={confirmClear}
+        title={`Clear ${exercise.name}?`}
+        message="This removes every logged set for this exercise and marks it incomplete. Other exercises in the session stay unchanged."
+        onClose={() => setConfirmClear(false)}
+        actions={[{ label: "Clear logged sets", tone: "danger", onClick: clearLoggedSets }]}
+      />
     </div>
   );
 }

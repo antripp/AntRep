@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../../data";
 import type { AthleteTraining, CoachWorkspace } from "../../data/api";
-import type { LinkedAthlete, PlanBundle, Profile } from "../../data/types";
+import type { LinkedAthlete, PlanAssignment, PlanBundle, Profile, Session } from "../../data/types";
 import { formatShortDate, isoWeekday, localDate, weekdayLabel } from "../../domain/dates";
 import { currentStreak, levelFor } from "../../domain/gamification";
 import { coachFlags, offPlanCount, planAdherence } from "../../domain/adherence";
@@ -51,6 +51,8 @@ import {
 import { exportAthleteCsv, exportAthleteWorkbook } from "../../domain/export";
 import { writeImport } from "../../data/importWriter";
 import { ImportSheet } from "../shared/ImportSheet";
+import { BatchLogSheet } from "../shared/BatchLogSheet";
+import { AthletePlanCustomizer } from "./AthletePlanCustomizer";
 
 export default function AthleteDetailScreen({
   athlete,
@@ -75,6 +77,12 @@ export default function AthleteDetailScreen({
   const [viewingPlan, setViewingPlan] = useState<PlanBundle | null>(null);
   const [showExport, setShowExport] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [showBatch, setShowBatch] = useState(false);
+  const [editingSession, setEditingSession] = useState<Session | null>(null);
+  const [customizing, setCustomizing] = useState<{
+    template: PlanBundle;
+    assignment: PlanAssignment;
+  } | null>(null);
 
   const { board, loading: boardLoading, reload: reloadBoard } = useCoachingBoard(athlete.link.id);
   const weekIndex = currentWeekIndex(athlete.link.claimed_at);
@@ -145,6 +153,18 @@ export default function AthleteDetailScreen({
     onToast("Plan removed");
   }
 
+  async function clearAthleteSession(sessionId: string) {
+    await api.deleteSession(sessionId);
+    await load();
+    onToast("Logged session cleared");
+  }
+
+  async function clearAthleteExercise(sessionId: string, exerciseName: string) {
+    await api.clearExercise(sessionId, exerciseName);
+    await load();
+    onToast(`${exerciseName} sets cleared`);
+  }
+
   if (viewingPlan) {
     return (
       <PlanDetail
@@ -170,6 +190,9 @@ export default function AthleteDetailScreen({
         <IconButton label="Import training" onClick={() => setShowImport(true)}>
           <Icon.plus className="h-4 w-4" />
         </IconButton>
+        <IconButton label="Batch log plan" onClick={() => setShowBatch(true)}>
+          <Icon.edit className="h-4 w-4" />
+        </IconButton>
         <IconButton label="Export report" onClick={() => setShowExport(true)}>
           <Icon.share className="h-4 w-4" />
         </IconButton>
@@ -187,6 +210,21 @@ export default function AthleteDetailScreen({
           ]}
         />
       </div>
+
+      <button
+        type="button"
+        onClick={() => setShowBatch(true)}
+        className="mb-4 flex w-full items-center gap-3 rounded-2xl border border-accent/30 bg-accent/10 px-4 py-3 text-left transition active:scale-[0.99]"
+      >
+        <Icon.edit className="h-5 w-5 shrink-0 text-accent" />
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-black text-ink">Log or edit athlete data</span>
+          <span className="block text-xs font-semibold text-muted">
+            Enter today's work or correct existing planned sessions for {athlete.profile.display_name || "this athlete"}.
+          </span>
+        </span>
+        <Icon.chevron className="h-4 w-4 shrink-0 text-accent" />
+      </button>
 
       {!training ? (
         <div className="flex justify-center py-16">
@@ -245,6 +283,11 @@ export default function AthleteDetailScreen({
               weeklyGymGoal={athlete.profile.weekly_gym_goal}
               totalXp={athlete.profile.total_xp}
               title={null}
+              onClearSession={(session) => clearAthleteSession(session.id)}
+              onClearExercise={(session, exerciseName) =>
+                clearAthleteExercise(session.id, exerciseName)
+              }
+              onEditSession={setEditingSession}
             />
           )}
 
@@ -310,11 +353,13 @@ export default function AthleteDetailScreen({
                   {assignmentsForAthlete.map((assignment) => {
                     const bundle = workspace.plans.find((p) => p.plan.id === assignment.plan_id);
                     if (!bundle) return null;
+                    const athleteBundle = training.plans.find((p) => p.plan.id === assignment.plan_id) ?? bundle;
+                    const customized = Object.keys(assignment.exercise_overrides ?? {}).length;
                     return (
                       <Card key={assignment.id}>
                         <div className="flex items-center gap-3">
                           <IconTile emoji="📋" tint="var(--t-accent)" />
-                          <button className="min-w-0 flex-1 text-left" onClick={() => setViewingPlan(bundle)}>
+                          <button className="min-w-0 flex-1 text-left" onClick={() => setViewingPlan(athleteBundle)}>
                             <p className="truncate text-sm font-black text-ink">{bundle.plan.name}</p>
                             <p className="text-xs font-bold text-muted">
                               {!planIsLive(bundle.plan, todayStr, assignment)
@@ -326,8 +371,16 @@ export default function AthleteDetailScreen({
                                   : assignment.status === "declined"
                                     ? "Declined"
                                     : "Waiting for the athlete to sync"}
+                              {customized > 0 && ` · ${plural(customized, "custom exercise")}`}
                             </p>
                           </button>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => setCustomizing({ template: bundle, assignment })}
+                          >
+                            Customize
+                          </Button>
                           {/* Only the coach who wrote the plan can put an
                               athlete back on it. */}
                           {!planIsLive(bundle.plan, todayStr, assignment) && (
@@ -343,7 +396,7 @@ export default function AthleteDetailScreen({
                             Remove
                           </button>
                         </div>
-                        <WeekStrip bundle={bundle} />
+                        <WeekStrip bundle={athleteBundle} />
                       </Card>
                     );
                   })}
@@ -470,6 +523,45 @@ export default function AthleteDetailScreen({
         }}
         onToast={onToast}
       />
+
+      <BatchLogSheet
+        open={showBatch || editingSession !== null}
+        onClose={() => {
+          setShowBatch(false);
+          setEditingSession(null);
+        }}
+        athleteId={athlete.profile.id}
+        athleteName={athlete.profile.display_name || "this athlete"}
+        initialDate={editingSession?.date ?? todayStr}
+        initialPlanId={editingSession?.plan_id}
+        plans={(training?.plans ?? []).map((bundle) => {
+          const assignment = training?.assignments.find((item) => item.plan_id === bundle.plan.id);
+          return {
+            bundle,
+            start: assignment?.start_date ?? bundle.plan.start_date,
+            end: planEnd(bundle.plan, assignment),
+          };
+        })}
+        sessions={training?.sessions ?? []}
+        logs={training?.logs ?? []}
+        onSaved={load}
+        onToast={onToast}
+      />
+
+      {customizing && (
+        <AthletePlanCustomizer
+          open
+          athleteName={athlete.profile.display_name || "athlete"}
+          template={customizing.template}
+          assignment={customizing.assignment}
+          loggedSessions={(training?.sessions ?? []).filter((session) => loggedIds.has(session.id))}
+          onClose={() => setCustomizing(null)}
+          onSaved={async () => {
+            await Promise.all([onChanged(), load()]);
+          }}
+          onToast={onToast}
+        />
+      )}
     </>
   );
 }

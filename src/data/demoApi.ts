@@ -9,7 +9,9 @@
  */
 
 import { addDays, localDate, startOfWeek } from "../domain/dates";
+import { applyAssignmentOverrides } from "../domain/assignmentPlan";
 import { dayForDate } from "../domain/plan";
+import { setHasData } from "../domain/logging";
 import { STARTER_WEEK, type CatalogExercise } from "./catalog";
 import {
   makeCheckIn,
@@ -561,6 +563,7 @@ function buildSeed(): DemoStore {
       end_date: null,
       start_date: mainStart,
       status: "active",
+      exercise_overrides: {},
       accepted_at: new Date(Date.now() - 28 * 86400000).toISOString(),
       created_at: new Date(Date.now() - 28 * 86400000).toISOString(),
     },
@@ -572,6 +575,7 @@ function buildSeed(): DemoStore {
       end_date: null,
       start_date: localDate(startOfWeek()),
       status: "offered",
+      exercise_overrides: {},
       accepted_at: null,
       created_at: new Date(Date.now() - 2 * 86400000).toISOString(),
     },
@@ -582,6 +586,7 @@ function buildSeed(): DemoStore {
       end_date: null,
       start_date: secondStart,
       status: "active",
+      exercise_overrides: {},
       accepted_at: new Date(Date.now() - 14 * 86400000).toISOString(),
       created_at: new Date(Date.now() - 14 * 86400000).toISOString(),
     },
@@ -1150,7 +1155,12 @@ export const demoApi: Api = {
 
   async athleteWorkspace(profile) {
     const db = load();
-    const ownPlans = db.plans.filter((p) => p.owner_id === profile.id).map((p) => bundleFor(db, p));
+    const accountProfileIds = new Set(
+      db.profiles.filter((p) => p.user_id === profile.user_id).map((p) => p.id),
+    );
+    const ownPlans = db.plans
+      .filter((p) => accountProfileIds.has(p.owner_id))
+      .map((p) => bundleFor(db, p));
 
     const assigned = db.assignments
       .filter((a) => a.athlete_id === profile.id)
@@ -1158,7 +1168,11 @@ export const demoApi: Api = {
         const plan = db.plans.find((p) => p.id === assignment.plan_id);
         if (!plan) return null;
         const coach = db.profiles.find((p) => p.id === plan.owner_id) ?? null;
-        return { bundle: bundleFor(db, plan), assignment: clone(assignment), coach: coach ? clone(coach) : null };
+        return {
+          bundle: applyAssignmentOverrides(bundleFor(db, plan), assignment),
+          assignment: clone(assignment),
+          coach: coach ? clone(coach) : null,
+        };
       })
       .filter((x): x is NonNullable<typeof x> => Boolean(x));
 
@@ -1187,7 +1201,7 @@ export const demoApi: Api = {
     const db = load();
     const links = db.links.filter((l) => l.trainer_id === profile.id);
     const athletes = links
-      .filter((l) => l.status === "active" && l.athlete_id)
+      .filter((l) => l.status === "active" && l.athlete_id && !l.is_self_link)
       .map((link) => {
         const athlete = db.profiles.find((p) => p.id === link.athlete_id);
         return athlete ? { link: clone(link), profile: clone(athlete) } : null;
@@ -1214,7 +1228,13 @@ export const demoApi: Api = {
     const assignedPlanIds = assignments.map((a) => a.plan_id);
     const plans = db.plans
       .filter((p) => p.owner_id === athleteId || assignedPlanIds.includes(p.id))
-      .map((p) => bundleFor(db, p));
+      .map((p) => {
+        const bundle = bundleFor(db, p);
+        return applyAssignmentOverrides(
+          bundle,
+          assignments.find((assignment) => assignment.plan_id === p.id),
+        );
+      });
     const profile = db.profiles.find((p) => p.id === athleteId) ?? null;
 
     return {
@@ -1224,6 +1244,28 @@ export const demoApi: Api = {
       assignments: clone(assignments),
       profile: profile ? clone(profile) : null,
     };
+  },
+
+  async planLoggedSessions(planId) {
+    const db = load();
+    const sessions = db.sessions.filter((session) => session.plan_id === planId);
+    const logged = new Set(
+      db.logs.filter(setHasData).map((log) => log.session_id),
+    );
+    return clone(
+      sessions
+        .filter((session) => logged.has(session.id))
+        .map((session) => {
+          const assignment = db.assignments.find(
+            (item) => item.plan_id === planId && item.athlete_id === session.athlete_id,
+          );
+          return {
+            session,
+            start: assignment?.start_date ?? null,
+            end: assignment?.end_date ?? null,
+          };
+        }),
+    );
   },
 
   async savePlan(bundle) {
@@ -1279,8 +1321,9 @@ export const demoApi: Api = {
       plan_id: planId,
       athlete_id: athleteId,
       end_date: null,
-      start_date: localDate(startOfWeek()),
+      start_date: null,
       status: "offered",
+      exercise_overrides: {},
       accepted_at: null,
       created_at: new Date().toISOString(),
     });
@@ -1312,6 +1355,14 @@ export const demoApi: Api = {
     persist();
   },
 
+  async setAssignmentExerciseOverrides(assignmentId, overrides) {
+    const db = load();
+    const assignment = db.assignments.find((a) => a.id === assignmentId);
+    if (!assignment) return;
+    assignment.exercise_overrides = clone(overrides);
+    persist();
+  },
+
   async saveSession(session) {
     const db = load();
     const index = db.sessions.findIndex((s) => s.id === session.id);
@@ -1325,6 +1376,27 @@ export const demoApi: Api = {
     const db = load();
     db.sessions = db.sessions.filter((s) => s.id !== sessionId);
     db.logs = db.logs.filter((l) => l.session_id !== sessionId);
+    persist();
+  },
+
+  async clearExercise(sessionId, exerciseName) {
+    const db = load();
+    const key = exerciseName.trim().toLowerCase().replace(/\s+/g, " ");
+    db.logs = db.logs.filter(
+      (l) =>
+        l.session_id !== sessionId ||
+        l.exercise_name.trim().toLowerCase().replace(/\s+/g, " ") !== key,
+    );
+    const session = db.sessions.find((s) => s.id === sessionId);
+    if (session) {
+      session.completed_names = session.completed_names.filter(
+        (name) => name.trim().toLowerCase().replace(/\s+/g, " ") !== key,
+      );
+      if (session.status === "complete") {
+        session.status = "in_progress";
+        session.ended_at = null;
+      }
+    }
     persist();
   },
 

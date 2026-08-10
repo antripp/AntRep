@@ -22,8 +22,8 @@ interface GuideSection {
   /** Paragraphs that read after the table. */
   body2?: string[];
   tip?: string;
-  /** Screenshot basenames in public/guide, captured by `npm run guide:shots`. */
-  shots?: string[];
+  /** Current demo UI, shared by the in-app and PDF tutorial. */
+  screenshots?: { name: string; caption: string }[];
 }
 
 interface GuidePart {
@@ -185,10 +185,10 @@ function Section({ section }: { section: GuideSection }) {
         </Card>
       )}
 
-      {section.shots && section.shots.length > 0 && (
+      {section.screenshots && section.screenshots.length > 0 && (
         <div className="mb-2 space-y-2">
-          {section.shots.map((shot) => (
-            <Shot key={shot} name={shot} alt={`${section.title} — screenshot`} />
+          {section.screenshots.map((screenshot) => (
+            <GuideScreenshot key={screenshot.name} screenshot={screenshot} />
           ))}
         </div>
       )}
@@ -206,25 +206,24 @@ function Section({ section }: { section: GuideSection }) {
   );
 }
 
-/**
- * A captured screen. Phone-shaped shots are held to phone width; the wider
- * analytics captures take the full column, or their tables end up unreadable.
- */
-function Shot({ name, alt }: { name: string; alt: string }) {
+function GuideScreenshot({ screenshot }: { screenshot: { name: string; caption: string } }) {
   const [portrait, setPortrait] = useState(true);
 
   return (
     <figure className="overflow-hidden rounded-card border border-line bg-inset p-2">
       <img
-        src={`${import.meta.env.BASE_URL}guide/${name}.png`}
-        alt={alt}
+        src={`${import.meta.env.BASE_URL}guide/${screenshot.name}.png`}
+        alt={screenshot.caption}
         loading="lazy"
-        onLoad={(e) => {
-          const img = e.currentTarget;
-          setPortrait(img.naturalHeight / img.naturalWidth > 1.4);
+        onLoad={(event) => {
+          const image = event.currentTarget;
+          setPortrait(image.naturalHeight / image.naturalWidth > 1.4);
         }}
-        className={`mx-auto block w-full rounded-2xl ${portrait ? "max-w-sm" : ""}`}
+        className={`mx-auto block w-full rounded-2xl border border-line ${portrait ? "max-w-sm" : ""}`}
       />
+      <figcaption className="px-1 pb-1 pt-2 text-[10px] font-semibold leading-relaxed text-muted">
+        {screenshot.caption}
+      </figcaption>
     </figure>
   );
 }

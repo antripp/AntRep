@@ -8,6 +8,19 @@ assigns them, trains themselves, and sees every set their athletes log.
 The interface mirrors the iOS app: tinted patterned canvas, soft cards, capsule
 actions, progress rings, streaks and XP.
 
+## Onboarding guide
+
+The in-app guide and printable onboarding PDF use the same plain-language
+source in `src/content/guide.json`. Both versions use current screenshots from
+the seeded demo workspace, so the instructions show realistic plans, sets,
+progress and coaching data without exposing a real person's information.
+
+```bash
+npm run guide:pdf
+```
+
+The finished file is written to `output/pdf/AntRep-Onboarding-Guide.pdf`.
+
 ## Run it without a database
 
 ```bash

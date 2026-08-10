@@ -72,6 +72,8 @@ interface WorkspaceValue {
   removeExtraExercise: (session: Session, name: string) => Promise<void>;
   patchSession: (session: Session, patch: Partial<Session>) => Promise<Session>;
   saveSets: (session: Session, exerciseName: string, sets: SetLog[]) => Promise<void>;
+  clearExercise: (session: Session, exerciseName: string) => Promise<void>;
+  clearSession: (sessionId: string) => Promise<void>;
   /** Write a reviewed spreadsheet import. Resolves with what actually landed. */
   importSessions: (
     batch: ImportSession[],
@@ -275,6 +277,38 @@ export function WorkspaceProvider({ profile, children }: { profile: Profile; chi
     [],
   );
 
+  const clearExercise = useCallback(async (session: Session, exerciseName: string) => {
+    await api.clearExercise(session.id, exerciseName);
+    setWorkspace((w) => ({
+      ...w,
+      sessions: w.sessions.map((current) =>
+        current.id === session.id
+          ? {
+              ...current,
+              completed_names: current.completed_names.filter(
+                (name) => !namesMatch(name, exerciseName),
+              ),
+              status: current.status === "complete" ? "in_progress" : current.status,
+              ended_at: current.status === "complete" ? null : current.ended_at,
+            }
+          : current,
+      ),
+      logs: w.logs.filter(
+        (log) =>
+          log.session_id !== session.id || !namesMatch(log.exercise_name, exerciseName),
+      ),
+    }));
+  }, []);
+
+  const clearSession = useCallback(async (sessionId: string) => {
+    await api.deleteSession(sessionId);
+    setWorkspace((w) => ({
+      ...w,
+      sessions: w.sessions.filter((session) => session.id !== sessionId),
+      logs: w.logs.filter((log) => log.session_id !== sessionId),
+    }));
+  }, []);
+
   /**
    * Write a reviewed import, keeping the on-screen data in step as it lands.
    *
@@ -461,6 +495,8 @@ export function WorkspaceProvider({ profile, children }: { profile: Profile; chi
       removeExtraExercise,
       patchSession,
       saveSets,
+      clearExercise,
+      clearSession,
       importSessions,
       setExerciseDone,
       startTimer,
@@ -488,6 +524,8 @@ export function WorkspaceProvider({ profile, children }: { profile: Profile; chi
       removeExtraExercise,
       patchSession,
       saveSets,
+      clearExercise,
+      clearSession,
       importSessions,
       setExerciseDone,
       startTimer,

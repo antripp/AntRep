@@ -80,28 +80,28 @@ async function main() {
   // ---- Sign in ------------------------------------------------------
   // No ?demo=1 here, so the shot shows the sign-in screen as it really looks.
   await page.goto(`${BASE}/`, { waitUntil: "networkidle" });
-  await shoot(page, "auth-signin");
+  await shoot(page, "auth-current");
 
   // ---- Athlete ------------------------------------------------------
   await page.goto(`${BASE}/?demo=1`, { waitUntil: "networkidle" });
   await tap(page, "Alex Reps");
   await page.waitForTimeout(700);
-  await shoot(page, "athlete-home");
+  await shoot(page, "athlete-home-current");
 
   await page.locator('button[aria-label="Search by date"]').first().click();
   await page.waitForTimeout(350);
-  await shoot(page, "athlete-date-search");
+  await shoot(page, "athlete-date-current");
   await page.keyboard.press("Escape");
   await page.waitForTimeout(300);
 
   await tab(page, "Plans");
-  await shoot(page, "athlete-plans");
+  await shoot(page, "athlete-plans-current");
 
   await tab(page, "Coach");
-  await shoot(page, "athlete-coach");
+  await shoot(page, "athlete-coach-current");
 
   await tab(page, "Progress");
-  await shoot(page, "athlete-progress-overview", { width: WIDE });
+  await shoot(page, "athlete-progress-current");
 
   await tap(page, "Plans", { last: false });
   await page.waitForTimeout(350);
@@ -125,10 +125,10 @@ async function main() {
   await shoot(page, "athlete-exercise-detail", { width: WIDE });
 
   await tab(page, "Library");
-  await shoot(page, "athlete-library");
+  await shoot(page, "athlete-library-current");
 
   await tab(page, "Settings");
-  await shoot(page, "athlete-settings");
+  await shoot(page, "athlete-settings-current");
 
   // ---- Logging ------------------------------------------------------
   // Last, and in its own session: starting a workout awards XP and adds a
@@ -143,13 +143,12 @@ async function main() {
   await page.waitForTimeout(700);
 
   await tap(page, "Start now");
-  await shoot(page, "athlete-start-dialog");
+  await shoot(page, "athlete-start-current");
   await tap(page, "Just log without a timer");
   await page.waitForTimeout(500);
 
-  await tap(page, "Barbell or goblet squat");
-  await tap(page, "Add set");
-  await shoot(page, "athlete-logging", { scrollTo: 'input[inputmode="decimal"]' });
+  await tap(page, "Flat bench press");
+  await shoot(page, "athlete-logging-current", { scrollTo: 'input[inputmode="decimal"]' });
 
   // ---- Coach --------------------------------------------------------
   // A fresh context, or the coach portal inherits the athlete's demo session
@@ -161,11 +160,11 @@ async function main() {
   await page.goto(`${BASE}/coach?demo=1`, { waitUntil: "networkidle" });
   await tap(page, "Coach Sam");
   await page.waitForTimeout(800);
-  await shoot(page, "coach-athletes");
+  await shoot(page, "coach-athletes-current");
 
   await tap(page, "Alex Reps");
   await page.waitForTimeout(600);
-  await shoot(page, "coach-athlete-overview", { width: WIDE });
+  await shoot(page, "coach-athlete-current");
 
   await tap(page, "Progress");
   await page.waitForTimeout(500);
@@ -173,16 +172,16 @@ async function main() {
 
   await tap(page, "Assign");
   await page.waitForTimeout(400);
-  await shoot(page, "coach-assign", { width: WIDE });
+  await shoot(page, "coach-assign-current");
 
   await page.locator('button[aria-label="Export report"]').click();
   await page.waitForTimeout(400);
-  await shoot(page, "coach-export");
+  await shoot(page, "coach-export-current");
   await page.keyboard.press("Escape");
 
   await tab(page, "Plans");
   await page.waitForTimeout(400);
-  await shoot(page, "coach-plans");
+  await shoot(page, "coach-plans-current");
 
   await browser.close();
 

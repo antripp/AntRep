@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useDraft } from "../usePersisted";
 import { api } from "../../data";
 import { makePlan, makePreset, newId } from "../../data/factories";
-import type { PlanBundle } from "../../data/types";
+import type { PlanBundle, Session } from "../../data/types";
 import { formatShortDate, localDate, startOfWeek } from "../../domain/dates";
 import {
   blockCount,
@@ -20,6 +20,8 @@ import {
   typeIcon,
 } from "../../domain/plan";
 import { plural } from "../../domain/text";
+import { loggedSessionIds } from "../../domain/logging";
+import { timelineImpacts } from "../../domain/timelineSafety";
 import {
   Button,
   Card,
@@ -36,7 +38,8 @@ import { PlanEditor } from "../plans/PlanEditor";
 import { useWorkspace } from "../workspace";
 
 export default function PlansScreen() {
-  const { profile, workspace, reload, showToast } = useWorkspace();
+  const { profile, workspace, sessions, logs, reload, showToast } = useWorkspace();
+  const loggedIds = loggedSessionIds(logs);
   // A plan is a lot of typing. Keep it across reloads, per profile, and drop it
   // only once it has actually reached the server.
   const plan = useDraft<PlanBundle>(`plan-draft:${profile.id}`);
@@ -169,6 +172,7 @@ export default function PlansScreen() {
   }
 
   if (draft) {
+    const baseline = workspace.ownPlans.find((item) => item.plan.id === draft.plan.id);
     return (
       <PlanEditor
         bundle={draft}
@@ -178,6 +182,8 @@ export default function PlansScreen() {
         onClose={() => setDraft(null)}
         saving={saving}
         exerciseLibrary={workspace.presets}
+        timelineBaseline={baseline}
+        loggedSessions={sessions.filter((session) => loggedIds.has(session.id))}
         onSaveExerciseToLibrary={async (exercise) => {
           await api.savePreset(
             makePreset(profile.id, exercise.name, {
@@ -242,6 +248,13 @@ export default function PlansScreen() {
               </div>
 
               <WeekStrip bundle={bundle} />
+              <PreservedLogWarning
+                bundle={bundle}
+                sessions={sessions}
+                loggedIds={loggedIds}
+                startOverride={assignment.start_date}
+                endOverride={assignment.end_date}
+              />
 
               {assignment.status === "active" && (
                 <button
@@ -287,6 +300,7 @@ export default function PlansScreen() {
                 <Icon.chevron className="h-4 w-4 text-muted" />
               </div>
               <WeekStrip bundle={bundle} />
+              <PreservedLogWarning bundle={bundle} sessions={sessions} loggedIds={loggedIds} />
             </Card>
           ))}
         </div>
@@ -315,12 +329,45 @@ export default function PlansScreen() {
                     Restart
                   </Button>
                 </div>
+                <PreservedLogWarning bundle={bundle} sessions={sessions} loggedIds={loggedIds} />
               </Card>
             ))}
           </div>
         </>
       )}
     </>
+  );
+}
+
+function PreservedLogWarning({
+  bundle,
+  sessions,
+  loggedIds,
+  startOverride,
+  endOverride,
+}: {
+  bundle: PlanBundle;
+  sessions: Session[];
+  loggedIds: Set<string>;
+  startOverride?: string | null;
+  endOverride?: string | null;
+}) {
+  const impacted = timelineImpacts(bundle, sessions, startOverride, endOverride).filter(({ session }) =>
+    loggedIds.has(session.id),
+  );
+  if (impacted.length === 0) return null;
+  const dates = impacted.map(({ session }) => formatShortDate(session.date));
+  return (
+    <div className="mt-2 rounded-xl bg-[color-mix(in_srgb,var(--color-gold)_14%,transparent)] px-3 py-2">
+      <p className="text-[11px] font-black text-ink">
+        {plural(impacted.length, "recorded session")} preserved on original dates
+      </p>
+      <p className="mt-0.5 text-[10px] font-semibold leading-snug text-muted">
+        The schedule changed after logging {dates.slice(0, 3).join(", ")}
+        {dates.length > 3 ? ` and ${dates.length - 3} more` : ""}. Nothing was moved or deleted;
+        these remain in Progress and session history.
+      </p>
+    </div>
   );
 }
 
