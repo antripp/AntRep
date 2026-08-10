@@ -1,10 +1,11 @@
 /** One portal (athlete or coach): auth gate → role gate → the app. */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, isDemoMode } from "../data";
 import type { Role } from "../data/types";
 import { Button, Card, LoadingScreen } from "../ui/kit";
+import { useTheme } from "../lib/theme";
 import AthleteApp from "./athlete/AthleteApp";
 import AuthPage from "./AuthPage";
 import CoachApp from "./coach/CoachApp";
@@ -20,14 +21,19 @@ export default function Portal({ role }: { role: Role }) {
 
 function PortalBody({ role }: { role: Role }) {
   const { loading, user, profiles, refresh } = useAuth();
+  const { applyProfileSettings } = useTheme();
   const navigate = useNavigate();
+  const forRole = profiles.find((p) => p.role === role);
+  const themeSettings = forRole?.settings;
+
+  useEffect(() => {
+    if (themeSettings && forRole) applyProfileSettings(themeSettings, forRole.user_id);
+  }, [forRole?.id, forRole?.user_id, themeSettings, applyProfileSettings]);
 
   const switchPortal = (next: Role) => navigate(next === "coach" ? "/coach" : "/");
 
   if (loading) return <LoadingScreen />;
   if (!user) return <AuthPage role={role} />;
-
-  const forRole = profiles.find((p) => p.role === role);
 
   // Signed in, but this side of the app isn't set up yet.
   if (!forRole) {

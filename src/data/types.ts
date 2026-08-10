@@ -139,9 +139,14 @@ export interface AvatarPref {
 }
 
 export interface ProfileSettings {
-  theme_mode?: "light" | "dark";
+  /** Auto follows the device and is the default for new accounts/devices. */
+  theme_mode?: "auto" | "light" | "dark";
+  /** Presentation only. Training records and calculations are shared by every mode. */
+  ui_mode?: "classic" | "minimal" | "compact";
   accent?: string;
   background?: string | null;
+  background_secondary?: string | null;
+  theme_style?: "solid" | "gradient" | "duotone";
   quotes_enabled?: boolean;
   rest_timer_enabled?: boolean;
   units?: "kg" | "lb";

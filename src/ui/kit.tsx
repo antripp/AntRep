@@ -13,6 +13,7 @@ import {
   type InputHTMLAttributes,
   type ReactNode,
 } from "react";
+import { useTheme } from "../lib/theme";
 
 // ------------------------------------------------------------------
 // Icons (inline so nothing loads from the network)
@@ -65,8 +66,8 @@ export const Icon = {
 
 export function Screen({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
-    <div className={`pattern-bg min-h-dvh bg-bg ${className}`}>
-      <div className="mx-auto w-full max-w-lg px-4 pb-32 pt-5 md:max-w-3xl">{children}</div>
+    <div className={`ui-screen pattern-bg min-h-dvh bg-bg ${className}`}>
+      <div className="ui-screen-content mx-auto w-full max-w-lg px-4 pb-32 pt-5 md:max-w-3xl">{children}</div>
     </div>
   );
 }
@@ -83,7 +84,7 @@ export function ScreenTitle({
   right?: ReactNode;
 }) {
   return (
-    <header className="mb-5">
+    <header className="ui-screen-title mb-5">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           {date && <p className="font-quote text-base italic text-ink/85">{date}</p>}
@@ -112,7 +113,7 @@ export function Card({
     <Tag
       onClick={onClick}
       style={tint ? { borderColor: `${tint}38` } : undefined}
-      className={`w-full rounded-card border border-line bg-surface p-4 text-left shadow-[0_1px_0_0_rgba(0,0,0,0.04)] ${
+      className={`ui-card w-full rounded-card border border-line bg-surface p-4 text-left shadow-[0_1px_0_0_rgba(0,0,0,0.04)] ${
         onClick ? "transition active:scale-[0.99]" : ""
       } ${className}`}
     >
@@ -131,7 +132,7 @@ export function SectionHeader({
   icon?: ReactNode;
 }) {
   return (
-    <div className="mb-2 mt-6 flex items-center justify-between gap-2 first:mt-0">
+    <div className="ui-section-header mb-2 mt-6 flex items-center justify-between gap-2 first:mt-0">
       <h2 className="flex items-center gap-1.5 text-sm font-black uppercase tracking-wide text-muted">
         {icon}
         {title}
@@ -152,7 +153,7 @@ export function IconTile({
 }) {
   return (
     <div
-      className="flex shrink-0 items-center justify-center rounded-[30%]"
+      className="ui-icon-tile flex shrink-0 items-center justify-center rounded-[30%]"
       style={{ width: size, height: size, background: `${tint}22`, fontSize: size * 0.5 }}
     >
       <span aria-hidden="true">{emoji}</span>
@@ -171,7 +172,7 @@ export function Pill({
 }) {
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${className}`}
+      className={`ui-pill inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${className}`}
       style={tint ? { color: tint, background: `${tint}24` } : undefined}
     >
       {children}
@@ -200,7 +201,7 @@ export function Button({
   ...props
 }: ButtonProps) {
   const base =
-    "inline-flex items-center justify-center gap-1.5 rounded-full font-black transition active:scale-[0.97] disabled:opacity-40 disabled:active:scale-100";
+    "ui-button inline-flex items-center justify-center gap-1.5 rounded-full font-black transition active:scale-[0.97] disabled:opacity-40 disabled:active:scale-100";
   const sizes = size === "sm" ? "px-3.5 h-8 text-[13px]" : "px-5 h-11 text-[15px]";
   const variants: Record<string, string> = {
     primary: "text-white",
@@ -232,7 +233,7 @@ export function IconButton({
   return (
     <button
       aria-label={label}
-      className={`inline-flex h-9 w-9 items-center justify-center rounded-full border border-line bg-surface text-ink transition active:scale-95 ${className}`}
+      className={`ui-icon-button inline-flex h-9 w-9 items-center justify-center rounded-full border border-line bg-surface text-ink transition active:scale-95 ${className}`}
       {...props}
     >
       {children}
@@ -247,7 +248,7 @@ export function IconButton({
 export function TextField({ className = "", ...props }: InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
-      className={`h-11 w-full rounded-2xl border border-line bg-inset px-3 text-[15px] font-bold text-ink outline-none placeholder:font-semibold placeholder:text-muted focus:border-accent ${className}`}
+      className={`ui-text-field h-11 w-full rounded-2xl border border-line bg-inset px-3 text-[15px] font-bold text-ink outline-none placeholder:font-semibold placeholder:text-muted focus:border-accent ${className}`}
       {...props}
     />
   );
@@ -255,7 +256,7 @@ export function TextField({ className = "", ...props }: InputHTMLAttributes<HTML
 
 export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {
   return (
-    <label className="block">
+    <label className="ui-field block">
       <span className="mb-1 block text-xs font-black uppercase tracking-wide text-muted">{label}</span>
       {children}
       {hint && <span className="mt-1 block text-xs font-semibold text-muted">{hint}</span>}
@@ -300,7 +301,7 @@ export function NumberField({
   };
 
   return (
-    <div className="flex h-11 items-center rounded-2xl border border-line bg-inset">
+    <div className="ui-number-field flex h-11 items-center rounded-2xl border border-line bg-inset">
       <button
         type="button"
         aria-label="Decrease"
@@ -455,7 +456,7 @@ export function Segmented<T extends string>({
   onChange: (v: T) => void;
 }) {
   return (
-    <div className="flex rounded-full border border-line bg-inset p-1">
+    <div className="ui-segmented flex rounded-full border border-line bg-inset p-1">
       {options.map((o) => (
         <button
           key={o.value}
@@ -488,7 +489,7 @@ export function Toggle({
       aria-checked={checked}
       aria-label={label}
       onClick={() => onChange(!checked)}
-      className={`relative h-7 w-12 shrink-0 rounded-full transition ${checked ? "bg-accent" : "bg-line"}`}
+      className={`ui-toggle relative h-7 w-12 shrink-0 rounded-full transition ${checked ? "bg-accent" : "bg-line"}`}
     >
       <span
         className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-all ${
@@ -514,7 +515,7 @@ export function SettingRow({
   return (
     <Tag
       onClick={onClick}
-      className="flex w-full items-center gap-3 border-b border-line px-4 py-3 text-left last:border-0"
+      className="ui-setting-row flex w-full items-center gap-3 border-b border-line px-4 py-3 text-left last:border-0"
     >
       <div className="min-w-0 flex-1">
         <p className="text-[15px] font-bold text-ink">{title}</p>
@@ -545,11 +546,57 @@ export function ProgressRing({
   label?: string;
   sublabel?: string;
 }) {
+  const { uiMode } = useTheme();
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   const clamped = Math.max(0, Math.min(1, ratio || 0));
+
+  if (uiMode === "minimal") {
+    return (
+      <div className="ui-progress-ring ui-progress-ring-minimal shrink-0" style={{ width: size }}>
+        <div className="mb-1 flex items-baseline justify-between gap-1">
+          <span className="text-[11px] font-semibold tabular-nums text-ink">
+            {label ?? `${Math.round(clamped * 100)}%`}
+          </span>
+          {sublabel && <span className="text-[9px] font-medium text-muted">{sublabel}</span>}
+        </div>
+        <div className="h-[3px] overflow-hidden rounded-sm bg-line">
+          <div
+            className="h-full rounded-sm transition-[width] duration-500"
+            style={{ width: `${clamped * 100}%`, background: color }}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (uiMode === "compact") {
+    return (
+      <div
+        className="ui-progress-ring ui-progress-ring-compact relative shrink-0 rounded-full"
+        style={{
+          width: size,
+          height: size,
+          background: `conic-gradient(${color} ${clamped * 360}deg, var(--t-line) 0deg)`,
+        }}
+      >
+        <div
+          className="absolute flex flex-col items-center justify-center rounded-full bg-surface"
+          style={{ inset: Math.max(3, stroke - 2) }}
+        >
+          {label ? (
+            <span className="text-[11px] font-bold leading-none text-ink">{label}</span>
+          ) : (
+            <span className="text-[9px] font-bold tabular-nums text-muted">{Math.round(clamped * 100)}%</span>
+          )}
+          {sublabel && <span className="mt-0.5 text-[8px] font-semibold uppercase text-muted">{sublabel}</span>}
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="relative shrink-0" style={{ width: size, height: size }}>
+    <div className="ui-progress-ring relative shrink-0" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
         <circle cx={size / 2} cy={size / 2} r={r} stroke={color} strokeOpacity={0.16} strokeWidth={stroke} fill="none" />
         <circle
@@ -575,7 +622,7 @@ export function ProgressRing({
 
 export function ProgressBar({ ratio, color = "var(--t-accent)" }: { ratio: number; color?: string }) {
   return (
-    <div className="h-2 w-full overflow-hidden rounded-full" style={{ background: `${color}22` }}>
+    <div className="ui-progress-bar h-2 w-full overflow-hidden rounded-full" style={{ background: `${color}22` }}>
       <div
         className="h-full rounded-full transition-[width] duration-500"
         style={{ width: `${Math.min(100, Math.max(0, ratio * 100))}%`, background: color }}
@@ -596,7 +643,7 @@ export function StatTile({
   icon?: ReactNode;
 }) {
   return (
-    <div className="flex-1 rounded-2xl bg-inset px-3 py-2.5 text-center">
+    <div className="ui-stat-tile flex-1 rounded-2xl bg-inset px-3 py-2.5 text-center">
       {icon && <div className="mb-1 flex justify-center" style={{ color: tint }}>{icon}</div>}
       <p className="text-lg font-black leading-none text-ink">{value}</p>
       <p className="mt-1 text-[11px] font-bold uppercase tracking-wide text-muted">{label}</p>
@@ -606,7 +653,7 @@ export function StatTile({
 
 export function EmptyState({ title, subtitle, action }: { title: string; subtitle?: string; action?: ReactNode }) {
   return (
-    <div className="rounded-card border border-dashed border-line px-6 py-10 text-center">
+    <div className="ui-empty-state rounded-card border border-dashed border-line px-6 py-10 text-center">
       <p className="text-base font-black text-ink">{title}</p>
       {subtitle && <p className="mx-auto mt-1 max-w-xs text-sm font-semibold text-muted">{subtitle}</p>}
       {action && <div className="mt-4 flex justify-center">{action}</div>}
@@ -665,7 +712,7 @@ export function Sheet({
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center" onClick={onClose}>
       <div
-        className={`max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl bg-surface p-4 sm:rounded-3xl ${
+        className={`ui-sheet max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl bg-surface p-4 sm:rounded-3xl ${
           wide ? "sm:max-w-2xl" : "sm:max-w-md"
         }`}
         style={panelStyle}
@@ -707,7 +754,7 @@ export function ActionDialog({
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-3xl bg-surface p-5" onClick={(e) => e.stopPropagation()}>
+      <div className="ui-dialog w-full max-w-sm rounded-3xl bg-surface p-5" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-black text-ink">{title}</h2>
         {message && <p className="mt-1 text-sm font-semibold leading-snug text-muted">{message}</p>}
         <div className="mt-4 space-y-2">
@@ -802,8 +849,8 @@ export function TabBar({
   onSelect: (key: string) => void;
 }) {
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
-      <div className="mx-auto flex max-w-lg items-stretch justify-around px-2 md:max-w-3xl">
+    <nav className="ui-tabbar fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
+      <div className="ui-tabbar-inner mx-auto flex max-w-lg items-stretch justify-around px-2 md:max-w-3xl">
         {tabs.map((tab) => {
           const TabIcon = tab.icon;
           const on = tab.key === active;
@@ -811,7 +858,7 @@ export function TabBar({
             <button
               key={tab.key}
               onClick={() => onSelect(tab.key)}
-              className={`flex flex-1 flex-col items-center gap-0.5 rounded-2xl py-2 transition ${
+              className={`ui-tab flex flex-1 flex-col items-center gap-0.5 rounded-2xl py-2 transition ${
                 on ? "text-accent" : "text-muted"
               }`}
               aria-current={on ? "page" : undefined}

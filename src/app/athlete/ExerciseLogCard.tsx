@@ -293,7 +293,7 @@ export function ExerciseLogCard({
 
   return (
     <div
-      className="rounded-2xl border bg-surface"
+      className="ui-exercise-log rounded-2xl border bg-surface"
       style={{ borderColor: done ? `${tint}66` : "var(--t-line)" }}
     >
       <div className="flex items-center gap-3 p-3">
@@ -396,7 +396,7 @@ export function ExerciseLogCard({
               return (
                 <div
                   key={set.id}
-                  className="rounded-2xl border p-2.5"
+                  className="ui-set-row rounded-2xl border p-2.5"
                   style={{
                     borderColor: logged ? `${tint}55` : "var(--t-line)",
                     background: logged ? `${tint}0f` : "transparent",

@@ -7,16 +7,17 @@ import { Avatar, AVATAR_COLORS, AVATAR_SYMBOLS, Button, Card, Modal, Segmented, 
 
 /** Appearance: light/dark, background colour (drives accent), or accent. */
 export function ThemeCard() {
-  const { mode, accent, bg, setMode, setAccent, setBg } = useTheme();
+  const { mode, modePreference, accent, bg, setMode, setAccent, setBg } = useTheme();
   return (
     <Card>
       <h2 className="mb-2 font-black">Appearance</h2>
       <Segmented
         options={[
+          { key: "auto", label: "◐ Auto" },
           { key: "light", label: "☀️ Light" },
           { key: "dark", label: "🌙 Dark" },
         ]}
-        value={mode}
+        value={modePreference}
         onChange={setMode}
       />
 

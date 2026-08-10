@@ -287,7 +287,7 @@ export default function HomeScreen({ onGoPlans }: { onGoPlans: () => void }) {
         )}
 
         {/* Anything logged outside the plan */}
-        <section className="rounded-card border border-dashed border-line p-3">
+        <section className="ui-extra-work rounded-card border border-dashed border-line p-3">
           <div className="mb-2 flex items-center gap-2">
             <Icon.plus className="h-4 w-4 text-muted" />
             <h3 className="flex-1 text-sm font-black text-ink">
@@ -557,7 +557,7 @@ function SegmentBlock({
 
   return (
     <section
-      className="rounded-card border p-3"
+      className="ui-segment-block rounded-card border p-3"
       style={{ borderColor: `${segment.color}38`, background: "color-mix(in srgb, var(--t-surface) 55%, transparent)" }}
     >
       <div className="mb-3 flex items-center gap-3">

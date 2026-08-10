@@ -1,6 +1,6 @@
 /** Settings — profile, goals, theme, coach linking, account. Shared by both portals. */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, DEMO_ACCOUNTS, disableDemoMode, isDemoMode, resetDemoStore } from "../../data";
 import type { CoachLink, Profile, Role } from "../../data/types";
 import {
@@ -8,8 +8,10 @@ import {
   BACKGROUNDS,
   DEFAULT_PALETTE,
   MODE_SURFACES,
+  UI_MODES_ENABLED,
   useTheme,
   type BackgroundPalette,
+  type UIMode,
 } from "../../lib/theme";
 import {
   Button,
@@ -29,6 +31,12 @@ import {
 } from "../../ui/kit";
 import { useAuth } from "../auth";
 import GuideScreen from "./GuideScreen";
+
+const INTERFACE_OPTIONS: { value: UIMode; label: string; description: string }[] = [
+  { value: "classic", label: "Classic", description: "Playful and gamified" },
+  { value: "minimal", label: "Minimal", description: "Calm and content-first" },
+  { value: "compact", label: "Modern compact", description: "Dense and quick to scan" },
+];
 
 export default function SettingsScreen({
   profile,
@@ -55,6 +63,31 @@ export default function SettingsScreen({
   /** Preview only — lets you audition a pairing in the other mode. */
   const [previewMode, setPreviewMode] = useState<"light" | "dark">(theme.mode);
   const [showGuide, setShowGuide] = useState(false);
+  const [appearanceStatus, setAppearanceStatus] = useState<"saving" | "saved" | "error" | null>(null);
+
+  // ThemeProvider keeps the instant local cache; this debounced write makes
+  // the complete choice account-backed. Dual-role accounts receive the same
+  // preference on both profiles, so switching portal or device cannot switch
+  // their appearance unexpectedly.
+  const appearancePayload = JSON.stringify(theme.profileSettings);
+  useEffect(() => {
+    const timer = window.setTimeout(async () => {
+      setAppearanceStatus("saving");
+      try {
+        await Promise.all(
+          profiles.map((item) =>
+            api.updateProfile(item.id, {
+              settings: { ...item.settings, ...theme.profileSettings },
+            }),
+          ),
+        );
+        setAppearanceStatus("saved");
+      } catch {
+        setAppearanceStatus("error");
+      }
+    }, 600);
+    return () => window.clearTimeout(timer);
+  }, [appearancePayload, profiles]);
 
   const otherRole: Role = profile.role === "athlete" ? "coach" : "athlete";
   const hasOtherRole = profiles.some((p) => p.role === otherRole);
@@ -155,15 +188,64 @@ export default function SettingsScreen({
 
       <SectionHeader title="Appearance" />
       <Card className="p-0">
+        {UI_MODES_ENABLED && (
+          <div className="ui-interface-picker border-b border-line px-4 py-3">
+            <div>
+              <p className="text-[15px] font-bold text-ink">
+                Interface <span className="ml-1 text-[10px] font-black uppercase text-accent">Dev</span>
+              </p>
+              <p className="text-xs font-semibold text-muted">
+                One AntRep, three ways to present the same training data.
+              </p>
+            </div>
+            <div className="mt-3 grid grid-cols-3 gap-2" role="radiogroup" aria-label="Interface style">
+              {INTERFACE_OPTIONS.map((option) => {
+                const selected = theme.uiMode === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => theme.setUiMode(option.value)}
+                    className={`ui-interface-option min-w-0 rounded-2xl border px-2 py-2.5 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
+                      selected ? "border-accent bg-accent-soft" : "border-line bg-inset"
+                    }`}
+                  >
+                    <span
+                      className={`ui-mode-preview ui-mode-preview-${option.value}`}
+                      aria-hidden="true"
+                    >
+                      <i />
+                      <i />
+                      <i />
+                    </span>
+                    <span className="block text-xs font-black leading-tight text-ink">{option.label}</span>
+                    <span className="mt-0.5 block text-[10px] font-semibold leading-tight text-muted">
+                      {option.description}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
         <SettingRow
           title="Theme"
-          subtitle={theme.mode === "dark" ? "Dark" : "Light"}
+          subtitle={
+            theme.modePreference === "auto"
+              ? `Auto · ${theme.mode === "dark" ? "Dark" : "Light"} now`
+              : theme.modePreference === "dark"
+                ? "Dark"
+                : "Light"
+          }
           right={
-            <div className="w-32">
+            <div className="w-48">
               <Segmented
-                value={theme.mode}
+                value={theme.modePreference}
                 onChange={theme.setMode}
                 options={[
+                  { value: "auto", label: "Auto" },
                   { value: "light", label: "Light" },
                   { value: "dark", label: "Dark" },
                 ]}
@@ -177,6 +259,15 @@ export default function SettingsScreen({
           onClick={() => setShowTheme(true)}
         />
       </Card>
+      <p
+        className={`mt-1.5 px-1 text-[11px] font-bold ${
+          appearanceStatus === "error" ? "text-danger" : "text-muted"
+        }`}
+      >
+        {appearanceStatus === "saving" && "Saving appearance…"}
+        {appearanceStatus === "saved" && "Saved to your account · available on every device"}
+        {appearanceStatus === "error" && "Couldn't save appearance. Your choice is still stored on this device."}
+      </p>
 
       {profile.role === "athlete" && (
         <>

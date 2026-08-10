@@ -1,6 +1,12 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import type { ProfileSettings } from "../data/types";
 
 export type ThemeMode = "light" | "dark";
+export type ThemePreference = "auto" | ThemeMode;
+export const UI_MODES = ["classic", "minimal", "compact"] as const;
+export type UIMode = (typeof UI_MODES)[number];
+/** Experimental presentation systems stay local to development builds. */
+export const UI_MODES_ENABLED = import.meta.env.DEV;
 
 /**
  * Accent presets. "auto" (the default) derives the accent from whichever
@@ -126,7 +132,8 @@ export interface PatternPref {
 const DEFAULT_PATTERN: PatternPref = { style: "dots", size: 28, opacityLight: 10, opacityDark: 4 };
 
 interface ThemePref {
-  mode: ThemeMode;
+  mode: ThemePreference;
+  uiMode: UIMode;
   accent: AccentChoice;
   bg: string | null; // BackgroundPalette key, or null = default surface
   style: ThemeStyle;
@@ -135,33 +142,47 @@ interface ThemePref {
   pattern: PatternPref;
 }
 
-interface ThemeState extends ThemePref {
-  setMode: (m: ThemeMode) => void;
+interface ThemeState extends Omit<ThemePref, "mode"> {
+  /** The actual mode being rendered after resolving Auto against the device. */
+  mode: ThemeMode;
+  /** The user's saved choice. */
+  modePreference: ThemePreference;
+  setMode: (m: ThemePreference) => void;
+  setUiMode: (m: UIMode) => void;
   setAccent: (a: AccentChoice) => void;
   setBg: (b: string | null) => void;
   setStyle: (s: ThemeStyle) => void;
   setBg2: (b: string | null) => void;
   setPattern: (p: PatternPref) => void;
+  /** Hydrate appearance from the signed-in profile when one has a saved preference. */
+  applyProfileSettings: (settings: ProfileSettings, accountId: string) => void;
+  /** Complete appearance payload persisted to every profile for this account. */
+  profileSettings: ProfileSettings;
 }
 
 const STORAGE_KEY = "antrep-theme";
 
-function loadPref(): ThemePref {
-  const prefersDark = window.matchMedia?.("(prefers-color-scheme: dark)").matches;
-  const fallback: ThemePref = {
-    mode: prefersDark ? "dark" : "light",
+function defaultPref(): ThemePref {
+  return {
+    mode: "auto",
+    uiMode: "classic",
     accent: "auto",
     bg: "denim",
     style: "solid",
     bg2: null,
     pattern: DEFAULT_PATTERN,
   };
+}
+
+function loadPref(): ThemePref {
+  const fallback = defaultPref();
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return fallback;
     const p = JSON.parse(raw);
     return {
-      mode: p.mode === "dark" || p.mode === "light" ? p.mode : fallback.mode,
+      mode: p.mode === "auto" || p.mode === "dark" || p.mode === "light" ? p.mode : fallback.mode,
+      uiMode: UI_MODES.includes(p.uiMode) ? p.uiMode : fallback.uiMode,
       // The old accent only took effect with no background colour, so honour a
       // stored one only in that case; otherwise everyone would suddenly have
       // the default pinned across every style.
@@ -179,28 +200,122 @@ function loadPref(): ThemePref {
   }
 }
 
+function loadCacheOwner(): string | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const owner = JSON.parse(raw)?.accountId;
+    return typeof owner === "string" && owner ? owner : null;
+  } catch {
+    return null;
+  }
+}
+
 
 const ThemeContext = createContext<ThemeState>({
   mode: "light",
+  modePreference: "auto",
+  uiMode: "classic",
   accent: "auto",
   bg: null,
   style: "solid",
   bg2: null,
   pattern: DEFAULT_PATTERN,
   setMode: () => {},
+  setUiMode: () => {},
   setAccent: () => {},
   setBg: () => {},
   setStyle: () => {},
   setBg2: () => {},
   setPattern: () => {},
+  applyProfileSettings: () => {},
+  profileSettings: { theme_mode: "auto", ui_mode: "classic" },
 });
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [pref, setPref] = useState(loadPref);
+  const [cacheOwner, setCacheOwner] = useState(loadCacheOwner);
+  const [systemMode, setSystemMode] = useState<ThemeMode>(() =>
+    window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light",
+  );
+  const mode: ThemeMode = pref.mode === "auto" ? systemMode : pref.mode;
+  const uiMode: UIMode = UI_MODES_ENABLED ? pref.uiMode : "classic";
+
+  useEffect(() => {
+    const query = window.matchMedia?.("(prefers-color-scheme: dark)");
+    if (!query) return;
+    const changed = (event: MediaQueryListEvent) => setSystemMode(event.matches ? "dark" : "light");
+    query.addEventListener("change", changed);
+    return () => query.removeEventListener("change", changed);
+  }, []);
+
+  const applyProfileSettings = useCallback((settings: ProfileSettings, accountId: string) => {
+    // An old profile with no appearance fields should keep the local choice;
+    // visiting Settings will migrate that complete choice to the account.
+    const hasSavedTheme = [
+      "theme_mode",
+      "ui_mode",
+      "accent",
+      "background",
+      "background_secondary",
+      "theme_style",
+    ].some((key) => Object.prototype.hasOwnProperty.call(settings, key));
+    if (!hasSavedTheme) {
+      // A legacy cache has no owner: adopt it once so an existing user's
+      // chosen appearance is not lost. A cache owned by someone else must not
+      // leak onto a new account; that account starts in Auto as promised.
+      if (cacheOwner && cacheOwner !== accountId) setPref(defaultPref());
+      setCacheOwner(accountId);
+      return;
+    }
+
+    setCacheOwner(accountId);
+
+    setPref((current) => ({
+      ...current,
+      mode:
+        settings.theme_mode === "auto" ||
+        settings.theme_mode === "light" ||
+        settings.theme_mode === "dark"
+          ? settings.theme_mode
+          : current.mode,
+      uiMode:
+        settings.ui_mode && UI_MODES.includes(settings.ui_mode)
+          ? settings.ui_mode
+          : current.uiMode,
+      accent:
+        settings.accent === "auto" || ACCENTS.some((accent) => accent.key === settings.accent)
+          ? (settings.accent as AccentChoice)
+          : current.accent,
+      bg:
+        settings.background === null || BACKGROUNDS.some((bg) => bg.key === settings.background)
+          ? (settings.background ?? null)
+          : current.bg,
+      bg2:
+        settings.background_secondary === null ||
+        BACKGROUNDS.some((bg) => bg.key === settings.background_secondary)
+          ? (settings.background_secondary ?? null)
+          : current.bg2,
+      style:
+        settings.theme_style && THEME_STYLES.includes(settings.theme_style)
+          ? settings.theme_style
+          : current.style,
+    }));
+  }, [cacheOwner]);
+
+  const profileSettings: ProfileSettings = {
+    theme_mode: pref.mode,
+    ui_mode: pref.uiMode,
+    accent: pref.accent,
+    background: pref.bg,
+    background_secondary: pref.bg2,
+    theme_style: pref.style,
+  };
 
   useEffect(() => {
     const root = document.documentElement;
-    root.dataset.theme = pref.mode;
+    root.dataset.theme = mode;
+    root.dataset.ui = uiMode;
     if (pref.accent === "auto") delete root.dataset.accent;
     else root.dataset.accent = pref.accent;
     root.dataset.pattern = pref.pattern.style;
@@ -212,7 +327,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const chosen = BACKGROUNDS.find((b) => b.key === pref.bg) ?? null;
     const palette = chosen ?? DEFAULT_PALETTE;
     if (chosen) {
-      const c = palette[pref.mode];
+      const c = palette[mode];
       root.style.setProperty("--t-bg", c.bg);
       root.style.setProperty("--t-accent", c.accent);
       root.style.setProperty("--t-accent-deep", c.deep);
@@ -231,7 +346,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       root.dataset.bgstyle = "gradient";
       root.style.setProperty(
         "--t-bg-gradient",
-        `linear-gradient(160deg, ${palette[pref.mode].bg} 0%, ${paired[pref.mode].bg} 100%)`,
+        `linear-gradient(160deg, ${palette[mode].bg} 0%, ${paired[mode].bg} 100%)`,
       );
     } else {
       delete root.dataset.bgstyle;
@@ -241,7 +356,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     // Duotone keeps the colours apart: the page stays the first colour while
     // every card, inset and accent moves to the second.
     if (paired && pref.style === "duotone") {
-      const ui = paired[pref.mode];
+      const ui = paired[mode];
       root.style.setProperty("--t-surface", ui.bg);
       root.style.setProperty("--t-inset", `color-mix(in srgb, ${ui.bg} 86%, ${ui.accent} 14%)`);
       root.style.setProperty("--t-accent", ui.accent);
@@ -252,11 +367,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     }
 
     root.style.setProperty("--pattern-size", `${pref.pattern.size}px`);
-    const opacity = pref.mode === "dark" ? pref.pattern.opacityDark : pref.pattern.opacityLight;
+    const opacity = mode === "dark" ? pref.pattern.opacityDark : pref.pattern.opacityLight;
     const alpha = (opacity / 100).toFixed(3);
     root.style.setProperty(
       "--t-checker",
-      pref.mode === "dark" ? `rgba(255,255,255,${alpha})` : `rgba(40,40,40,${alpha})`,
+      mode === "dark" ? `rgba(255,255,255,${alpha})` : `rgba(40,40,40,${alpha})`,
     );
 
     // Last word: a pinned accent overrides whatever the palette or duotone
@@ -267,19 +382,27 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       root.style.setProperty("--t-accent-deep", accent.deep);
     }
 
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(pref));
-  }, [pref]);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...pref, accountId: cacheOwner }));
+  }, [pref, mode, uiMode, cacheOwner]);
 
   return (
     <ThemeContext.Provider
       value={{
         ...pref,
+        uiMode,
+        mode,
+        modePreference: pref.mode,
         setMode: (mode) => setPref((p) => ({ ...p, mode })),
+        setUiMode: (nextUiMode) => {
+          if (UI_MODES_ENABLED) setPref((p) => ({ ...p, uiMode: nextUiMode }));
+        },
         setAccent: (accent) => setPref((p) => ({ ...p, accent })),
         setBg: (bg) => setPref((p) => ({ ...p, bg })),
         setStyle: (style) => setPref((p) => ({ ...p, style })),
         setBg2: (bg2) => setPref((p) => ({ ...p, bg2 })),
         setPattern: (pattern) => setPref((p) => ({ ...p, pattern })),
+        applyProfileSettings,
+        profileSettings,
       }}
     >
       {children}

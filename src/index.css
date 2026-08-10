@@ -233,3 +233,707 @@ input[type="number"] {
   outline: 2px solid var(--t-accent);
   outline-offset: 2px;
 }
+
+/* ============================================================
+   UI modes
+
+   These selectors only reinterpret shared presentation primitives. Data,
+   domain calculations and mutation paths never branch on data-ui. Classic is
+   intentionally the unmodified baseline above.
+   ============================================================ */
+
+html[data-ui="minimal"] {
+  --radius-card: 0.5rem;
+  --font-sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --t-accent-soft: color-mix(in srgb, var(--t-accent) 9%, var(--t-surface));
+}
+
+html[data-ui="compact"] {
+  --radius-card: 0.7rem;
+  --font-sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --t-accent-soft: color-mix(in srgb, var(--t-accent) 15%, var(--t-surface));
+}
+
+/* Each interface owns a surface system while the user's AntRep accent remains
+   shared. Minimal stays paper-neutral; Compact uses a training-console canvas. */
+html[data-ui="minimal"][data-theme="light"] {
+  --t-bg: #fbfbfa !important;
+  --t-surface: #ffffff !important;
+  --t-inset: #f4f4f2 !important;
+  --t-ink: #37352f !important;
+  --t-muted: #787774 !important;
+  --t-line: #e7e7e5 !important;
+}
+
+html[data-ui="minimal"][data-theme="dark"] {
+  --t-bg: #191919 !important;
+  --t-surface: #202020 !important;
+  --t-inset: #262626 !important;
+  --t-ink: #f1f1ef !important;
+  --t-muted: #9b9a97 !important;
+  --t-line: #373737 !important;
+}
+
+html[data-ui="compact"][data-theme="light"] {
+  --t-bg: #edf2f0 !important;
+  --t-surface: #ffffff !important;
+  --t-inset: #f0f4f2 !important;
+  --t-ink: #14201c !important;
+  --t-muted: #66736e !important;
+  --t-line: #d8e1dd !important;
+}
+
+html[data-ui="compact"][data-theme="dark"] {
+  --t-bg: #0b1210 !important;
+  --t-surface: #131d1a !important;
+  --t-inset: #0e1714 !important;
+  --t-ink: #f2f7f5 !important;
+  --t-muted: #91a19b !important;
+  --t-line: #293733 !important;
+}
+
+html[data-ui="minimal"] .pattern-bg,
+html[data-ui="minimal"] .checker-bg,
+html[data-ui="compact"] .pattern-bg,
+html[data-ui="compact"] .checker-bg {
+  background-image: none;
+}
+
+html[data-ui="minimal"] :focus-visible,
+html[data-ui="compact"] :focus-visible {
+  outline: 2px solid var(--t-accent);
+  outline-offset: 2px;
+}
+
+/* Minimal — editorial hierarchy, quiet surfaces and deliberate whitespace. */
+html[data-ui="minimal"] .ui-screen-content {
+  max-width: 54rem;
+  padding-top: 2rem;
+}
+
+html[data-ui="minimal"] .ui-screen-title {
+  margin-bottom: 1.75rem;
+}
+
+html[data-ui="minimal"] .ui-screen-title h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+
+html[data-ui="minimal"] .ui-screen-title .font-quote {
+  font-family: var(--font-sans);
+  font-style: normal;
+  color: var(--t-muted);
+}
+
+html[data-ui="minimal"] .ui-card {
+  border: 0;
+  border-bottom: 1px solid var(--t-line);
+  border-radius: 0;
+  background: transparent;
+  padding: 1.25rem;
+  box-shadow: none;
+}
+
+html[data-ui="minimal"] button.ui-card:hover {
+  background: var(--t-inset);
+}
+
+html[data-ui="minimal"] .ui-section-header {
+  margin-top: 2rem;
+  margin-bottom: 0.6rem;
+}
+
+html[data-ui="minimal"] .ui-section-header h2,
+html[data-ui="minimal"] .ui-field > span:first-child,
+html[data-ui="minimal"] .ui-stat-tile p:last-child {
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  text-transform: none;
+}
+
+html[data-ui="minimal"] .font-black {
+  font-weight: 700;
+}
+
+html[data-ui="minimal"] .ui-button,
+html[data-ui="minimal"] .ui-icon-button,
+html[data-ui="minimal"] .ui-text-field,
+html[data-ui="minimal"] .ui-number-field,
+html[data-ui="minimal"] .ui-segmented,
+html[data-ui="minimal"] .ui-segmented > button {
+  border-radius: 0.45rem;
+}
+
+html[data-ui="minimal"] .ui-button {
+  font-weight: 650;
+  box-shadow: none;
+}
+
+html[data-ui="minimal"] .ui-button.border,
+html[data-ui="minimal"] .ui-icon-button {
+  border-color: transparent;
+  background: var(--t-inset);
+}
+
+html[data-ui="minimal"] .ui-text-field,
+html[data-ui="minimal"] .ui-number-field {
+  border-color: transparent;
+  background: var(--t-inset);
+}
+
+html[data-ui="minimal"] .ui-segmented {
+  gap: 0.2rem;
+  border-color: transparent;
+  background: var(--t-inset);
+}
+
+html[data-ui="minimal"] .ui-segmented > button {
+  box-shadow: none;
+  font-weight: 650;
+}
+
+html[data-ui="minimal"] .ui-icon-tile {
+  border-radius: 0.4rem;
+  background: transparent !important;
+  filter: grayscale(0.55) saturate(0.55);
+  width: 1.8rem !important;
+  height: 1.8rem !important;
+  font-size: 1rem !important;
+}
+
+html[data-ui="minimal"] .ui-pill {
+  border: 1px solid currentColor;
+  border-radius: 0.35rem;
+  background: transparent !important;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+html[data-ui="minimal"] .ui-progress-bar {
+  height: 0.25rem;
+  border-radius: 0.15rem;
+}
+
+html[data-ui="minimal"] .ui-stat-tile {
+  border-radius: 0.4rem;
+  background: transparent;
+  padding-block: 0.6rem;
+  text-align: left;
+}
+
+html[data-ui="minimal"] .ui-empty-state {
+  border-radius: 0.5rem;
+  padding-block: 3rem;
+}
+
+html[data-ui="minimal"] .ui-sheet,
+html[data-ui="minimal"] .ui-dialog {
+  border: 1px solid var(--t-line);
+  border-radius: 0.65rem;
+  box-shadow: 0 18px 50px rgb(0 0 0 / 0.14);
+}
+
+html[data-ui="minimal"] .ui-interface-option {
+  border-radius: 0.4rem;
+}
+
+.ui-mode-preview {
+  display: grid;
+  height: 1.8rem;
+  margin-bottom: 0.55rem;
+  overflow: hidden;
+  border: 1px solid var(--t-line);
+  background: var(--t-surface);
+}
+
+.ui-mode-preview i {
+  display: block;
+}
+
+.ui-mode-preview-classic {
+  grid-template-columns: repeat(3, 1fr);
+  align-items: end;
+  gap: 0.2rem;
+  padding: 0.28rem;
+  border-radius: 0.6rem;
+}
+
+.ui-mode-preview-classic i {
+  height: 75%;
+  border-radius: 0.35rem;
+  background: var(--t-accent);
+}
+
+.ui-mode-preview-classic i:nth-child(2) {
+  height: 100%;
+  background: #1cb0f6;
+}
+
+.ui-mode-preview-classic i:nth-child(3) {
+  height: 58%;
+  background: #ffc800;
+}
+
+.ui-mode-preview-minimal {
+  grid-template-rows: repeat(3, 1fr);
+  gap: 0.27rem;
+  padding: 0.38rem;
+  border-radius: 0.2rem;
+}
+
+.ui-mode-preview-minimal i {
+  height: 1px;
+  align-self: center;
+  background: var(--t-muted);
+  opacity: 0.65;
+}
+
+.ui-mode-preview-minimal i:nth-child(2) {
+  width: 72%;
+}
+
+.ui-mode-preview-minimal i:nth-child(3) {
+  width: 86%;
+}
+
+.ui-mode-preview-compact {
+  grid-template-columns: 1.2fr 0.8fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 0.2rem;
+  padding: 0.28rem;
+  border-radius: 0.35rem;
+  background: #101916;
+}
+
+.ui-mode-preview-compact i {
+  border-radius: 0.18rem;
+  background: color-mix(in srgb, var(--t-accent) 38%, #26332f);
+}
+
+.ui-mode-preview-compact i:first-child {
+  grid-row: 1 / 3;
+}
+
+html[data-ui="minimal"] .ui-screen-content .rounded-2xl,
+html[data-ui="minimal"] .ui-screen-content .rounded-3xl,
+html[data-ui="minimal"] .ui-exercise-log,
+html[data-ui="minimal"] .ui-set-row,
+html[data-ui="minimal"] .ui-segment-block,
+html[data-ui="minimal"] .ui-extra-work {
+  border-radius: 0.45rem;
+}
+
+html[data-ui="minimal"] .ui-screen-content .rounded-xl,
+html[data-ui="minimal"] .ui-screen-content button.rounded-full,
+html[data-ui="minimal"] .ui-sheet button.rounded-full,
+html[data-ui="minimal"] .ui-dialog button.rounded-full {
+  border-radius: 0.35rem;
+}
+
+html[data-ui="minimal"] .ui-screen-content .shadow-sm {
+  box-shadow: none;
+}
+
+html[data-ui="minimal"] .ui-segment-block,
+html[data-ui="minimal"] .ui-extra-work {
+  border: 0;
+  border-block: 1px solid var(--t-line);
+  border-radius: 0;
+  background: transparent;
+  padding: 1.15rem 0;
+}
+
+html[data-ui="minimal"] .ui-exercise-log {
+  border: 0;
+  border-top: 1px solid var(--t-line);
+  border-radius: 0;
+  background: transparent;
+}
+
+html[data-ui="minimal"] .ui-exercise-log:last-child {
+  border-bottom: 1px solid var(--t-line);
+}
+
+html[data-ui="minimal"] .ui-exercise-log > div:first-child {
+  padding: 0.85rem 1rem;
+}
+
+html[data-ui="minimal"] .ui-set-row {
+  border-color: var(--t-line) !important;
+  background: var(--t-surface) !important;
+  padding: 0.85rem;
+}
+
+html[data-ui="minimal"] .ui-screen-content table th,
+html[data-ui="minimal"] .ui-screen-content table td {
+  border-color: var(--t-line);
+}
+
+/* Modern Compact — denser controls and panels without shrinking touch targets. */
+html[data-ui="compact"] body {
+  font-size: 0.94rem;
+}
+
+html[data-ui="compact"] .font-black {
+  font-weight: 750;
+}
+
+html[data-ui="compact"] .ui-screen-content {
+  max-width: 72rem;
+  padding: 1rem 0.85rem 6.5rem;
+}
+
+html[data-ui="compact"] .ui-screen-title {
+  margin-bottom: 0.85rem;
+}
+
+html[data-ui="compact"] .ui-screen-title h1 {
+  font-size: 1.35rem;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+
+html[data-ui="compact"] .ui-screen-title .font-quote {
+  font-family: var(--font-sans);
+  font-size: 0.8rem;
+  font-style: normal;
+  color: var(--t-muted);
+}
+
+html[data-ui="compact"] .ui-card {
+  border-radius: 0.7rem;
+  padding: 0.75rem;
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--t-surface) 96%, white 4%),
+    var(--t-surface)
+  );
+  box-shadow: 0 1px 1px rgb(0 0 0 / 0.08), 0 8px 24px rgb(0 0 0 / 0.07);
+}
+
+html[data-ui="compact"] button.ui-card:hover {
+  border-color: color-mix(in srgb, var(--t-accent) 38%, var(--t-line));
+}
+
+html[data-ui="compact"] .ui-section-header {
+  margin-top: 1rem;
+  margin-bottom: 0.4rem;
+}
+
+html[data-ui="compact"] .ui-section-header h2 {
+  font-size: 0.68rem;
+  font-weight: 750;
+  letter-spacing: 0.07em;
+}
+
+html[data-ui="compact"] .ui-button {
+  min-height: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.55rem;
+  padding-inline: 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 750;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.16), 0 1px 2px rgb(0 0 0 / 0.12);
+}
+
+html[data-ui="compact"] .ui-icon-button {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.55rem;
+}
+
+html[data-ui="compact"] .ui-text-field,
+html[data-ui="compact"] .ui-number-field {
+  min-height: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.5rem;
+  font-size: 0.85rem;
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.06);
+}
+
+html[data-ui="compact"] .ui-field > span:first-child {
+  margin-bottom: 0.2rem;
+  font-size: 0.65rem;
+  letter-spacing: 0.055em;
+}
+
+html[data-ui="compact"] .ui-segmented {
+  border-radius: 0.55rem;
+  padding: 0.2rem;
+  background: var(--t-inset);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--t-line) 75%, transparent);
+}
+
+html[data-ui="compact"] .ui-segmented > button {
+  border-radius: 0.4rem;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.74rem;
+}
+
+html[data-ui="compact"] .ui-setting-row {
+  padding: 0.65rem 0.75rem;
+}
+
+html[data-ui="compact"] .ui-interface-picker {
+  padding: 0.7rem 0.75rem;
+}
+
+html[data-ui="compact"] .ui-interface-option {
+  border-radius: 0.5rem;
+  padding-block: 0.5rem;
+}
+
+html[data-ui="compact"] .ui-screen-content .rounded-2xl,
+html[data-ui="compact"] .ui-screen-content .rounded-3xl,
+html[data-ui="compact"] .ui-exercise-log,
+html[data-ui="compact"] .ui-set-row,
+html[data-ui="compact"] .ui-segment-block,
+html[data-ui="compact"] .ui-extra-work {
+  border-radius: 0.6rem;
+}
+
+html[data-ui="compact"] .ui-screen-content .rounded-xl,
+html[data-ui="compact"] .ui-screen-content button.rounded-full,
+html[data-ui="compact"] .ui-sheet button.rounded-full,
+html[data-ui="compact"] .ui-dialog button.rounded-full {
+  border-radius: 0.5rem;
+}
+
+html[data-ui="compact"] .ui-segment-block,
+html[data-ui="compact"] .ui-extra-work {
+  padding: 0.7rem;
+  background: var(--t-surface);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.06);
+}
+
+html[data-ui="compact"] .ui-exercise-log > div:first-child {
+  gap: 0.6rem;
+  padding: 0.6rem;
+}
+
+html[data-ui="compact"] .ui-exercise-log {
+  border-color: color-mix(in srgb, var(--t-line) 82%, transparent) !important;
+  background: var(--t-inset);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.035);
+}
+
+html[data-ui="compact"] .ui-set-row {
+  padding: 0.55rem;
+  background: var(--t-surface) !important;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+}
+
+html[data-ui="compact"] .ui-screen-content table th,
+html[data-ui="compact"] .ui-screen-content table td {
+  padding: 0.45rem 0.55rem;
+}
+
+html[data-ui="compact"] .ui-icon-tile {
+  border-radius: 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--t-line) 80%, transparent);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08);
+}
+
+html[data-ui="compact"] .ui-pill {
+  border-radius: 0.35rem;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.6rem;
+}
+
+html[data-ui="compact"] .ui-stat-tile {
+  border-radius: 0.5rem;
+  padding: 0.55rem 0.65rem;
+  text-align: left;
+  border: 1px solid color-mix(in srgb, var(--t-line) 78%, transparent);
+  background: var(--t-inset);
+}
+
+html[data-ui="compact"] .ui-stat-tile p:first-of-type {
+  font-size: 1rem;
+}
+
+html[data-ui="compact"] .ui-stat-tile p:last-child {
+  margin-top: 0.2rem;
+  font-size: 0.6rem;
+}
+
+html[data-ui="compact"] .ui-progress-bar {
+  height: 0.35rem;
+}
+
+html[data-ui="compact"] .ui-empty-state {
+  border-radius: 0.7rem;
+  padding-block: 2.25rem;
+}
+
+html[data-ui="compact"] .ui-sheet,
+html[data-ui="compact"] .ui-dialog {
+  border: 1px solid var(--t-line);
+  border-radius: 0.8rem;
+  padding: 0.85rem;
+  box-shadow: 0 22px 60px rgb(0 0 0 / 0.2);
+}
+
+html[data-ui="compact"] .ui-card.space-y-3 > :not(:last-child) {
+  margin-block-end: 0.55rem;
+}
+
+html[data-ui="compact"] .ui-card.space-y-4 > :not(:last-child) {
+  margin-block-end: 0.7rem;
+}
+
+/* Small screens retain the existing safe-area bottom navigation. */
+html[data-ui="minimal"] .ui-tabbar,
+html[data-ui="compact"] .ui-tabbar {
+  box-shadow: 0 -1px 12px rgb(0 0 0 / 0.025);
+}
+
+html[data-ui="minimal"] .ui-tab,
+html[data-ui="compact"] .ui-tab {
+  border-radius: 0.45rem;
+}
+
+html[data-ui="minimal"] .ui-tab span,
+html[data-ui="compact"] .ui-tab span {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+html[data-ui="compact"] .ui-tab {
+  padding-block: 0.4rem;
+}
+
+html[data-ui="compact"] .ui-tab svg {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+@media (max-width: 859px), (hover: none) and (pointer: coarse) {
+  html[data-ui="compact"] .ui-button,
+  html[data-ui="compact"] .ui-icon-button,
+  html[data-ui="compact"] .ui-text-field,
+  html[data-ui="compact"] .ui-number-field {
+    min-height: 2.75rem;
+    height: 2.75rem;
+  }
+
+  html[data-ui="compact"] .ui-icon-button {
+    width: 2.75rem;
+  }
+
+  html[data-ui="compact"] .ui-tab {
+    min-height: 3.25rem;
+  }
+
+  html[data-ui="compact"] .ui-exercise-log > div:first-child > button,
+  html[data-ui="compact"] .ui-exercise-log .h-10,
+  html[data-ui="minimal"] .ui-exercise-log > div:first-child > button {
+    min-height: 2.75rem;
+  }
+}
+
+/* Non-Classic desktop navigation becomes a quiet, persistent sidebar. */
+@media (min-width: 860px) {
+  html[data-ui="minimal"] .ui-screen {
+    padding-left: 13rem;
+  }
+
+  html[data-ui="compact"] .ui-screen {
+    padding-left: 11rem;
+  }
+
+  html[data-ui="minimal"] .ui-tabbar,
+  html[data-ui="compact"] .ui-tabbar {
+    top: 0;
+    right: auto;
+    display: block;
+    border-top: 0;
+    border-right: 1px solid var(--t-line);
+    padding-bottom: 0;
+    box-shadow: none;
+  }
+
+  html[data-ui="minimal"] .ui-tabbar {
+    width: 13rem;
+    background: var(--t-surface);
+  }
+
+  html[data-ui="compact"] .ui-tabbar {
+    width: 11rem;
+    background: color-mix(in srgb, var(--t-surface) 82%, var(--t-bg));
+    box-shadow: 8px 0 28px rgb(0 0 0 / 0.08);
+  }
+
+  html[data-ui="minimal"] .ui-tabbar-inner,
+  html[data-ui="compact"] .ui-tabbar-inner {
+    height: 100%;
+    max-width: none;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 0.25rem;
+    padding: 1.25rem 0.7rem;
+  }
+
+  html[data-ui="minimal"] .ui-tabbar-inner::before,
+  html[data-ui="compact"] .ui-tabbar-inner::before {
+    content: "AntRep";
+    display: block;
+    margin: 0.2rem 0.55rem 1.25rem;
+    color: var(--t-ink);
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: -0.025em;
+  }
+
+  html[data-ui="minimal"] .ui-tab,
+  html[data-ui="compact"] .ui-tab {
+    flex: 0 0 auto;
+    width: 100%;
+    min-height: 2.6rem;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 0.7rem;
+    padding: 0.55rem 0.65rem;
+  }
+
+  html[data-ui="minimal"] .ui-tab[aria-current="page"] {
+    position: relative;
+    background: var(--t-inset);
+    color: var(--t-ink);
+  }
+
+  html[data-ui="minimal"] .ui-tab[aria-current="page"]::before {
+    content: "";
+    position: absolute;
+    inset-block: 0.55rem;
+    left: 0;
+    width: 2px;
+    border-radius: 2px;
+    background: var(--t-accent);
+  }
+
+  html[data-ui="compact"] .ui-tab[aria-current="page"] {
+    background: var(--t-accent);
+    color: white;
+  }
+
+  html[data-ui="minimal"] .ui-tab span,
+  html[data-ui="compact"] .ui-tab span {
+    font-size: 0.78rem;
+    font-weight: 700;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-ui] *,
+  html[data-ui] *::before,
+  html[data-ui] *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
