@@ -177,6 +177,7 @@ export default function PlansScreen() {
         onDelete={workspace.ownPlans.some((b) => b.plan.id === draft.plan.id) ? remove : undefined}
         onClose={() => setDraft(null)}
         saving={saving}
+        exerciseLibrary={workspace.presets}
         onSaveExerciseToLibrary={async (exercise) => {
           await api.savePreset(
             makePreset(profile.id, exercise.name, {

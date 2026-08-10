@@ -1199,6 +1199,7 @@ export const demoApi: Api = {
 
     return {
       plans,
+      presets: clone(db.presets.filter((preset) => preset.owner_id === profile.id)),
       athletes,
       pendingInvites: clone(links.filter((l) => l.status === "pending")),
       assignments: clone(db.assignments.filter((a) => planIds.has(a.plan_id))),

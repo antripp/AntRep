@@ -10,6 +10,7 @@ import { useAuth } from "../auth";
 import SettingsScreen from "../shared/SettingsScreen";
 import { DbFaultBanner } from "../shared/DbFaultBanner";
 import HomeScreen from "../athlete/HomeScreen";
+import { ExerciseLibraryScreen } from "../athlete/ExercisesScreen";
 import PlansScreen from "../athlete/PlansScreen";
 import { WorkspaceProvider, useWorkspace } from "../workspace";
 import AthleteDetailScreen from "./AthleteDetailScreen";
@@ -19,11 +20,12 @@ import CoachPlansScreen from "./CoachPlansScreen";
 const TABS = [
   { key: "athletes", label: "Athletes", icon: Icon.people },
   { key: "plans", label: "Plans", icon: Icon.plan },
+  { key: "exercises", label: "Exercises", icon: Icon.dumbbell },
   { key: "training", label: "My training", icon: Icon.dumbbell },
   { key: "settings", label: "Settings", icon: Icon.settings },
 ];
 
-const emptyWorkspace: CoachWorkspace = { plans: [], athletes: [], pendingInvites: [], assignments: [] };
+const emptyWorkspace: CoachWorkspace = { plans: [], presets: [], athletes: [], pendingInvites: [], assignments: [] };
 
 export default function CoachApp({
   profile,
@@ -84,6 +86,17 @@ export default function CoachApp({
 
           {tab === "plans" && (
             <CoachPlansScreen coach={profile} workspace={workspace} onReload={reload} onToast={setToast} />
+          )}
+
+          {tab === "exercises" && (
+            <ExerciseLibraryScreen
+              profile={profile}
+              presets={workspace.presets}
+              reload={reload}
+              showToast={setToast}
+              title="Exercises"
+              usage="coach"
+            />
           )}
 
           {tab === "training" && !athleteProfile && (

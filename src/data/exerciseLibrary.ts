@@ -17,9 +17,41 @@ export interface LibraryExercise {
   equipmentNames: string[];
   primaryMuscles: MuscleInfo[];
   secondaryMuscles: MuscleInfo[];
+  description: string;
+  aliases: string[];
+  tips: string[];
+  images: ExerciseImage[];
+  videos: ExerciseVideo[];
+  variationGroup: string | null;
+  license: { shortName: string; fullName: string; url: string } | null;
+  licenseAuthor: string;
+  lastUpdated: string;
+  uuid: string;
   logType: LogType;
   sets: number;
   reps: number;
+}
+
+export interface ExerciseImage {
+  id: number;
+  url: string;
+  isMain: boolean;
+  isAiGenerated: boolean;
+  style: string;
+  licenseAuthor: string;
+  licenseObjectURL: string;
+}
+
+export interface ExerciseVideo {
+  id: number;
+  url: string;
+  isMain: boolean;
+  duration: number;
+  width: number;
+  height: number;
+  codec: string;
+  licenseAuthor: string;
+  licenseObjectURL: string;
 }
 
 interface WgerPage<T> {
@@ -42,23 +74,58 @@ interface WgerExerciseInfo {
   muscles: WgerMuscle[];
   muscles_secondary: WgerMuscle[];
   equipment: { id: number; name: string }[];
-  translations: { name: string; language: number }[];
+  translations: {
+    name: string;
+    language: number;
+    description?: string;
+    description_source?: string;
+    aliases?: { alias: string }[];
+    notes?: { comment: string }[];
+  }[];
+  images?: {
+    id: number;
+    image: string;
+    is_main: boolean;
+    is_ai_generated: boolean;
+    style: string;
+    license_author: string;
+    license_object_url: string;
+  }[];
+  videos?: {
+    id: number;
+    video: string;
+    is_main: boolean;
+    duration: string;
+    width: number;
+    height: number;
+    codec_long: string;
+    license_author: string;
+    license_object_url: string;
+  }[];
+  variation_group?: string | null;
+  license?: { short_name: string; full_name: string; url: string } | null;
+  license_author?: string;
+  last_update?: string;
+  uuid?: string;
 }
 
 const ENDPOINT = "https://wger.de/api/v2/exerciseinfo/?language=2&limit=100";
-const CACHE_KEY = "antrep.exercise-library.wger.v2";
+const CACHE_KEY = "antrep.exercise-library.wger.v3";
 const CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 let request: Promise<LibraryExercise[]> | null = null;
 
+function absoluteWgerURL(path: string): string {
+  return path ? new URL(path, "https://wger.de/").href : "";
+}
+
 function muscle(m: WgerMuscle): MuscleInfo {
-  const absolute = (path: string) => path ? new URL(path, "https://wger.de/").href : "";
   return {
     id: m.id,
     name: m.name_en.trim() || m.name,
     isFront: m.is_front,
-    imageURLMain: absolute(m.image_url_main),
-    imageURLSecondary: absolute(m.image_url_secondary),
+    imageURLMain: absoluteWgerURL(m.image_url_main),
+    imageURLSecondary: absoluteWgerURL(m.image_url_secondary),
   };
 }
 
@@ -87,7 +154,8 @@ function defaults(name: string, category: ExerciseCategory): Pick<LibraryExercis
 
 function mapInfo(info: WgerExerciseInfo): LibraryExercise | null {
   const translation = info.translations.find((item) => item.language === 2);
-  const name = translation?.name.trim() ?? "";
+  if (!translation) return null;
+  const name = translation.name.trim();
   if (!name || !isEnglishName(name)) return null;
   const category = categoryForWger(name, info.category.id);
   return {
@@ -98,6 +166,38 @@ function mapInfo(info: WgerExerciseInfo): LibraryExercise | null {
     equipmentNames: info.equipment.map((item) => item.name),
     primaryMuscles: info.muscles.map(muscle),
     secondaryMuscles: info.muscles_secondary.map(muscle),
+    description: translation.description_source?.trim() || translation.description?.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() || "",
+    aliases: [...new Set((translation.aliases ?? []).map((item) => item.alias.trim()).filter(Boolean))],
+    tips: [...new Set((translation.notes ?? []).map((item) => item.comment.trim()).filter(Boolean))],
+    images: (info.images ?? []).map((image) => ({
+      id: image.id,
+      url: absoluteWgerURL(image.image),
+      isMain: image.is_main,
+      isAiGenerated: image.is_ai_generated,
+      style: image.style,
+      licenseAuthor: image.license_author,
+      licenseObjectURL: absoluteWgerURL(image.license_object_url),
+    })),
+    videos: (info.videos ?? []).map((video) => ({
+      id: video.id,
+      url: absoluteWgerURL(video.video),
+      isMain: video.is_main,
+      duration: Number(video.duration) || 0,
+      width: video.width,
+      height: video.height,
+      codec: video.codec_long,
+      licenseAuthor: video.license_author,
+      licenseObjectURL: absoluteWgerURL(video.license_object_url),
+    })),
+    variationGroup: info.variation_group ?? null,
+    license: info.license ? {
+      shortName: info.license.short_name,
+      fullName: info.license.full_name,
+      url: absoluteWgerURL(info.license.url),
+    } : null,
+    licenseAuthor: info.license_author ?? "",
+    lastUpdated: info.last_update ?? "",
+    uuid: info.uuid ?? "",
     ...defaults(name, category),
   };
 }

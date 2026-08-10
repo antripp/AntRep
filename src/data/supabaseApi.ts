@@ -702,9 +702,10 @@ export const supabaseApi: Api = {
   },
 
   async coachWorkspace(profile): Promise<CoachWorkspace> {
-    const [linksRes, planIdsRes] = await Promise.all([
+    const [linksRes, planIdsRes, presetsRes] = await Promise.all([
       supabase.from("coach_links").select("*").eq("trainer_id", profile.id),
       supabase.from("plans").select("id").eq("owner_id", profile.id),
+      supabase.from("exercise_presets").select("*").eq("owner_id", profile.id),
     ]);
 
     const links = readRows("load your athletes", linksRes).map((r) => toLink(r));
@@ -726,6 +727,7 @@ export const supabaseApi: Api = {
 
     return {
       plans,
+      presets: readRows("load your exercises", presetsRes).map((row) => toPreset(row)),
       athletes: activeLinks
         .map((link) => {
           const athlete = athleteProfiles.find((p) => p.id === link.athlete_id);

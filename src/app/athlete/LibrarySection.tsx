@@ -10,19 +10,43 @@ import { LOG_TYPE_LABELS, type ExercisePreset } from "../../data/types";
 import { Button, Card, Field, Icon, NumberField, Pill, SectionHeader, Sheet, TextField } from "../../ui/kit";
 import { CustomFieldsEditor, LogTypePicker } from "../plans/LoggingFields";
 import { useWorkspace } from "../workspace";
-import { MatchExerciseSheet } from "./ExerciseLibrarySheets";
+import { ExerciseCategoryTabs, type ExerciseCategoryFilter } from "../shared/ExerciseCategoryTabs";
+import { LibraryExerciseSheet, MatchExerciseSheet } from "./ExerciseLibrarySheets";
 import { MuscleFigure } from "./MuscleFigure";
 import { useExerciseLibrary } from "./useExerciseLibrary";
 
+export interface ExercisePresetLibraryProps {
+  profile: ReturnType<typeof useWorkspace>["profile"];
+  presets: ExercisePreset[];
+  reload: () => Promise<void>;
+  showToast: (message: string) => void;
+  usage?: "athlete" | "coach";
+}
+
 export default function LibrarySection() {
-  const { profile, presets, reload, showToast } = useWorkspace();
+  const workspace = useWorkspace();
+  return <ExercisePresetLibrary profile={workspace.profile} presets={workspace.presets} reload={workspace.reload} showToast={workspace.showToast} />;
+}
+
+export function ExercisePresetLibrary({ profile, presets, reload, showToast, usage = "athlete" }: ExercisePresetLibraryProps) {
   const library = useExerciseLibrary();
+  const [category, setCategory] = useState<ExerciseCategoryFilter>("all");
   const [editing, setEditing] = useState<ExercisePreset | null>(null);
 
   const sorted = useMemo(
-    () => [...presets].sort((a, b) => a.name.localeCompare(b.name)),
-    [presets],
+    () => presets
+      .filter((preset) => category === "all" || preset.category === category)
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    [category, presets],
   );
+  const categoryCounts = useMemo(() => ({
+    all: presets.length,
+    push: presets.filter((preset) => preset.category === "push").length,
+    pull: presets.filter((preset) => preset.category === "pull").length,
+    legs: presets.filter((preset) => preset.category === "legs").length,
+    core: presets.filter((preset) => preset.category === "core").length,
+    cardio: presets.filter((preset) => preset.category === "cardio").length,
+  }), [presets]);
 
   async function save(preset: ExercisePreset) {
     await api.savePreset(preset);
@@ -48,13 +72,20 @@ export default function LibrarySection() {
 
       <Card className="p-0">
         <p className="border-b border-line px-4 py-3 text-xs font-semibold leading-snug text-muted">
-          Set how each exercise is logged — weight × reps, reps only, time, distance, or your own
-          fields. Saved here, it logs the same way everywhere, including workouts outside your plan.
+          {usage === "coach"
+            ? "Set how each exercise is prescribed — weight × reps, reps only, time, distance, or your own fields. Saved here, it appears first and seeds the same setup in every plan builder."
+            : "Set how each exercise is logged — weight × reps, reps only, time, distance, or your own fields. Saved here, it logs the same way everywhere, including workouts outside your plan."}
         </p>
+
+        <div className="border-b border-line px-3">
+          <ExerciseCategoryTabs value={category} counts={categoryCounts} onChange={setCategory} />
+        </div>
 
         {sorted.length === 0 ? (
           <p className="px-4 py-6 text-center text-sm font-semibold text-muted">
-            Nothing saved yet. Add one, or save an exercise from the Exercises tab.
+            {presets.length === 0
+              ? "Nothing saved yet. Add one, or save an exercise from Browse all."
+              : "No saved exercises in this category."}
           </p>
         ) : (
           <div className="divide-y divide-line">
@@ -96,6 +127,7 @@ export default function LibrarySection() {
                 }
               : undefined
           }
+          usage={usage}
         />
       )}
     </>
@@ -108,15 +140,18 @@ function PresetSheet({
   onSave,
   onDelete,
   onClose,
+  usage,
 }: {
   preset: ExercisePreset;
   library: ReturnType<typeof useExerciseLibrary>["exercises"];
   onSave: (p: ExercisePreset) => Promise<void>;
   onDelete?: () => Promise<void>;
   onClose: () => void;
+  usage: "athlete" | "coach";
 }) {
   const [draft, setDraft] = useState(preset);
   const [matching, setMatching] = useState(false);
+  const [showingReference, setShowingReference] = useState(false);
   const set = (patch: Partial<ExercisePreset>) => setDraft((d) => ({ ...d, ...patch }));
   const linked = library.find((item) => item.wgerId === draft.wger_exercise_id);
 
@@ -130,6 +165,7 @@ function PresetSheet({
               <p className="mt-2 text-xs font-black uppercase tracking-wide text-muted">Database match</p>
               <p className="text-sm font-black text-ink">{linked.name}</p>
               <div className="mt-2 flex gap-2">
+                <Button size="sm" onClick={() => setShowingReference(true)}>Full reference</Button>
                 <Button size="sm" variant="secondary" onClick={() => setMatching(true)}>Change match</Button>
                 <Button size="sm" variant="ghost" onClick={() => set({ wger_exercise_id: null })}>Unlink</Button>
               </div>
@@ -212,6 +248,15 @@ function PresetSheet({
             set({ wger_exercise_id: exercise.wgerId });
             setMatching(false);
           }}
+        />
+      )}
+      {showingReference && linked && (
+        <LibraryExerciseSheet
+          exercise={linked}
+          allExercises={library}
+          coachTip={draft.notes}
+          tipLabel={usage === "coach" ? "Your coaching tips" : "Your saved tips"}
+          onClose={() => setShowingReference(false)}
         />
       )}
     </Sheet>

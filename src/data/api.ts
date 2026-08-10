@@ -53,6 +53,8 @@ export interface AthleteWorkspace {
 
 export interface CoachWorkspace {
   plans: PlanBundle[];
+  /** The coach's reusable exercise setups for plan building. */
+  presets: ExercisePreset[];
   athletes: LinkedAthlete[];
   pendingInvites: CoachLink[];
   assignments: PlanAssignment[];

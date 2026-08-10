@@ -4,12 +4,13 @@
  */
 
 import { useMemo, useState } from "react";
-import { CATALOG } from "../../data/catalog";
+import type { LibraryExercise } from "../../data/exerciseLibrary";
 import { makeDay, makeExercise, makeSegment, newId } from "../../data/factories";
 import {
   DAY_TYPES,
   DAY_TYPE_LABELS,
   type DayType,
+  type ExercisePreset,
   type PlanBundle,
   type PlanDay,
   type PlanExercise,
@@ -52,6 +53,20 @@ import {
   TextField,
   Toggle,
 } from "../../ui/kit";
+import { useExerciseLibrary } from "../athlete/useExerciseLibrary";
+import { ExerciseCategoryTabs, type ExerciseCategoryFilter } from "../shared/ExerciseCategoryTabs";
+
+export type ExercisePickerSetup = Pick<
+  ExercisePreset,
+  | "category"
+  | "log_type"
+  | "target_sets"
+  | "target_reps"
+  | "target_weight_kg"
+  | "rest_sec"
+  | "custom_fields"
+  | "notes"
+>;
 
 export function PlanEditor({
   bundle,
@@ -61,6 +76,7 @@ export function PlanEditor({
   onClose,
   saving,
   onSaveExerciseToLibrary,
+  exerciseLibrary = [],
 }: {
   bundle: PlanBundle;
   onChange: (next: PlanBundle) => void;
@@ -70,6 +86,8 @@ export function PlanEditor({
   saving?: boolean;
   /** Offered only where the saved library is visible (the athlete's settings). */
   onSaveExerciseToLibrary?: (exercise: PlanExercise) => Promise<void> | void;
+  /** Saved setups appear first in the exercise picker and seed logging fields. */
+  exerciseLibrary?: ExercisePreset[];
 }) {
   const [week, setWeek] = useState(1);
   const [editingDay, setEditingDay] = useState<string | null>(null);
@@ -419,6 +437,7 @@ export function PlanEditor({
           onChange={onChange}
           onClose={() => setEditingDay(null)}
           onSaveExerciseToLibrary={onSaveExerciseToLibrary}
+          exerciseLibrary={exerciseLibrary}
         />
       )}
     </>
@@ -433,12 +452,14 @@ function DayEditor({
   onChange,
   onClose,
   onSaveExerciseToLibrary,
+  exerciseLibrary,
 }: {
   bundle: PlanBundle;
   day: PlanDay;
   onChange: (next: PlanBundle) => void;
   onClose: () => void;
   onSaveExerciseToLibrary?: (exercise: PlanExercise) => Promise<void> | void;
+  exerciseLibrary: ExercisePreset[];
 }) {
   const [picker, setPicker] = useState<{ segmentId: string | null } | null>(null);
   const [pasting, setPasting] = useState<{ segmentId: string | null } | null>(null);
@@ -482,7 +503,7 @@ function DayEditor({
     });
   }
 
-  function addExercise(name: string, segmentId: string | null) {
+  function addExercise(name: string, segmentId: string | null, preset?: ExercisePickerSetup) {
     const siblings = bundle.exercises.filter(
       (e) => e.plan_day_id === day.id && e.plan_segment_id === segmentId,
     );
@@ -490,7 +511,20 @@ function DayEditor({
       ...bundle,
       exercises: [
         ...bundle.exercises,
-        makeExercise(day.id, name, { plan_segment_id: segmentId, sort_order: siblings.length }),
+        makeExercise(day.id, name, {
+          plan_segment_id: segmentId,
+          sort_order: siblings.length,
+          ...(preset ? {
+            log_type: preset.log_type,
+            category: preset.category,
+            target_sets: preset.target_sets,
+            target_reps: preset.target_reps,
+            target_weight_kg: preset.target_weight_kg,
+            rest_sec: preset.rest_sec,
+            custom_fields: preset.custom_fields,
+            trainer_notes: preset.notes,
+          } : {}),
+        }),
       ],
     });
   }
@@ -676,8 +710,9 @@ function DayEditor({
       {picker && (
         <ExercisePicker
           onClose={() => setPicker(null)}
-          onPick={(name) => {
-            addExercise(name, picker.segmentId);
+          library={exerciseLibrary}
+          onPick={(name, preset) => {
+            addExercise(name, picker.segmentId, preset);
             setPicker(null);
           }}
         />
@@ -702,34 +737,64 @@ export function ExercisePicker({
   onClose,
   library = [],
 }: {
-  onPick: (name: string) => void;
+  onPick: (name: string, preset?: ExercisePickerSetup) => void;
   onClose: () => void;
   /** Your saved exercises come first — they carry their own logging setup. */
-  library?: { name: string; category: string; detail?: string }[];
+  library?: ExercisePreset[];
 }) {
   const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [category, setCategory] = useState<ExerciseCategoryFilter>("all");
+  const canonical = useExerciseLibrary();
+  const pageSize = 15;
+
+  const setupForCanonical = (exercise: LibraryExercise): ExercisePickerSetup => ({
+    category: exercise.category,
+    log_type: exercise.logType,
+    target_sets: exercise.sets,
+    target_reps: exercise.reps,
+    target_weight_kg: 0,
+    rest_sec: 90,
+    custom_fields: [],
+    notes: "",
+  });
 
   const options = useMemo(() => {
     const saved = library.map((entry) => ({
       name: entry.name,
       category: entry.category,
-      detail: entry.detail ?? "in your library",
+      detail: `${entry.target_sets} × ${entry.target_reps} · in your library`,
+      setup: entry as ExercisePickerSetup,
       saved: true,
     }));
     const savedNames = new Set(saved.map((s) => s.name.toLowerCase()));
-    const builtIn = CATALOG.filter((e) => !savedNames.has(e.name.toLowerCase())).map((e) => ({
-      name: e.name,
-      category: e.category as string,
-      detail: e.repScheme,
+    const database = canonical.exercises.filter((exercise) => !savedNames.has(exercise.name.toLowerCase())).map((exercise) => ({
+      name: exercise.name,
+      category: exercise.category as string,
+      detail: exercise.wgerCategoryName || "exercise database",
       saved: false,
+      setup: setupForCanonical(exercise),
     }));
-    return [...saved, ...builtIn];
-  }, [library]);
+    return [...saved, ...database];
+  }, [canonical.exercises, library]);
 
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return q ? options.filter((e) => e.name.toLowerCase().includes(q)) : options;
-  }, [options, query]);
+    return options.filter((entry) =>
+      (category === "all" || entry.category === category) &&
+      (!q || entry.name.toLowerCase().includes(q)),
+    );
+  }, [category, options, query]);
+  const categoryCounts = useMemo(() => ({
+    all: options.length,
+    push: options.filter((entry) => entry.category === "push").length,
+    pull: options.filter((entry) => entry.category === "pull").length,
+    legs: options.filter((entry) => entry.category === "legs").length,
+    core: options.filter((entry) => entry.category === "core").length,
+    cardio: options.filter((entry) => entry.category === "cardio").length,
+  }), [options]);
+  const pages = Math.max(1, Math.ceil(matches.length / pageSize));
+  const shown = matches.slice((page - 1) * pageSize, page * pageSize);
 
   return (
     <Sheet open onClose={onClose} title="Add exercise">
@@ -737,18 +802,23 @@ export function ExercisePicker({
         autoFocus
         placeholder="Search or type a new name"
         value={query}
-        onChange={(e) => setQuery(e.target.value)}
+        onChange={(e) => { setQuery(e.target.value); setPage(1); }}
       />
-      {query.trim() && !matches.some((m) => m.name.toLowerCase() === query.trim().toLowerCase()) && (
+      <ExerciseCategoryTabs
+        value={category}
+        counts={categoryCounts}
+        onChange={(next) => { setCategory(next); setPage(1); }}
+      />
+      {query.trim() && !canonical.loading && !matches.some((m) => m.name.toLowerCase() === query.trim().toLowerCase()) && (
         <Button full className="mt-2" onClick={() => onPick(query.trim())}>
           <Icon.plus className="h-4 w-4" /> Create “{query.trim()}”
         </Button>
       )}
       <div className="mt-3 max-h-[50dvh] space-y-1.5 overflow-y-auto">
-        {matches.map((entry) => (
+        {shown.map((entry) => (
           <button
-            key={entry.name}
-            onClick={() => onPick(entry.name)}
+            key={`${entry.saved ? "saved" : "database"}:${entry.name}`}
+            onClick={() => onPick(entry.name, entry.setup)}
             className="flex w-full items-center gap-2 rounded-xl bg-inset px-3 py-2 text-left"
           >
             <div className="min-w-0 flex-1">
@@ -758,10 +828,28 @@ export function ExercisePicker({
               </p>
             </div>
             {entry.saved && <Pill tint="var(--t-accent)">Saved</Pill>}
+            {!entry.saved && <Pill>Database</Pill>}
             <Icon.plus className="h-4 w-4 text-muted" />
           </button>
         ))}
+        {canonical.loading && (
+          <p className="py-3 text-center text-xs font-bold text-muted">Loading exercise database…</p>
+        )}
+        {!canonical.loading && shown.length === 0 && (
+          <p className="py-5 text-center text-sm font-bold text-muted">No exercises found.</p>
+        )}
       </div>
+      {pages > 1 && (
+        <div className="mt-3 flex items-center justify-between gap-2">
+          <Button size="sm" variant="secondary" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+            <Icon.back className="h-4 w-4" /> Previous
+          </Button>
+          <span className="text-xs font-black text-muted">{page} / {pages}</span>
+          <Button size="sm" variant="secondary" disabled={page >= pages} onClick={() => setPage(page + 1)}>
+            Next <Icon.chevron className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
     </Sheet>
   );
 }

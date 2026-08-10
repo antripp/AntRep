@@ -19,24 +19,52 @@ import {
   TextField,
 } from "../../ui/kit";
 import { useWorkspace } from "../workspace";
+import { ExerciseCategoryTabs, type ExerciseCategoryFilter } from "../shared/ExerciseCategoryTabs";
 import { LibraryExerciseSheet, PageButtons } from "./ExerciseLibrarySheets";
-import LibrarySection from "./LibrarySection";
-import { MuscleFigure } from "./MuscleFigure";
+import { ExercisePresetLibrary } from "./LibrarySection";
 import { useExerciseLibrary } from "./useExerciseLibrary";
 
 const PAGE_SIZE = 20;
 
 export default function ExercisesScreen() {
   const { profile, sessions, logs, presets, reload, showToast } = useWorkspace();
-  const canonical = useExerciseLibrary();
-  const [view, setView] = useState<"mine" | "browse">("mine");
-
   const logged = useMemo(() => {
     const ids = new Set(sessions.map((session) => session.id));
     return new Set(
       logs.filter((log) => ids.has(log.session_id)).map((log) => log.exercise_name.trim().toLowerCase()),
     );
   }, [sessions, logs]);
+
+  return (
+    <ExerciseLibraryScreen
+      profile={profile}
+      presets={presets}
+      reload={reload}
+      showToast={showToast}
+      logged={logged}
+    />
+  );
+}
+
+export function ExerciseLibraryScreen({
+  profile,
+  presets,
+  reload,
+  showToast,
+  logged = new Set<string>(),
+  title = "Library",
+  usage = "athlete",
+}: {
+  profile: ReturnType<typeof useWorkspace>["profile"];
+  presets: ReturnType<typeof useWorkspace>["presets"];
+  reload: () => Promise<void>;
+  showToast: (message: string) => void;
+  logged?: Set<string>;
+  title?: string;
+  usage?: "athlete" | "coach";
+}) {
+  const canonical = useExerciseLibrary();
+  const [view, setView] = useState<"mine" | "browse">("mine");
 
   async function saveOrMatch(exercise: LibraryExercise) {
     const linked = presets.find((preset) => preset.wger_exercise_id === exercise.wgerId);
@@ -63,7 +91,7 @@ export default function ExercisesScreen() {
 
   return (
     <>
-      <ScreenTitle title="Library" />
+      <ScreenTitle title={title} />
       <div className="mb-4">
         <Segmented
           value={view}
@@ -75,7 +103,9 @@ export default function ExercisesScreen() {
         />
       </div>
 
-      {view === "mine" && <LibrarySection />}
+      {view === "mine" && (
+        <ExercisePresetLibrary profile={profile} presets={presets} reload={reload} showToast={showToast} usage={usage} />
+      )}
       {view === "browse" && (
         <BrowseList
           exercises={canonical.exercises}
@@ -83,6 +113,7 @@ export default function ExercisesScreen() {
           error={canonical.error}
           logged={logged}
           presets={presets}
+          usage={usage}
           onRetry={canonical.retry}
           onSave={saveOrMatch}
         />
@@ -97,6 +128,7 @@ function BrowseList({
   error,
   logged,
   presets,
+  usage,
   onRetry,
   onSave,
 }: {
@@ -105,16 +137,29 @@ function BrowseList({
   error: string;
   logged: Set<string>;
   presets: ReturnType<typeof useWorkspace>["presets"];
+  usage: "athlete" | "coach";
   onRetry: () => void;
   onSave: (exercise: LibraryExercise) => Promise<void>;
 }) {
   const [query, setQuery] = useState("");
+  const [category, setCategory] = useState<ExerciseCategoryFilter>("all");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<LibraryExercise | null>(null);
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return q ? exercises.filter((item) => item.name.toLowerCase().includes(q)) : exercises;
-  }, [exercises, query]);
+    return exercises.filter((item) =>
+      (category === "all" || item.category === category) &&
+      (!q || item.name.toLowerCase().includes(q)),
+    );
+  }, [category, exercises, query]);
+  const categoryCounts = useMemo(() => ({
+    all: exercises.length,
+    push: exercises.filter((item) => item.category === "push").length,
+    pull: exercises.filter((item) => item.category === "pull").length,
+    legs: exercises.filter((item) => item.category === "legs").length,
+    core: exercises.filter((item) => item.category === "core").length,
+    cardio: exercises.filter((item) => item.category === "cardio").length,
+  }), [exercises]);
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const shown = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const linkedIds = useMemo(
@@ -132,6 +177,11 @@ function BrowseList({
         placeholder="Search the exercise database"
         value={query}
         onChange={(event) => { setQuery(event.target.value); setPage(1); }}
+      />
+      <ExerciseCategoryTabs
+        value={category}
+        counts={categoryCounts}
+        onChange={(next) => { setCategory(next); setPage(1); }}
       />
 
       {loading ? (
@@ -157,7 +207,6 @@ function BrowseList({
                 return (
                   <div key={exercise.wgerId} className="flex items-center gap-2 rounded-2xl border border-line bg-surface p-2.5">
                     <button className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={() => setSelected(exercise)}>
-                      <MuscleFigure exercise={exercise} compact />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-black text-ink">{exercise.name}</p>
                         <p className="truncate text-[11px] font-bold uppercase text-muted">
@@ -185,12 +234,18 @@ function BrowseList({
       )}
 
       <p className="mt-6 text-center text-[11px] font-semibold text-muted">
-        Database matching adds canonical names and muscle figures only. Your logged data and progression stay unchanged.
+        Database matching adds canonical reference data only. Your logged data and progression stay unchanged.
       </p>
 
       {selected && (
         <LibraryExerciseSheet
           exercise={selected}
+          allExercises={exercises}
+          coachTip={presets.find((preset) =>
+            preset.wger_exercise_id === selected.wgerId ||
+            preset.name.trim().toLowerCase() === selected.name.toLowerCase(),
+          )?.notes}
+          tipLabel={usage === "coach" ? "Your coaching tips" : "Your saved tips"}
           actionLabel={linkedIds.has(selected.wgerId) ? undefined : legacyNames.has(selected.name.toLowerCase()) ? "Match existing exercise" : "Save to my library"}
           onAction={linkedIds.has(selected.wgerId) ? undefined : async () => {
             await onSave(selected);

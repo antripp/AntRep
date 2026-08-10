@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { api } from "../../data";
 import type { CoachWorkspace } from "../../data/api";
-import { makePlan, newId } from "../../data/factories";
+import { makePlan, makePreset, newId } from "../../data/factories";
 import type { PlanBundle, Profile } from "../../data/types";
 import { localDate, startOfWeek } from "../../domain/dates";
 import { emptyDays } from "../../domain/plan";
@@ -93,6 +93,26 @@ export default function CoachPlansScreen({
         onDelete={workspace.plans.some((p) => p.plan.id === draft.plan.id) ? remove : undefined}
         onClose={() => setDraft(null)}
         saving={saving}
+        exerciseLibrary={workspace.presets}
+        onSaveExerciseToLibrary={async (exercise) => {
+          const existing = workspace.presets.find(
+            (preset) => preset.name.trim().toLowerCase() === exercise.name.trim().toLowerCase(),
+          );
+          await api.savePreset({
+            ...makePreset(coach.id, exercise.name),
+            ...(existing ?? {}),
+            log_type: exercise.log_type,
+            category: exercise.category,
+            target_sets: exercise.target_sets,
+            target_reps: exercise.target_reps,
+            target_weight_kg: exercise.target_weight_kg,
+            rest_sec: exercise.rest_sec,
+            custom_fields: exercise.custom_fields,
+            notes: exercise.trainer_notes,
+          });
+          await onReload();
+          onToast(`${exercise.name} saved to your exercise library`);
+        }}
       />
     );
   }

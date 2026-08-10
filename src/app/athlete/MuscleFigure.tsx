@@ -55,13 +55,13 @@ function Figure({ front, primary, secondary }: { front: boolean; primary: Muscle
   );
 }
 
-export function MuscleFigure({ exercise, compact = false }: { exercise: LibraryExercise; compact?: boolean }) {
+export function MuscleFigure({ exercise }: { exercise: LibraryExercise }) {
   const hasMuscles = exercise.primaryMuscles.length + exercise.secondaryMuscles.length > 0;
   if (!hasMuscles) {
-    return compact ? null : <p className="py-5 text-center text-sm font-semibold text-muted">No muscle data available.</p>;
+    return <p className="py-5 text-center text-sm font-semibold text-muted">No muscle data available.</p>;
   }
   return (
-    <div className={`grid grid-cols-2 gap-2 ${compact ? "h-16 w-20 shrink-0" : "h-52"}`}>
+    <div className="grid h-52 grid-cols-2 gap-2">
       <Figure front primary={exercise.primaryMuscles} secondary={exercise.secondaryMuscles} />
       <Figure front={false} primary={exercise.primaryMuscles} secondary={exercise.secondaryMuscles} />
     </div>

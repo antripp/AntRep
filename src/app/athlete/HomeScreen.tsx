@@ -8,7 +8,7 @@ import { useEffect, useMemo, useState } from "react";
 import { dailyQuote } from "../../lib/quotes";
 import { catalogEntry, categoryFor, inferLogType } from "../../data/catalog";
 import { extraAsExercise } from "../../data/factories";
-import { LOG_TYPE_LABELS, type ExtraExercise, type PlanExercise, type Session } from "../../data/types";
+import { type ExtraExercise, type PlanExercise, type Session } from "../../data/types";
 import {
   addDays,
   formatDuration,
@@ -54,7 +54,7 @@ import {
   Sheet,
   TextField,
 } from "../../ui/kit";
-import { ExercisePicker } from "../plans/PlanEditor";
+import { ExercisePicker, type ExercisePickerSetup } from "../plans/PlanEditor";
 import { useWorkspace } from "../workspace";
 import { ExerciseLogCard } from "./ExerciseLogCard";
 
@@ -150,17 +150,17 @@ export default function HomeScreen({ onGoPlans }: { onGoPlans: () => void }) {
     setPendingStart(null);
   }
 
-  async function addExtra(name: string) {
+  async function addExtra(name: string, librarySetup?: ExercisePickerSetup) {
     // Your own library wins, so an exercise always logs the way you set it up.
     const saved = presets.find((p) => nameKey(p.name) === nameKey(name));
     const preset = catalogEntry(name);
     const extra: ExtraExercise = {
       name: saved?.name ?? name,
-      log_type: saved?.log_type ?? preset?.logType ?? inferLogType(name),
-      category: saved?.category ?? preset?.category ?? categoryFor(name),
-      target_sets: saved?.target_sets ?? preset?.sets,
-      target_reps: saved?.target_reps ?? preset?.reps,
-      custom_fields: saved?.custom_fields ?? [],
+      log_type: saved?.log_type ?? librarySetup?.log_type ?? preset?.logType ?? inferLogType(name),
+      category: saved?.category ?? librarySetup?.category ?? preset?.category ?? categoryFor(name),
+      target_sets: saved?.target_sets ?? librarySetup?.target_sets ?? preset?.sets,
+      target_reps: saved?.target_reps ?? librarySetup?.target_reps ?? preset?.reps,
+      custom_fields: saved?.custom_fields ?? librarySetup?.custom_fields ?? [],
     };
     try {
       await addExtraExercise(extra, dateStr);
@@ -367,11 +367,7 @@ export default function HomeScreen({ onGoPlans }: { onGoPlans: () => void }) {
         <ExercisePicker
           onPick={addExtra}
           onClose={() => setShowExtraPicker(false)}
-          library={presets.map((p) => ({
-            name: p.name,
-            category: p.category,
-            detail: LOG_TYPE_LABELS[p.log_type],
-          }))}
+          library={presets}
         />
       )}
 
