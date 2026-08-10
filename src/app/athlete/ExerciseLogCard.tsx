@@ -112,6 +112,9 @@ export function ExerciseLogCard({
   /** True while the row holds edits that haven't reached the backend yet. */
   const [dirty, setDirty] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
+  const [showEffort, setShowEffort] = useState(
+    () => exercise.rpe_target > 0 || stored.some((set) => set.rpe !== null),
+  );
   // Lives on the card, not inside the collapsible body, so collapsing the
   // exercise to look at the next one doesn't cancel a rest already running.
   const restTimer = useRestTimer(exercise.rest_sec);
@@ -136,30 +139,17 @@ export function ExerciseLogCard({
    * Throws if the write fails: the caller decides what to say, and the sets
    * stay on screen so nothing typed is lost while the problem is fixed.
    */
-  async function commit(next: SetLog[]) {
+  async function commit(next: SetLog[]): Promise<number> {
     setDraft(next);
-    setDirty(false);
     const active = session ?? (await onNeedSession());
-    await saveSets(
-      active,
-      exercise.name,
-      next.filter(setHasData),
-    );
+    const valid = next.filter(setHasData);
+    await saveSets(active, exercise.name, valid);
+    if (valid.length > 0) {
+      await setExerciseDone(active, exercise, true, segment, valid.length);
+    }
+    setDirty(false);
+    return valid.length;
   }
-
-  // Edits save themselves shortly after you stop typing — no Save press needed.
-  // A failure here has no click behind it to report to, so it says so inline:
-  // silence is what made a dead database look like a working one.
-  useEffect(() => {
-    if (!dirty) return;
-    const timer = setTimeout(() => {
-      commit(draft).catch((error) => {
-        setHint(error instanceof Error ? error.message : "Couldn't save those sets.");
-      });
-    }, 600);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dirty, draft]);
 
   /**
    * A fresh row beyond the prescription, carrying forward whatever the last
@@ -235,16 +225,20 @@ export function ExerciseLogCard({
    * used to look like the button was broken. Say what happened instead.
    */
   async function saveNow() {
+    if (busy) return;
     const withData = draft.filter(setHasData).length;
     if (withData === 0) {
       setHint("Nothing to save yet — put a number in a set first.");
       return;
     }
+    setBusy(true);
     try {
-      await commit(draft);
-      setHint(`${plural(withData, "set")} saved.`);
+      const saved = await commit(draft);
+      setHint(`${plural(saved, "set")} saved · exercise complete.`);
     } catch (error) {
       setHint(error instanceof Error ? error.message : "Couldn't save those sets.");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -255,11 +249,12 @@ export function ExerciseLogCard({
       const active = session ?? (await onNeedSession());
       // Flush pending edits first so the sets and the tick save together.
       if (dirty) {
+        const valid = draft.filter(setHasData);
+        await saveSets(active, exercise.name, valid);
         setDirty(false);
-        await saveSets(active, exercise.name, draft);
       }
       const nowDone = !done;
-      await setExerciseDone(active, exercise, nowDone, segment);
+      await setExerciseDone(active, exercise, nowDone, segment, draft.filter(setHasData).length);
 
       // Ticking an exercise you haven't logged yet opens it with a row ready,
       // so the numbers can go in rather than the tick being the whole story.
@@ -423,135 +418,184 @@ export function ExerciseLogCard({
                     </button>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="grid grid-cols-2 gap-2">
                     {/* Built-in fields for the exercise's logging method. The
                         target shows as placeholder, so an empty row reads as
                         "this is what was asked for" rather than as a result. */}
                     {(exercise.log_type === "strength" || exercise.log_type === "bodyweight") && (
                       <>
-                        <NumberField
-                          value={set.weight_kg}
-                          step={2.5}
-                          suffix={exercise.log_type === "bodyweight" ? "+kg" : "kg"}
-                          placeholder={target.weight !== null ? String(target.weight) : undefined}
-                          onChange={(v) => updateSet(index, { weight_kg: v })}
-                        />
-                        <NumberField
-                          value={set.reps}
-                          step={1}
-                          suffix="reps"
-                          placeholder={target.reps !== null ? String(target.reps) : undefined}
-                          onChange={(v) => updateSet(index, { reps: v })}
-                        />
+                        <SetField label={exercise.log_type === "bodyweight" ? "Added load" : "Weight"}>
+                          <NumberField
+                            value={set.weight_kg}
+                            step={2.5}
+                            suffix={exercise.log_type === "bodyweight" ? "+kg" : "kg"}
+                            placeholder={target.weight !== null ? String(target.weight) : undefined}
+                            onChange={(v) => updateSet(index, { weight_kg: v })}
+                          />
+                        </SetField>
+                        <SetField label="Reps">
+                          <NumberField
+                            value={set.reps}
+                            step={1}
+                            suffix="reps"
+                            placeholder={target.reps !== null ? String(target.reps) : undefined}
+                            onChange={(v) => updateSet(index, { reps: v })}
+                          />
+                        </SetField>
                       </>
                     )}
 
                     {exercise.log_type === "cardio" && (
                       <>
-                        <NumberField
-                          value={set.distance_km}
-                          step={0.5}
-                          suffix="km"
-                          onChange={(v) => updateSet(index, { distance_km: v })}
-                        />
-                        <NumberField
-                          value={set.duration_sec ? Math.round(set.duration_sec / 60) : null}
-                          step={5}
-                          suffix="min"
-                          onChange={(v) => updateSet(index, { duration_sec: v === null ? null : v * 60 })}
-                        />
+                        <SetField label="Distance">
+                          <NumberField
+                            value={set.distance_km}
+                            step={0.5}
+                            suffix="km"
+                            onChange={(v) => updateSet(index, { distance_km: v })}
+                          />
+                        </SetField>
+                        <SetField label="Duration">
+                          <NumberField
+                            value={set.duration_sec ? Math.round(set.duration_sec / 60) : null}
+                            step={5}
+                            suffix="min"
+                            onChange={(v) => updateSet(index, { duration_sec: v === null ? null : v * 60 })}
+                          />
+                        </SetField>
                       </>
                     )}
 
                     {exercise.log_type === "timed" && (
-                      <NumberField
-                        value={set.duration_sec}
-                        step={5}
-                        suffix="sec"
-                        onChange={(v) => updateSet(index, { duration_sec: v })}
-                      />
+                      <SetField label="Duration" className="col-span-2">
+                        <NumberField
+                          value={set.duration_sec}
+                          step={5}
+                          suffix="sec"
+                          onChange={(v) => updateSet(index, { duration_sec: v })}
+                        />
+                      </SetField>
                     )}
 
                     {exercise.log_type === "interval" && (
                       <>
-                        <NumberField
-                          value={set.reps}
-                          step={1}
-                          suffix="rounds"
-                          placeholder={target.reps !== null ? String(target.reps) : undefined}
-                          onChange={(v) => updateSet(index, { reps: v })}
-                        />
-                        <NumberField
-                          value={set.duration_sec}
-                          step={10}
-                          suffix="sec"
-                          onChange={(v) => updateSet(index, { duration_sec: v })}
-                        />
+                        <SetField label="Rounds">
+                          <NumberField
+                            value={set.reps}
+                            step={1}
+                            suffix="rounds"
+                            placeholder={target.reps !== null ? String(target.reps) : undefined}
+                            onChange={(v) => updateSet(index, { reps: v })}
+                          />
+                        </SetField>
+                        <SetField label="Duration">
+                          <NumberField
+                            value={set.duration_sec}
+                            step={10}
+                            suffix="sec"
+                            onChange={(v) => updateSet(index, { duration_sec: v })}
+                          />
+                        </SetField>
                       </>
                     )}
 
                     {/* Whatever the coach (or you) defined for this exercise */}
                     {exercise.custom_fields.map((field) =>
                       field.type === "number" ? (
-                        <NumberField
-                          key={field.key}
-                          value={toNumberOrNull(set.extra?.[field.key])}
-                          step={1}
-                          suffix={field.unit || field.label}
-                          onChange={(v) => updateSet(index, {}, { [field.key]: v === null ? "" : v })}
-                        />
+                        <SetField key={field.key} label={field.label}>
+                          <NumberField
+                            value={toNumberOrNull(set.extra?.[field.key])}
+                            step={1}
+                            suffix={field.unit || undefined}
+                            onChange={(v) => updateSet(index, {}, { [field.key]: v === null ? "" : v })}
+                          />
+                        </SetField>
                       ) : (
-                        <input
-                          key={field.key}
-                          value={String(set.extra?.[field.key] ?? "")}
-                          placeholder={field.label}
-                          onChange={(e) => updateSet(index, {}, { [field.key]: e.target.value })}
-                          className="h-11 min-w-24 flex-1 rounded-2xl border border-line bg-inset px-3 text-[15px] font-bold text-ink outline-none placeholder:font-semibold placeholder:text-muted focus:border-accent"
-                        />
+                        <SetField key={field.key} label={field.label}>
+                          <input
+                            value={String(set.extra?.[field.key] ?? "")}
+                            placeholder="Enter value"
+                            onChange={(e) => updateSet(index, {}, { [field.key]: e.target.value })}
+                            className="h-11 w-full rounded-2xl border border-line bg-inset px-3 text-[15px] font-bold text-ink outline-none placeholder:font-semibold placeholder:text-muted focus:border-accent"
+                          />
+                        </SetField>
                       ),
                     )}
                   </div>
 
                   {/* Effort, per set. On its own line so the scale has room to
                       be read and thumbed mid-workout. */}
-                  <div className="mt-2">
-                    <RpeSlider
-                      value={set.rpe}
-                      onChange={(v) => updateSet(index, { rpe: v })}
-                      meaning={rpeMeaning(set.rpe ?? target.rpe)}
-                      color={rpeColor(set.rpe)}
-                      target={exercise.rpe_target || null}
-                    />
-                  </div>
+                  {(showEffort || set.rpe !== null) && (
+                    <div className="mt-2">
+                      <RpeSlider
+                        value={set.rpe}
+                        onChange={(v) => updateSet(index, { rpe: v })}
+                        meaning={rpeMeaning(set.rpe ?? target.rpe)}
+                        color={rpeColor(set.rpe)}
+                        target={exercise.rpe_target || null}
+                      />
+                    </div>
+                  )}
                 </div>
               );
             })}
           </div>
 
-          {hint && <p className="mt-2 text-[11px] font-black text-accent">{hint}</p>}
+          {(hint || dirty) && (
+            <p className="mt-2 text-[11px] font-black text-accent">
+              {hint || "Unsaved changes"}
+            </p>
+          )}
 
-          <div className="mt-2 flex items-center gap-2">
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">
             <button
               onClick={addSet}
-              className="inline-flex items-center gap-1 rounded-full border border-line bg-inset px-3 py-1.5 text-xs font-black text-ink"
+              className="inline-flex h-10 items-center gap-1 rounded-full border border-line bg-inset px-3 text-xs font-black text-ink"
             >
               <Icon.plus className="h-3.5 w-3.5" /> Add set
             </button>
-            {draft.length > 0 && (
+            {!showEffort && (
               <button
-                onClick={saveNow}
-                className="inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-black text-white"
-                style={{ background: tint }}
+                onClick={() => setShowEffort(true)}
+                className="inline-flex h-10 items-center rounded-full border border-line bg-inset px-3 text-xs font-black text-muted"
               >
-                Save sets
+                + RPE
               </button>
             )}
             {exercise.rest_sec > 0 && (
               <RestTimerBar timer={restTimer} seconds={exercise.rest_sec} tint={tint} />
             )}
+            <button
+              onClick={saveNow}
+              disabled={busy || loggedCount === 0 || (!dirty && done)}
+              className="ml-auto inline-flex h-10 min-w-32 items-center justify-center gap-1 rounded-full px-4 text-xs font-black text-white transition disabled:opacity-45"
+              style={{ background: tint }}
+            >
+              <Icon.check className="h-3.5 w-3.5" />
+              {busy ? "Saving…" : done ? (dirty ? "Save changes" : "Saved") : "Save & complete"}
+            </button>
           </div>
         </div>
       )}
     </div>
+  );
+}
+
+function SetField({
+  label,
+  className = "",
+  children,
+}: {
+  label: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className={`min-w-0 ${className}`}>
+      <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-muted">
+        {label}
+      </span>
+      {children}
+    </label>
   );
 }

@@ -419,22 +419,72 @@ async function loadBundles(planIds: string[]): Promise<PlanBundle[]> {
   });
 }
 
-async function loadSessionsAndLogs(athleteId: string): Promise<{ sessions: Session[]; logs: SetLog[] }> {
-  const sessionsRes = await supabase
-    .from("sessions")
-    .select("*")
-    .eq("athlete_id", athleteId)
-    .order("date", { ascending: false });
+const HISTORY_PAGE_SIZE = 500;
+const SESSION_ID_CHUNK_SIZE = 100;
 
-  const sessions = readRows("load sessions", sessionsRes).map((r) => toSession(r));
+/**
+ * Load all sessions instead of accepting PostgREST's configured row cap.
+ *
+ * This matters most for accounts carried over from the classic app: a
+ * long-running athlete can have more rows than a new account ever sees during
+ * testing. Ordering by the primary key as well as the date makes range paging
+ * deterministic when many sessions share a date.
+ */
+async function loadSessionRows(athleteId: string): Promise<Row[]> {
+  const rows: Row[] = [];
+  for (let from = 0; ; ) {
+    const res = await supabase
+      .from("sessions")
+      .select("*")
+      .eq("athlete_id", athleteId)
+      .order("date", { ascending: false })
+      .order("id", { ascending: true })
+      .range(from, from + HISTORY_PAGE_SIZE - 1);
+    const page = readRows("load sessions", res);
+    rows.push(...page);
+    if (page.length === 0) return rows;
+    // Advance by what the server actually returned. A project can configure a
+    // lower row cap than our requested page size; jumping by the request size
+    // would skip rows in that setup.
+    from += page.length;
+  }
+}
+
+/**
+ * Fetch the logs in small session-id groups and page within each group.
+ *
+ * The old loader put every historical session UUID into one `.in(...)` URL.
+ * For a veteran account that URL can exceed the gateway limit, making the
+ * whole request fail and (because reads degrade to an empty value) rendering
+ * every otherwise-present set as empty. Chunking also prevents Supabase's row
+ * cap from silently dropping older set rows.
+ */
+async function loadSetRows(sessionIds: string[]): Promise<Row[]> {
+  const rows: Row[] = [];
+  for (let start = 0; start < sessionIds.length; start += SESSION_ID_CHUNK_SIZE) {
+    const ids = sessionIds.slice(start, start + SESSION_ID_CHUNK_SIZE);
+    for (let from = 0; ; ) {
+      const res = await supabase
+        .from("set_logs")
+        .select("*")
+        .in("session_id", ids)
+        .order("id", { ascending: true })
+        .range(from, from + HISTORY_PAGE_SIZE - 1);
+      const page = readRows("load sets", res);
+      rows.push(...page);
+      if (page.length === 0) break;
+      from += page.length;
+    }
+  }
+  return rows;
+}
+
+async function loadSessionsAndLogs(athleteId: string): Promise<{ sessions: Session[]; logs: SetLog[] }> {
+  const sessions = (await loadSessionRows(athleteId)).map((r) => toSession(r));
   if (sessions.length === 0) return { sessions, logs: [] };
 
-  const logsRes = await supabase
-    .from("set_logs")
-    .select("*")
-    .in("session_id", sessions.map((s) => s.id));
-
-  return { sessions, logs: readRows("load sets", logsRes).map((r) => toSetLog(r)) };
+  const logRows = await loadSetRows(sessions.map((s) => s.id));
+  return { sessions, logs: logRows.map((r) => toSetLog(r)) };
 }
 
 /** Upsert the rows we keep and delete the ones the editor removed. */

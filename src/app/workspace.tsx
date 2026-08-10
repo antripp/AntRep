@@ -83,6 +83,7 @@ interface WorkspaceValue {
     exercise: PlanExercise,
     done: boolean,
     segment?: ResolvedSegment,
+    loggedSetCount?: number,
   ) => Promise<void>;
   startTimer: (segment: ResolvedSegment) => Promise<Session>;
   pauseTimer: (session: Session) => Promise<void>;
@@ -304,25 +305,41 @@ export function WorkspaceProvider({ profile, children }: { profile: Profile; chi
   );
 
   const setExerciseDone = useCallback(
-    async (session: Session, exercise: PlanExercise, done: boolean, segment?: ResolvedSegment) => {
-      const others = session.completed_names.filter((n) => !namesMatch(n, exercise.name));
+    async (
+      session: Session,
+      exercise: PlanExercise,
+      done: boolean,
+      segment?: ResolvedSegment,
+      loggedSetCount?: number,
+    ) => {
+      // A save can be followed by another save before the caller receives the
+      // refreshed session object. Always compare against the newest local row,
+      // and make completion idempotent so editing an already-logged exercise
+      // cannot create another XP/activity event.
+      const current = workspace.sessions.find((s) => s.id === session.id) ?? session;
+      const alreadyDone = current.completed_names.some((n) => namesMatch(n, exercise.name));
+      if (alreadyDone === done) return;
+
+      const others = current.completed_names.filter((n) => !namesMatch(n, exercise.name));
       const names = done ? [...others, exercise.name] : others;
 
       const progress = segment
-        ? progressFor(segment, new Date(), { ...session, completed_names: names })
+        ? progressFor(segment, new Date(), { ...current, completed_names: names })
         : null;
-      const complete = progress ? progress.isComplete : session.status === "complete";
-      const justCompleted = Boolean(progress?.isComplete) && session.status !== "complete";
-      const next = await patchSession(session, {
+      const complete = progress ? progress.isComplete : current.status === "complete";
+      const justCompleted = Boolean(progress?.isComplete) && current.status !== "complete";
+      const next = await patchSession(current, {
         completed_names: names,
         status: complete ? "complete" : "in_progress",
-        ended_at: complete ? (session.ended_at ?? new Date().toISOString()) : session.ended_at,
+        ended_at: complete ? (current.ended_at ?? new Date().toISOString()) : current.ended_at,
       });
 
       if (done) {
-        const setCount = workspace.logs.filter(
-          (l) => l.session_id === session.id && namesMatch(l.exercise_name, exercise.name),
-        ).length;
+        const setCount =
+          loggedSetCount ??
+          workspace.logs.filter(
+            (l) => l.session_id === current.id && namesMatch(l.exercise_name, exercise.name),
+          ).length;
         await api.addXp(profile.id, exerciseXp(setCount || 1, exercise.priority), exercise.name);
       }
       if (justCompleted) {
@@ -331,7 +348,7 @@ export function WorkspaceProvider({ profile, children }: { profile: Profile; chi
       }
       return void next;
     },
-    [patchSession, profile.id, saveSets, showToast, workspace.logs],
+    [patchSession, profile.id, showToast, workspace.logs, workspace.sessions],
   );
 
   const addExtraExercise = useCallback(

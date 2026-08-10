@@ -1,5 +1,5 @@
 /**
- * 100 unserious-but-motivational one-liners for the athlete home page.
+ * Unserious-but-motivational one-liners for the athlete home page.
  * One is picked per calendar day (seeded hash), so everyone gets a fresh
  * line each morning without any storage.
  */
@@ -102,6 +102,31 @@ export const QUOTES: string[] = [
   "Stack days like they're W's. Because they are.",
   "You didn't choose the gym life. The gym life chose you.",
   "Finish the session, then act like it was easy.",
+  "Entropy wins eventually. Not this set.",
+  "Mortality is guaranteed. Quad growth is not.",
+  "The void is patient. Your rest timer isn't.",
+  "One day you'll be dust. Today, be difficult to kill.",
+  "Your skeleton is trapped inside you. Give it better armour.",
+  "Existence is temporary. The logbook has receipts.",
+  "Outrun your demons. If they keep up, call it tempo work.",
+  "The universe is indifferent. The bar is exactly 80 kg.",
+  "Train like the apocalypse has a beach episode.",
+  "Your ancestors survived winters for this suspiciously specific split.",
+  "Nothing matters. Conveniently, that includes your excuses.",
+  "Build a body your sleep paralysis demon respects.",
+  "The grave can wait. You still have two working sets.",
+  "Doom is inevitable. So is progressive overload if you log it.",
+  "Today's pain is tomorrow's oddly satisfying spreadsheet.",
+  "Become the reason the stairs feel personally attacked.",
+  "The abyss stared back and asked if you were done warming up.",
+  "Life is short. Use the full range of motion.",
+  "You cannot control fate. You can control the eccentric.",
+  "Every rep delays your final form by exactly one dramatic montage.",
+  "Bad news: time is undefeated. Good news: it skips leg day.",
+  "The end is coming. Finish your set first.",
+  "Make peace with discomfort. It has already moved in.",
+  "Your future ghost wants better posture.",
+  "Train now. Haunt the gym later.",
 ];
 
 /** Deterministic quote-of-the-day: same all day, new tomorrow. */

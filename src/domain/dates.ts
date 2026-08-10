@@ -83,22 +83,47 @@ export function formatDuration(totalSeconds: number): string {
   return h > 0 ? `${h}:${pad(m)}:${pad(sec)}` : `${pad(m)}:${pad(sec)}`;
 }
 
-/** Time-of-day greeting, in the voice of the iOS app. */
+/**
+ * A time- and day-aware greeting for the public athlete home screen.
+ * Deterministic within each time slot, so a refresh does not make the heading
+ * jump while the day still gets a little personality.
+ */
 export function greeting(name: string, d: Date = new Date()): string {
   const trimmed = name.trim();
   const weekday = isoWeekday(d);
   const hour = d.getHours();
-  const slot = hour < 12 ? "morning" : hour < 17 ? "afternoon" : hour < 22 ? "evening" : "night";
   const who = trimmed ? `, ${trimmed}` : "";
 
-  if (weekday === 1) return `Monday ro${who}!`;
+  const slot =
+    hour < 5
+      ? "preDawn"
+      : hour < 8
+        ? "early"
+        : hour < 12
+          ? "morning"
+          : hour < 14
+            ? "midday"
+            : hour < 17
+              ? "afternoon"
+              : hour < 21
+                ? "evening"
+                : "late";
+  const weekend = weekday >= 6;
+  const day = WEEKDAY_FULL[weekday - 1];
   const lines: Record<string, string[]> = {
-    morning: ["Morning grind", "Early sets", "Rise and lift"],
-    afternoon: [`${WEEKDAY_FULL[weekday - 1]} grind`, "Midday push", "Afternoon work"],
-    evening: ["Evening session", "Night shift", "Last rep of the day"],
-    night: ["Late one", "Quiet hours", "Night owl sets"],
+    preDawn: ["Up before your excuses", "The world is asleep — rude", "Pre-dawn discipline"],
+    early: ["Early shift", "Morning, overachiever", "First light, first set"],
+    morning: weekend
+      ? ["Weekend warrior", "Slow morning, strong start", `${day} sets are calling`]
+      : ["Good morning", "Morning momentum", `${day}, let's get moving`],
+    midday: ["Midday reset", "Lunch break, but stronger", `${day} power hour`],
+    afternoon: weekend
+      ? ["Weekend work", "Afternoon gains", "Still time to earn the shower"]
+      : ["Good afternoon", "Afternoon push", `${day} isn't done yet`],
+    evening: ["Good evening", "Evening session", "Clocked out, locked in"],
+    late: ["Night shift", "Late session", "One last win today"],
   };
   const options = lines[slot];
-  const pick = options[(d.getDate() + weekday) % options.length];
+  const pick = options[(d.getDate() + d.getMonth() + weekday) % options.length];
   return `${pick}${who}.`;
 }
