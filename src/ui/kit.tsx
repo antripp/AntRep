@@ -450,19 +450,26 @@ export function Segmented<T extends string>({
   options,
   value,
   onChange,
+  compact = false,
+  scroll = false,
 }: {
   options: { value: T; label: string }[];
   value: T;
   onChange: (v: T) => void;
+  compact?: boolean;
+  scroll?: boolean;
 }) {
-  return (
-    <div className="ui-segmented flex rounded-full border border-line bg-inset p-1">
+  const control = (
+    <div className={`ui-segmented flex rounded-full border border-line bg-inset ${compact ? "p-0.5" : "p-1"} ${scroll ? "w-max min-w-full" : ""}`}>
       {options.map((o) => (
         <button
           key={o.value}
           type="button"
           onClick={() => onChange(o.value)}
-          className={`flex-1 rounded-full px-3 py-1.5 text-[13px] font-black transition ${
+          aria-pressed={value === o.value}
+          className={`${scroll ? "shrink-0" : "flex-1"} rounded-full font-black transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
+            compact ? "h-8 px-2.5 text-[11px] leading-none" : "px-3 py-1.5 text-[13px]"
+          } ${
             value === o.value ? "bg-surface text-ink shadow-sm" : "text-muted"
           }`}
         >
@@ -471,6 +478,7 @@ export function Segmented<T extends string>({
       ))}
     </div>
   );
+  return scroll ? <div className="-mx-1 overflow-x-auto px-1 pb-1">{control}</div> : control;
 }
 
 export function Toggle({

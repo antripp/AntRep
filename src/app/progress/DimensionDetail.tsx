@@ -49,7 +49,7 @@ const EFFORTS: { value: EffortFilter; label: string }[] = [
 ];
 
 const BREAKDOWNS = [
-  { value: "trend", label: "Trend" },
+  { value: "trend", label: "Overall" },
   { value: "plans", label: "Plans" },
   { value: "days", label: "Planned days" },
   { value: "sessions", label: "Sessions" },
@@ -174,21 +174,18 @@ export function DimensionDetail({
         onEffort={setEffort}
       />
 
-      <div className="-mx-1 mb-3 flex gap-1.5 overflow-x-auto px-1 pb-1" aria-label="Break down metric by">
-        {BREAKDOWNS.map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            onClick={() => setBreakdown(option.value)}
-            aria-pressed={breakdown === option.value}
-            className={`shrink-0 rounded-full border px-3 py-1.5 text-[11px] font-black transition ${
-              breakdown === option.value ? "text-white" : "border-line bg-surface text-muted"
-            }`}
-            style={breakdown === option.value ? { background: tint, borderColor: "transparent" } : undefined}
-          >
-            {option.label}
-          </button>
-        ))}
+      <div className="-mx-1 mb-3 overflow-x-auto px-1 pb-1" aria-label="Break down metric by">
+        <div className="flex w-max min-w-full gap-1 rounded-2xl bg-inset p-1">
+          {BREAKDOWNS.map((option) => (
+            <ChoiceChip
+              key={option.value}
+              selected={breakdown === option.value}
+              label={option.label}
+              color={tint}
+              onClick={() => setBreakdown(option.value)}
+            />
+          ))}
+        </div>
       </div>
 
       <Card className="mb-3">
@@ -220,6 +217,7 @@ export function DimensionDetail({
         <>
           <PrimaryTrend keyName={dimensionKey} report={report} tint={tint} weeklyGoal={weeklyGoal} />
           <DimensionCharts keyName={dimensionKey} report={report} tint={tint} />
+          <OverallInsight report={report} tint={tint} onOpenMethod={() => setShowMethod(true)} />
         </>
       )}
 
@@ -398,8 +396,10 @@ function FilterBar({
           {RANGES.map((range) => (
             <button
               key={range.weeks}
+              type="button"
               onClick={() => onWeeks(range.weeks)}
-              className={`rounded-full px-2.5 py-1 text-xs font-black ${weeks === range.weeks ? "bg-surface text-ink shadow-sm" : "text-muted"}`}
+              aria-pressed={weeks === range.weeks}
+              className={`h-8 rounded-full px-2.5 text-[11px] font-black transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${weeks === range.weeks ? "bg-surface text-ink shadow-sm" : "text-muted hover:text-ink"}`}
             >
               {range.label}
             </button>
@@ -409,24 +409,94 @@ function FilterBar({
           aria-label="Effort filter"
           value={effort}
           onChange={(event) => onEffort(event.target.value as EffortFilter)}
-          className="ml-auto h-8 rounded-full border border-line bg-surface px-2.5 text-xs font-black text-ink outline-none"
+          className="ml-auto h-9 min-w-0 max-w-[170px] rounded-full border border-line bg-surface px-2.5 text-[11px] font-black text-ink outline-none focus:border-accent"
         >
           {EFFORTS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
         </select>
       </div>
-      <div className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-0.5">
+      <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-0.5" aria-label="Exercise category">
         {CATEGORIES.map((option) => (
-          <button
+          <ChoiceChip
             key={option.value}
+            selected={category === option.value}
+            label={option.label}
+            color={option.value === "all" ? tint : CATEGORY_COLORS[option.value]}
             onClick={() => onCategory(option.value)}
-            className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-black ${category === option.value ? "text-white" : "border-line bg-surface text-muted"}`}
-            style={category === option.value ? { background: option.value === "all" ? tint : CATEGORY_COLORS[option.value], borderColor: "transparent" } : undefined}
-          >
-            {option.label}
-          </button>
+          />
         ))}
       </div>
     </div>
+  );
+}
+
+function ChoiceChip({
+  selected,
+  label,
+  color,
+  onClick,
+}: {
+  selected: boolean;
+  label: string;
+  color: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={selected}
+      className={`flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[11px] font-black transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 active:scale-[0.97] ${
+        selected ? "shadow-sm" : "border-line bg-surface text-muted hover:border-ink/20 hover:text-ink"
+      }`}
+      style={selected ? {
+        color,
+        background: `color-mix(in srgb, ${color} 12%, var(--t-surface))`,
+        borderColor: `color-mix(in srgb, ${color} 45%, var(--t-line))`,
+      } : undefined}
+    >
+      {selected && <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} aria-hidden="true" />}
+      {label}
+    </button>
+  );
+}
+
+function OverallInsight({
+  report,
+  tint,
+  onOpenMethod,
+}: {
+  report: DimensionReport;
+  tint: string;
+  onOpenMethod: () => void;
+}) {
+  return (
+    <>
+      <SectionHeader
+        title="Overall insight"
+        action={(
+          <button type="button" onClick={onOpenMethod} className="text-[11px] font-black" style={{ color: tint }}>
+            How it works
+          </button>
+        )}
+      />
+      <Card>
+        <div className="flex items-start gap-3">
+          <div
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-sm"
+            style={{ color: tint, background: `color-mix(in srgb, ${tint} 12%, var(--t-inset))` }}
+            aria-hidden="true"
+          >
+            ✦
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-black leading-snug text-ink">{report.reflection}</p>
+            <p className="mt-2 text-[11px] font-bold text-muted">
+              Based on {report.analysedSessions} session{report.analysedSessions === 1 ? "" : "s"} · {report.dimension.confidence} confidence
+            </p>
+          </div>
+        </div>
+      </Card>
+    </>
   );
 }
 

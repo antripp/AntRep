@@ -219,6 +219,8 @@ export function ExerciseDetail({
           <Segmented
             value={view}
             onChange={setView}
+            compact
+            scroll
             options={VIEWS.filter((option) => option.value !== "e1rm" || stat.best1RM > 0).map((option) => ({ ...option }))}
           />
         </div>
