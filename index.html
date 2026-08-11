@@ -18,12 +18,14 @@
       document.head.appendChild(manifest);
       const touchIcon = document.createElement("link");
       touchIcon.rel = "apple-touch-icon";
-      touchIcon.href = coach ? "/icons/coach-icon.png" : "/icons/athlete-icon.png";
+      touchIcon.sizes = "180x180";
+      touchIcon.href = "/icons/antrep-apple-touch-180.png";
       document.head.appendChild(touchIcon);
       const favicon = document.createElement("link");
       favicon.rel = "icon";
       favicon.type = "image/png";
-      favicon.href = coach ? "/icons/coach-icon.png" : "/icons/athlete-icon.png";
+      favicon.sizes = "32x32";
+      favicon.href = "/icons/antrep-favicon-32.png";
       document.head.appendChild(favicon);
     </script>
   </head>
