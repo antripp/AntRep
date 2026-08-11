@@ -27,14 +27,14 @@ import { analyticsColor, CATEGORY_COLORS } from "./palette";
 import { GoalProgressCard, ProgressGoalEditor, type GoalContextOption } from "./ProgressGoalEditor";
 
 const RANGES = [
-  { weeks: 4, label: "4w" },
-  { weeks: 8, label: "8w" },
-  { weeks: 12, label: "12w" },
-  { weeks: 26, label: "6m" },
+  { weeks: 4, label: "Last 4 weeks" },
+  { weeks: 8, label: "Last 8 weeks" },
+  { weeks: 12, label: "Last 12 weeks" },
+  { weeks: 26, label: "Last 6 months" },
 ] as const;
 
 const CATEGORIES: { value: ExerciseCategory | "all"; label: string }[] = [
-  { value: "all", label: "All" },
+  { value: "all", label: "All exercises" },
   { value: "push", label: "Push" },
   { value: "pull", label: "Pull" },
   { value: "legs", label: "Legs" },
@@ -168,25 +168,12 @@ export function DimensionDetail({
         weeks={weeks}
         category={category}
         effort={effort}
-        tint={tint}
+        breakdown={breakdown}
         onWeeks={setWeeks}
         onCategory={setCategory}
         onEffort={setEffort}
+        onBreakdown={setBreakdown}
       />
-
-      <div className="-mx-1 mb-3 overflow-x-auto px-1 pb-1" aria-label="Break down metric by">
-        <div className="flex w-max min-w-full gap-1 rounded-2xl bg-inset p-1">
-          {BREAKDOWNS.map((option) => (
-            <ChoiceChip
-              key={option.value}
-              selected={breakdown === option.value}
-              label={option.label}
-              color={tint}
-              onClick={() => setBreakdown(option.value)}
-            />
-          ))}
-        </div>
-      </div>
 
       <Card className="mb-3">
         <div className="flex items-start gap-3">
@@ -376,87 +363,72 @@ function FilterBar({
   weeks,
   category,
   effort,
-  tint,
+  breakdown,
   onWeeks,
   onCategory,
   onEffort,
+  onBreakdown,
 }: {
   weeks: number;
   category: ExerciseCategory | "all";
   effort: EffortFilter;
-  tint: string;
+  breakdown: BreakdownView;
   onWeeks: (value: number) => void;
   onCategory: (value: ExerciseCategory | "all") => void;
   onEffort: (value: EffortFilter) => void;
+  onBreakdown: (value: BreakdownView) => void;
 }) {
+  const selectClass = "h-10 w-full min-w-0 rounded-2xl border border-line bg-surface px-3 text-xs font-black text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/15";
   return (
-    <div className="mb-3 space-y-2">
-      <div className="flex items-center gap-2">
-        <div className="flex rounded-full border border-line bg-inset p-0.5">
-          {RANGES.map((range) => (
-            <button
-              key={range.weeks}
-              type="button"
-              onClick={() => onWeeks(range.weeks)}
-              aria-pressed={weeks === range.weeks}
-              className={`h-8 rounded-full px-2.5 text-[11px] font-black transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${weeks === range.weeks ? "bg-surface text-ink shadow-sm" : "text-muted hover:text-ink"}`}
-            >
-              {range.label}
-            </button>
-          ))}
-        </div>
+    <div className="mb-3 grid grid-cols-2 gap-2 rounded-card border border-line bg-inset/60 p-2">
+      <label className="min-w-0">
+        <span className="mb-1 block px-1 text-[10px] font-black uppercase tracking-wide text-muted">Effort</span>
         <select
           aria-label="Effort filter"
           value={effort}
           onChange={(event) => onEffort(event.target.value as EffortFilter)}
-          className="ml-auto h-9 min-w-0 max-w-[170px] rounded-full border border-line bg-surface px-2.5 text-[11px] font-black text-ink outline-none focus:border-accent"
+          className={selectClass}
         >
           {EFFORTS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
         </select>
-      </div>
-      <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-0.5" aria-label="Exercise category">
-        {CATEGORIES.map((option) => (
-          <ChoiceChip
-            key={option.value}
-            selected={category === option.value}
-            label={option.label}
-            color={option.value === "all" ? tint : CATEGORY_COLORS[option.value]}
-            onClick={() => onCategory(option.value)}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
+      </label>
 
-function ChoiceChip({
-  selected,
-  label,
-  color,
-  onClick,
-}: {
-  selected: boolean;
-  label: string;
-  color: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={selected}
-      className={`flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[11px] font-black transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 active:scale-[0.97] ${
-        selected ? "shadow-sm" : "border-line bg-surface text-muted hover:border-ink/20 hover:text-ink"
-      }`}
-      style={selected ? {
-        color,
-        background: `color-mix(in srgb, ${color} 12%, var(--t-surface))`,
-        borderColor: `color-mix(in srgb, ${color} 45%, var(--t-line))`,
-      } : undefined}
-    >
-      {selected && <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} aria-hidden="true" />}
-      {label}
-    </button>
+      <label className="min-w-0">
+        <span className="mb-1 block px-1 text-right text-[10px] font-black uppercase tracking-wide text-muted">Duration</span>
+        <select
+          aria-label="Duration range"
+          value={weeks}
+          onChange={(event) => onWeeks(Number(event.target.value))}
+          className={selectClass}
+        >
+          {RANGES.map((range) => <option key={range.weeks} value={range.weeks}>{range.label}</option>)}
+        </select>
+      </label>
+
+      <label className="min-w-0">
+        <span className="mb-1 block px-1 text-[10px] font-black uppercase tracking-wide text-muted">View</span>
+        <select
+          aria-label="Analytics view"
+          value={breakdown}
+          onChange={(event) => onBreakdown(event.target.value as BreakdownView)}
+          className={selectClass}
+        >
+          {BREAKDOWNS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </select>
+      </label>
+
+      <label className="min-w-0">
+        <span className="mb-1 block px-1 text-right text-[10px] font-black uppercase tracking-wide text-muted">Exercise type</span>
+        <select
+          aria-label="Exercise category"
+          value={category}
+          onChange={(event) => onCategory(event.target.value as ExerciseCategory | "all")}
+          className={selectClass}
+        >
+          {CATEGORIES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </select>
+      </label>
+    </div>
   );
 }
 

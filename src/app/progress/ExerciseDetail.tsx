@@ -7,9 +7,10 @@ import { Fragment, useMemo, useState } from "react";
 import { categoryFor } from "../../data/catalog";
 import type { ProgressGoal, Session, SetLog } from "../../data/types";
 import type { ExerciseStat } from "../../domain/analytics";
-import { formatShortDate } from "../../domain/dates";
+import { formatDuration, formatShortDate } from "../../domain/dates";
 import { nameKey, setHasData } from "../../domain/logging";
 import { bestUnit, formatSetCell } from "../../domain/planLog";
+import { formatVolume } from "../../domain/sessionTable";
 import { plural } from "../../domain/text";
 import { LineChart } from "../../ui/charts";
 import { Card, Icon, IconButton, IconTile, Pill, SectionHeader, Segmented, StatTile } from "../../ui/kit";
@@ -58,7 +59,9 @@ export function ExerciseDetail({
   onDeleteGoal?: (id: string) => Promise<void>;
 }) {
   const [view, setView] = useState<ViewKey>("best");
-  const [openDate, setOpenDate] = useState<string | null>(stat.lastDate);
+  const [expandedDates, setExpandedDates] = useState<Set<string>>(
+    () => new Set(stat.lastDate ? [stat.lastDate] : []),
+  );
   const [goalOpen, setGoalOpen] = useState(false);
   const [editingGoal, setEditingGoal] = useState<ProgressGoal | null>(null);
 
@@ -245,7 +248,20 @@ export function ExerciseDetail({
         )}
       </Card>
 
-      <SectionHeader title={`History — ${plural(stat.history.length, "session")}`} />
+      <SectionHeader
+        title={`History — ${plural(stat.history.length, "session")}`}
+        action={recent.length > 1 && (
+          <button
+            type="button"
+            className="rounded-full border border-line px-2.5 py-1 text-[11px] font-black text-muted"
+            onClick={() => setExpandedDates(
+              expandedDates.size === recent.length ? new Set() : new Set(recent.map((entry) => entry.date)),
+            )}
+          >
+            {expandedDates.size === recent.length ? "Collapse all" : "Expand all"}
+          </button>
+        )}
+      />
 
       <div className="overflow-hidden rounded-card border border-line bg-surface">
         <div className="overflow-x-auto">
@@ -268,7 +284,7 @@ export function ExerciseDetail({
             <tbody>
               {recent.map((entry, i) => {
                 const sets = setsByDate.get(entry.date) ?? [];
-                const expanded = openDate === entry.date;
+                const expanded = expandedDates.has(entry.date);
                 const isPeak = peak?.date === entry.date && stat.history.length > 1;
                 const background =
                   i % 2 === 1
@@ -278,8 +294,13 @@ export function ExerciseDetail({
                 return (
                   <Fragment key={entry.date}>
                     <tr
-                      onClick={() => setOpenDate(expanded ? null : entry.date)}
-                      className="cursor-pointer"
+                      onClick={() => setExpandedDates((current) => {
+                        const next = new Set(current);
+                        if (next.has(entry.date)) next.delete(entry.date);
+                        else next.add(entry.date);
+                        return next;
+                      })}
+                      className="group cursor-pointer"
                       style={{ background }}
                     >
                       <td className="whitespace-nowrap border-b border-line px-3 py-2 text-[12px] font-bold text-muted">
@@ -306,23 +327,34 @@ export function ExerciseDetail({
                       </td>
                     </tr>
 
-                    {expanded && (
-                      <tr style={{ background }}>
-                        <td className="border-b border-line px-3 py-2" colSpan={5}>
-                          <div className="flex flex-wrap gap-1.5">
-                            {sets.length === 0 ? (
-                              <span className="text-[11px] font-semibold text-muted">
-                                Marked done, but no numbers recorded.
-                              </span>
-                            ) : (
-                              sets.map((set) => (
-                                <Pill key={set.id} tint="var(--t-muted)">
-                                  {set.set_index}: {formatSetCell(set, stat.logType)}
-                                  {set.rpe ? ` · Effort ${set.rpe}/10` : ""}
-                                </Pill>
-                              ))
+                    {expanded && sets.map((set) => {
+                      const cells = exerciseSetCells(set, stat.logType, stat.hasWeight);
+                      return (
+                        <tr key={set.id} style={{ background }}>
+                          <td className="border-b border-line py-1.5 pl-8 pr-3">
+                            <span className="text-[11px] font-bold text-muted">Set {set.set_index}</span>
+                            {set.rpe !== null && (
+                              <span className="ml-1.5 text-[10px] font-semibold text-muted">Effort {set.rpe}/10</span>
                             )}
-                          </div>
+                          </td>
+                          <td className="whitespace-nowrap border-b border-line px-3 py-1.5 text-right text-[11px] font-bold text-ink">
+                            {cells.best}
+                          </td>
+                          <td className="border-b border-line px-3 py-1.5 text-right text-[11px] font-bold text-muted">—</td>
+                          <td className="border-b border-line px-3 py-1.5 text-right text-[11px] font-bold text-ink">
+                            {cells.reps}
+                          </td>
+                          <td className="whitespace-nowrap border-b border-line px-3 py-1.5 text-right text-[11px] font-bold text-muted">
+                            {cells.volume}
+                          </td>
+                        </tr>
+                      );
+                    })}
+
+                    {expanded && sets.length === 0 && (
+                      <tr style={{ background }}>
+                        <td className="border-b border-line py-1.5 pl-8 pr-3 text-[11px] font-semibold text-muted" colSpan={5}>
+                          Marked done, but no sets were recorded.
                         </td>
                       </tr>
                     )}
@@ -331,6 +363,12 @@ export function ExerciseDetail({
               })}
             </tbody>
           </table>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line px-3 py-2 text-[10px] font-bold text-muted">
+          <span>Tap a session for its sets</span>
+          {peak && <span><span className="text-gold">★</span> personal best</span>}
+          {recent.some((entry) => entry.future) && <span>Simulation rows are excluded from your profile</span>}
         </div>
       </div>
 
@@ -354,6 +392,46 @@ export function ExerciseDetail({
       )}
     </>
   );
+}
+
+function exerciseSetCells(
+  set: SetLog,
+  logType: ExerciseStat["logType"],
+  hasWeight: boolean,
+): { best: string; reps: string; volume: string } {
+  const weight = set.weight_kg ?? 0;
+  const reps = set.reps ?? 0;
+
+  if (logType === "cardio") {
+    return {
+      best: set.distance_km ? `${Math.round(set.distance_km * 10) / 10} km` : "—",
+      reps: "—",
+      volume: set.duration_sec ? formatDuration(set.duration_sec) : "—",
+    };
+  }
+  if (logType === "timed") {
+    return {
+      best: set.duration_sec ? formatDuration(set.duration_sec) : "—",
+      reps: "—",
+      volume: "—",
+    };
+  }
+  if (logType === "interval") {
+    return {
+      best: set.duration_sec ? formatDuration(set.duration_sec) : "—",
+      reps: reps ? `${reps} rounds` : "—",
+      volume: "—",
+    };
+  }
+  if (logType === "custom") {
+    return { best: formatSetCell(set, logType), reps: "—", volume: "—" };
+  }
+
+  return {
+    best: hasWeight && weight ? `${Math.round(weight * 10) / 10} kg` : reps ? `${reps} reps` : "—",
+    reps: reps ? String(reps) : "—",
+    volume: weight && reps ? formatVolume(weight * reps) : "—",
+  };
 }
 
 function exerciseGoalCurrent(goal: ProgressGoal, stat: ExerciseStat): number {
