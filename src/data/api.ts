@@ -13,9 +13,11 @@ import type {
   CoachLink,
   CoachNote,
   ExercisePreset,
+  ProgressGoal,
   LinkedAthlete,
   ReactionPreset,
   PlanAssignment,
+  PlanAssignmentRemark,
   PlanBundle,
   Profile,
   Role,
@@ -49,6 +51,9 @@ export interface AthleteWorkspace {
   logs: SetLog[];
   presets: ExercisePreset[];
   coaches: { link: CoachLink; coach: Profile }[];
+  /** Progressive guidance for assigned plans, readable by the athlete. */
+  remarks: PlanAssignmentRemark[];
+  goals: ProgressGoal[];
 }
 
 export interface CoachWorkspace {
@@ -56,6 +61,8 @@ export interface CoachWorkspace {
   /** The coach's reusable exercise setups for plan building. */
   presets: ExercisePreset[];
   athletes: LinkedAthlete[];
+  /** The athlete identity on this same account, used for real self-assignment. */
+  selfAthlete: Profile | null;
   pendingInvites: CoachLink[];
   assignments: PlanAssignment[];
 }
@@ -67,7 +74,11 @@ export interface AthleteTraining {
   plans: PlanBundle[];
   /** When each assigned plan started for them — adherence ignores earlier weeks. */
   assignments: PlanAssignment[];
+  /** Remarks and plan owners are read-only when the viewer is another coach. */
+  remarks: PlanAssignmentRemark[];
+  planOwners: Profile[];
   profile: Profile | null;
+  goals: ProgressGoal[];
 }
 
 export interface PlanLoggedSession {
@@ -125,7 +136,15 @@ export interface Api {
   // ---- plans ----
   savePlan(bundle: PlanBundle): Promise<void>;
   deletePlan(planId: string): Promise<void>;
-  assignPlan(planId: string, athleteId: string): Promise<void>;
+  assignPlan(
+    planId: string,
+    athleteId: string,
+    run?: {
+      start_date?: string | null;
+      end_date?: string | null;
+      activation_mode?: PlanAssignment["activation_mode"];
+    },
+  ): Promise<void>;
   unassignPlan(assignmentId: string): Promise<void>;
   setAssignmentStatus(
     assignmentId: string,
@@ -145,6 +164,8 @@ export interface Api {
     assignmentId: string,
     overrides: PlanAssignment["exercise_overrides"],
   ): Promise<void>;
+  saveAssignmentRemark(remark: PlanAssignmentRemark): Promise<void>;
+  deleteAssignmentRemark(remarkId: string): Promise<void>;
 
   // ---- sessions ----
   saveSession(session: Session): Promise<Session>;
@@ -156,6 +177,10 @@ export interface Api {
   // ---- library ----
   savePreset(preset: ExercisePreset): Promise<void>;
   deletePreset(presetId: string): Promise<void>;
+
+  // ---- progression goals ----
+  saveProgressGoal(goal: ProgressGoal): Promise<void>;
+  deleteProgressGoal(goalId: string): Promise<void>;
 
   // ---- gamification ----
   addXp(profileId: string, amount: number, reason: string): Promise<void>;

@@ -13,10 +13,13 @@ import { formatShortDate } from "../../domain/dates";
 import { DAY_METRIC_LABELS, formatDayMetric, type DayGroup, type DaySession } from "../../domain/dayTrends";
 import { typeIcon } from "../../domain/plan";
 import { buildLogTable } from "../../domain/planLog";
+import { buildContextSignals } from "../../domain/progressionDetail";
 import { plural } from "../../domain/text";
-import { Sparkline } from "../../ui/charts";
+import { BarChart, LineChart, Sparkline } from "../../ui/charts";
 import { Card, Icon, IconButton, IconTile, Pill, SectionHeader, StatTile } from "../../ui/kit";
 import { LogTable } from "../shared/LogTable";
+import { MetricTrendGrid } from "./MetricTrendGrid";
+import type { ProgressPlanRun } from "../../domain/consistency";
 
 /** One session's value under whichever metric its day is judged on. */
 export function metricValue(metric: DayGroup["metric"], entry: DaySession): number {
@@ -50,18 +53,26 @@ export function DayDetail({
   onBack,
   onOpenSession,
   onOpenExercise,
+  weeklyGoal,
+  planRuns,
 }: {
   group: DayGroup;
   logs: SetLog[];
   onBack: () => void;
   onOpenSession: (id: string) => void;
   onOpenExercise: (name: string) => void;
+  weeklyGoal: number;
+  planRuns: ProgressPlanRun[];
 }) {
   const tint = DAY_TYPE_COLORS[group.dayType] ?? "var(--t-accent)";
   const metricLabel = DAY_METRIC_LABELS[group.metric];
 
   const table = useMemo(
     () => buildLogTable({ sessions: group.sessions.map((s) => s.session), logs }),
+    [group, logs],
+  );
+  const signals = useMemo(
+    () => buildContextSignals(group.sessions.map((entry) => entry.session), logs),
     [group, logs],
   );
 
@@ -85,7 +96,7 @@ export function DayDetail({
         <div className="flex items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <TrendPill pct={group.trendPct} metric={metricLabel} />
-            {group.avgRpe !== null && <Pill tint={tint}>avg RPE {group.avgRpe}</Pill>}
+            {group.avgRpe !== null && <Pill tint={tint}>average effort {group.avgRpe}/10</Pill>}
           </div>
           <Sparkline values={group.series} color={tint} width={110} height={34} />
         </div>
@@ -97,6 +108,61 @@ export function DayDetail({
           <StatTile label="Total sets" value={String(group.totalSets)} />
         </div>
       </Card>
+
+      <Card className="mb-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-wide text-muted">Pattern insight</p>
+            <p className="mt-1 text-sm font-black leading-snug text-ink">{signals.takeaway}</p>
+          </div>
+          <Pill tint={tint}>{signals.stability}/100 stable</Pill>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <StatTile value={signals.retention === null ? "—" : `${Math.round(signals.retention * 100)}%`} label="later-set strength kept" />
+          <StatTile value={signals.qualityShare === null ? "—" : `${Math.round(signals.qualityShare * 100)}%`} label="manageable sets" />
+          <StatTile value={signals.avgRpe === null ? "—" : `${signals.avgRpe.toFixed(1)}/10`} label="average effort" />
+          <StatTile value={signals.density === null ? "—" : signals.density.toFixed(2)} label="work rate" />
+        </div>
+      </Card>
+
+      <MetricTrendGrid
+        sessions={group.sessions.map((entry) => entry.session)}
+        logs={logs}
+        weeklyGoal={weeklyGoal}
+        title="Planned-day metric trends"
+        planRuns={planRuns}
+      />
+
+      <div className="mb-3 grid gap-3 lg:grid-cols-2">
+        <Card>
+          <p className="mb-2 text-[10px] font-black uppercase tracking-wide text-muted">{metricLabel} by session</p>
+          <LineChart
+            data={group.sessions.slice().reverse().map((entry) => ({
+              label: formatShortDate(entry.session.date),
+              value: metricValue(group.metric, entry),
+              detail: `${entry.session.day_title || group.title} · ${plural(entry.sets, "set")}`,
+            }))}
+            color={tint}
+            format={(value) => formatDayMetric(group.metric, value)}
+          />
+        </Card>
+        {signals.exerciseRetention.length > 1 && (
+          <Card>
+            <p className="mb-2 text-[10px] font-black uppercase tracking-wide text-muted">Fatigue resistance</p>
+            <BarChart
+              data={signals.exerciseRetention.slice(0, 8).map((entry) => ({
+                label: entry.name.split(" ")[0],
+                value: Math.round(entry.retention * 100),
+                detail: `${entry.name} · ${entry.sets} sets`,
+              }))}
+              color={tint}
+              format={(value) => `${Math.round(value)}%`}
+              goal={90}
+              goalLabel="strong"
+            />
+          </Card>
+        )}
+      </div>
 
       <SectionHeader title={`Every ${group.title}`} />
       <LogTable
@@ -118,7 +184,7 @@ export function DayDetail({
             </span>
             <span className="min-w-0 flex-1 truncate text-xs font-semibold text-muted">
               {plural(entry.sets, "set")}
-              {entry.rpe !== null && ` · RPE ${entry.rpe}`}
+              {entry.rpe !== null && ` · effort ${entry.rpe}/10`}
             </span>
             <span className="shrink-0 text-xs font-black text-ink">
               {formatDayMetric(group.metric, metricValue(group.metric, entry))}

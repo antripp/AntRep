@@ -24,7 +24,7 @@ const SORTS = [
   { key: "recent", label: "Recent" },
   { key: "trend", label: "Trend" },
   { key: "best", label: "Best" },
-  { key: "volume", label: "Volume" },
+  { key: "volume", label: "Total work" },
   { key: "sessions", label: "Sessions" },
 ] as const;
 
@@ -138,6 +138,9 @@ export function ExerciseCard({ stat, onOpen }: { stat: ExerciseStat; onOpen: () 
           {plural(stat.sessions, "session")} · {stat.totalSets} sets
           {stat.lastDate && ` · ${formatShortDate(stat.lastDate)}`}
         </p>
+        <p className="truncate text-[10px] font-bold text-muted">
+          {stat.trendLabel} · stability {stat.stabilityScore} · {stat.confidence.toLowerCase()} confidence
+        </p>
       </div>
 
       <Sparkline values={history} color={trendColor} width={48} height={20} />
@@ -145,8 +148,8 @@ export function ExerciseCard({ stat, onOpen }: { stat: ExerciseStat; onOpen: () 
       <div className="w-[68px] shrink-0 text-right">
         <p className="text-[13px] font-black leading-tight text-ink">{formatBest(stat)}</p>
         <p className="text-[11px] font-black leading-tight" style={{ color: trendColor }}>
-          {stat.trend === 0
-            ? "—"
+          {Math.abs(stat.trend) < 0.005
+            ? "rolling —"
             : `${stat.trend > 0 ? "▲" : "▼"} ${Math.abs(Math.round(stat.trend * 100))}%`}
         </p>
       </div>

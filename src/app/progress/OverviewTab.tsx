@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { categoryFor } from "../../data/catalog";
-import { DAY_TYPE_COLORS } from "../../data/types";
 import type { Session, SetLog } from "../../data/types";
 import {
   buildInsights,
@@ -11,6 +10,7 @@ import {
   recentRecords,
   weeklySeries,
   type ExerciseStat,
+  type Insight,
 } from "../../domain/analytics";
 import { formatShortDate, startOfWeek } from "../../domain/dates";
 import {
@@ -21,16 +21,19 @@ import {
   weeklyGymCount,
 } from "../../domain/gamification";
 import { loggedSessionIds, nameKey } from "../../domain/logging";
+import { buildTrainingIntelligence, type InterferenceInsight, type TrainingDimension } from "../../domain/trainingIntelligence";
+import type { DimensionKey } from "../../domain/trainingIntelligence";
+import { DIMENSION_METHODS } from "../../domain/progressionDetail";
 import { compactKg } from "../../domain/text";
 import { DotRow, LineChart, ShareBar, type Point } from "../../ui/charts";
-import { Card, Icon, IconTile, Pill, ProgressRing, SectionHeader, StatTile } from "../../ui/kit";
+import { Card, Icon, IconTile, Pill, ProgressRing, SectionHeader, Sheet, StatTile } from "../../ui/kit";
+import { CATEGORY_COLORS, DIMENSION_COLORS } from "./palette";
+import type { ProgressPlanRun } from "../../domain/consistency";
 
-const CATEGORY_COLORS: Record<string, string> = {
-  push: DAY_TYPE_COLORS.push,
-  pull: DAY_TYPE_COLORS.pull,
-  legs: DAY_TYPE_COLORS.legs,
-  core: DAY_TYPE_COLORS.core,
-  cardio: DAY_TYPE_COLORS.run,
+const OVERVIEW_CHART_COLORS: Record<MetricKey, string> = {
+  volume: DIMENSION_COLORS.capacity,
+  sessions: DIMENSION_COLORS.consistency,
+  sets: DIMENSION_COLORS.strength,
 };
 
 const RANGES = [
@@ -41,7 +44,7 @@ const RANGES = [
 ] as const;
 
 const METRICS = [
-  { key: "volume", label: "Volume" },
+  { key: "volume", label: "Total work" },
   { key: "sessions", label: "Sessions" },
   { key: "sets", label: "Sets" },
 ] as const;
@@ -56,6 +59,8 @@ export function OverviewTab({
   totalXp,
   isRestDay,
   onOpenExercise,
+  onOpenDimension,
+  planRuns,
 }: {
   sessions: Session[];
   logs: SetLog[];
@@ -66,9 +71,14 @@ export function OverviewTab({
   /** Was a day off scheduled on this date? Bridges the streak. */
   isRestDay: (date: Date) => boolean;
   onOpenExercise: (key: string) => void;
+  onOpenDimension: (key: DimensionKey) => void;
+  planRuns: ProgressPlanRun[];
 }) {
   const [rangeKey, setRangeKey] = useState<(typeof RANGES)[number]["key"]>("8");
   const [metric, setMetric] = useState<MetricKey>("volume");
+  const [infoDimension, setInfoDimension] = useState<TrainingDimension | null>(null);
+  const [infoInsight, setInfoInsight] = useState<Insight | null>(null);
+  const [infoInterference, setInfoInterference] = useState<InterferenceInsight | null>(null);
 
   const weeks = RANGES.find((r) => r.key === rangeKey)!.weeks;
 
@@ -81,6 +91,10 @@ export function OverviewTab({
   const previous = fullSeries.slice(0, weeks);
 
   const totals = useMemo(() => lifetimeTotals(sessions, logs), [sessions, logs]);
+  const intelligence = useMemo(
+    () => buildTrainingIntelligence(sessions, logs, weeklyGymGoal, new Date(), { planRuns }),
+    [sessions, logs, weeklyGymGoal, planRuns],
+  );
   const insights = useMemo(
     () => buildInsights(sessions, logs, stats, weeklyGymGoal),
     [sessions, logs, stats, weeklyGymGoal],
@@ -109,7 +123,7 @@ export function OverviewTab({
 
   const streak = currentStreak(sessions, isRestDay, new Date(), logged);
   const copy = streakCopy(streak);
-  const dots = recentDays(sessions, 10, new Date(), logged);
+  const dots = recentDays(sessions, 10, new Date(), logged, isRestDay);
   const level = levelProgress(totalXp);
 
   return (
@@ -137,13 +151,33 @@ export function OverviewTab({
         </div>
       </Card>
 
-      <Card className="mb-3">
+      <SectionHeader
+        title="Training dimensions"
+        action={<Pill tint="var(--t-accent)">{intelligence.trend}</Pill>}
+      />
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="text-[11px] font-semibold text-muted">{intelligence.analysedSessions} analysed sessions</p>
+        <span className="text-[10px] font-black uppercase tracking-wide text-muted">Tap a card to explore</span>
+      </div>
+      <div className="mb-5 grid grid-cols-2 gap-2.5 lg:grid-cols-3">
+        {intelligence.dimensions.map((dimension) => (
+          <DimensionCard
+            key={dimension.key}
+            dimension={dimension}
+            onOpen={() => onOpenDimension(dimension.key)}
+            onInfo={() => setInfoDimension(dimension)}
+          />
+        ))}
+      </div>
+
+      <Card className="mb-4">
         <div className="flex items-center gap-4">
           <ProgressRing
             ratio={weeklyGymGoal ? gymDays / weeklyGymGoal : 0}
             label={`${gymDays}/${weeklyGymGoal}`}
             sublabel="week"
             size={78}
+            stroke={5}
           />
           <div className="grid flex-1 grid-cols-2 gap-2">
             <StatTile value={totals.volume.toLocaleString()} label="kg lifted" />
@@ -188,6 +222,7 @@ export function OverviewTab({
 
         <LineChart
           data={chartData}
+          color={OVERVIEW_CHART_COLORS[metric]}
           format={(v) => (metric === "volume" ? `${compactKg(v)} kg` : String(Math.round(v)))}
           emptyMessage="Two weeks of training and this fills in."
         />
@@ -209,12 +244,12 @@ export function OverviewTab({
       {insights.length > 0 && (
         <>
           <SectionHeader title="Read-outs" />
-          <div className="space-y-2">
+          <div className="grid gap-2 sm:grid-cols-2">
             {insights.map((insight) => (
-              <Card key={insight.id}>
-                <div className="flex gap-3">
+              <Card key={insight.id} className="!p-3">
+                <div className="flex items-center gap-3">
                   <div
-                    className="mt-0.5 h-8 w-8 shrink-0 rounded-xl"
+                    className="h-2.5 w-2.5 shrink-0 rounded-full"
                     style={{
                       background:
                         insight.tone === "good"
@@ -224,10 +259,52 @@ export function OverviewTab({
                             : "var(--t-inset)",
                     }}
                   />
-                  <div className="min-w-0">
-                    <p className="text-sm font-black text-ink">{insight.title}</p>
-                    <p className="text-xs font-semibold text-muted">{insight.detail}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-black text-ink">{insight.title}</p>
                   </div>
+                  <button
+                    type="button"
+                    aria-label={`More about ${insight.title}`}
+                    onClick={() => setInfoInsight(insight)}
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-line bg-inset text-[11px] font-black text-muted"
+                  >i</button>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </>
+      )}
+
+      {intelligence.interference.length > 0 && (
+        <>
+          <SectionHeader title="Exercise-order influence" icon={<Icon.progress className="h-4 w-4" />} />
+          <p className="-mt-1 mb-2 text-[11px] font-semibold text-muted">Observed ordering associations</p>
+          <div className="space-y-2">
+            {intelligence.interference.map((insight) => (
+              <Card key={insight.id} className="!p-3">
+                <div className="flex items-center gap-3">
+                  <IconTile emoji="↘️" tint="var(--color-gold)" size={34} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <p className="text-sm font-black text-ink">
+                        {insight.earlier} → {insight.later}
+                      </p>
+                      <Pill tint={insight.confidence === "Personal" ? "var(--color-done)" : "var(--t-muted)"}>
+                        {insight.confidence}
+                      </Pill>
+                    </div>
+                  </div>
+                  {insight.estimatedImpact !== null && (
+                    <span className="shrink-0 text-sm font-black text-danger">
+                      {Math.round(insight.estimatedImpact * 100)}%
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    aria-label={`More about ${insight.earlier} before ${insight.later}`}
+                    onClick={() => setInfoInterference(insight)}
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-line bg-inset text-[11px] font-black text-muted"
+                  >i</button>
                 </div>
               </Card>
             ))}
@@ -278,6 +355,109 @@ export function OverviewTab({
           </div>
         </>
       )}
+
+      <Sheet
+        open={infoDimension !== null}
+        onClose={() => setInfoDimension(null)}
+        title={infoDimension ? `${infoDimension.label} score` : "Metric score"}
+      >
+        {infoDimension && (
+          <>
+            <div className="flex items-center gap-3 rounded-2xl bg-inset p-3">
+              <MetricScoreRing score={infoDimension.score} color={DIMENSION_COLORS[infoDimension.key]} size={62} />
+              <div>
+                <p className="text-sm font-black text-ink">{infoDimension.status}</p>
+                <p className="text-xs font-semibold text-muted">{infoDimension.confidence} confidence</p>
+              </div>
+            </div>
+            <p className="mt-4 text-sm font-semibold leading-relaxed text-ink">{infoDimension.detail}</p>
+            <p className="mt-4 text-[10px] font-black uppercase tracking-wide text-muted">What it assesses</p>
+            <p className="mt-1 text-xs font-semibold leading-relaxed text-muted">
+              {DIMENSION_METHODS[infoDimension.key].summary}
+            </p>
+            <p className="mt-4 text-[10px] font-black uppercase tracking-wide text-muted">Calculation</p>
+            <p className="mt-1 rounded-2xl bg-inset p-3 text-xs font-semibold leading-relaxed text-ink">
+              {DIMENSION_METHODS[infoDimension.key].formula}
+            </p>
+          </>
+        )}
+      </Sheet>
+
+      <Sheet open={infoInsight !== null} onClose={() => setInfoInsight(null)} title={infoInsight?.title ?? "Insight"}>
+        {infoInsight && (
+          <>
+            <Pill tint={infoInsight.tone === "good" ? "var(--color-done)" : infoInsight.tone === "warn" ? "var(--color-danger)" : "var(--t-accent)"}>
+              {infoInsight.tone === "good" ? "Positive signal" : infoInsight.tone === "warn" ? "Worth attention" : "Context"}
+            </Pill>
+            <p className="mt-4 text-sm font-semibold leading-relaxed text-ink">{infoInsight.detail}</p>
+            <p className="mt-4 text-xs font-semibold leading-relaxed text-muted">
+              Read-outs summarize the selected time range. Use the underlying day, session and exercise evidence before changing a plan.
+            </p>
+          </>
+        )}
+      </Sheet>
+
+      <Sheet
+        open={infoInterference !== null}
+        onClose={() => setInfoInterference(null)}
+        title={infoInterference ? `${infoInterference.earlier} → ${infoInterference.later}` : "Exercise-order influence"}
+      >
+        {infoInterference && (
+          <>
+            <div className="flex items-center gap-2">
+              <Pill tint={infoInterference.confidence === "Personal" ? "var(--color-done)" : "var(--color-gold)"}>{infoInterference.confidence}</Pill>
+              {infoInterference.estimatedImpact !== null && (
+                <span className="text-sm font-black text-danger">{Math.round(infoInterference.estimatedImpact * 100)}% association</span>
+              )}
+            </div>
+            <p className="mt-4 text-sm font-semibold leading-relaxed text-ink">{infoInterference.detail}</p>
+            <div className="mt-4 rounded-2xl bg-inset p-3 text-xs font-semibold leading-relaxed text-muted">
+              This is an association, not proven causation. Personal fresh-versus-after comparisons replace generic overlap estimates as comparable sessions accumulate.
+            </div>
+          </>
+        )}
+      </Sheet>
     </>
+  );
+}
+
+function DimensionCard({ dimension, onOpen, onInfo }: { dimension: TrainingDimension; onOpen: () => void; onInfo: () => void }) {
+  const tint = DIMENSION_COLORS[dimension.key];
+  return (
+    <div
+      className="relative overflow-hidden rounded-card border border-line bg-surface shadow-[0_1px_0_0_rgba(0,0,0,0.04)]"
+      style={{ background: `linear-gradient(145deg, color-mix(in srgb, ${tint} 10%, var(--t-surface)), var(--t-surface) 58%)` }}
+    >
+      <button type="button" onClick={onOpen} className="flex w-full items-center gap-2.5 p-3 pr-9 text-left active:scale-[0.99]">
+        <MetricScoreRing score={dimension.score} color={tint} size={52} />
+        <div className="min-w-0 flex-1">
+          <p className="line-clamp-2 text-[12px] font-black leading-tight text-ink">{dimension.label}</p>
+          <p className="mt-1 truncate text-[10px] font-black uppercase tracking-wide" style={{ color: tint }}>{dimension.status}</p>
+          <p className="truncate text-[9px] font-bold text-muted">{dimension.confidence} confidence</p>
+        </div>
+      </button>
+      <button
+        type="button"
+        onClick={onInfo}
+        aria-label={`About ${dimension.label}`}
+        className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full border border-line bg-surface/80 text-[10px] font-black text-muted"
+      >i</button>
+    </div>
+  );
+}
+
+function MetricScoreRing({ score, color, size }: { score: number; color: string; size: number }) {
+  const stroke = 3.5;
+  const radius = (size - stroke) / 2;
+  const circumference = radius * Math.PI * 2;
+  const progress = Math.max(0, Math.min(100, score)) / 100;
+  return (
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="-rotate-90" aria-label={`Score ${score} out of 100`} role="img">
+        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="var(--t-line)" strokeWidth={stroke} />
+        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={circumference * (1 - progress)} />
+      </svg>
+      <span className="absolute inset-0 flex items-center justify-center text-sm font-black text-ink">{score}</span>
+    </div>
   );
 }

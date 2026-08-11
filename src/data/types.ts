@@ -202,7 +202,8 @@ export interface Plan {
   name: string;
   is_active: boolean;
   is_archived: boolean;
-  start_date: string;
+  /** Calendar-free templates leave this null; athlete-owned activation may set it. */
+  start_date: string | null;
   /** Optional last day. Past it the plan stops scheduling and becomes a past plan. */
   end_date: string | null;
   weeks: number;
@@ -216,6 +217,12 @@ export interface Plan {
   schedule_mode: ScheduleMode;
   /** Days per cycle in `cycle` mode; 0 when the plan runs on weeks. */
   cycle_length: number;
+  /** Inclusive length of one athlete run, independent of its eventual start date. */
+  duration_days: number;
+  /** Active days in each ordered custom split. */
+  split_lengths: number[];
+  /** Rest interval after each matching split (the last is before repetition). */
+  split_rest_days: number[];
   icon_name: string;
   color_hex: string;
   notes: string;
@@ -301,10 +308,34 @@ export interface PlanAssignment {
   /** Per-athlete end override, so ending one run doesn't end everyone's. */
   end_date: string | null;
   status: "offered" | "active" | "declined";
+  /** Scheduled runs activate by date; manual runs wait for the athlete to switch. */
+  activation_mode: "scheduled" | "manual";
   /** Per-athlete prescription patches, keyed by the template exercise id. */
   exercise_overrides: Record<string, PlanExerciseOverride>;
   accepted_at: string | null;
   created_at?: string;
+}
+
+export type PlanRemarkScope = "plan" | "week" | "exercise";
+
+/**
+ * Coach guidance attached to one athlete's run of a plan.
+ *
+ * Plan remarks have no week/exercise target. Weekly remarks use `week_index`,
+ * and exercise remarks use both the plan exercise id and the week they apply
+ * to. Keeping these outside the shared template lets guidance progress without
+ * rewriting what every athlete sees.
+ */
+export interface PlanAssignmentRemark {
+  id: string;
+  assignment_id: string;
+  coach_id: string;
+  scope: PlanRemarkScope;
+  week_index: number | null;
+  plan_exercise_id: string | null;
+  note: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export type PlanExerciseOverride = Partial<
@@ -400,6 +431,30 @@ export interface ExercisePreset {
   notes: string;
   /** The logging shape reused every time this exercise is logged. */
   custom_fields: CustomField[];
+}
+
+export type ProgressGoalScope = "overall" | "plan" | "day" | "session" | "exercise";
+export type ProgressGoalMetric = "strength" | "exercise_pr";
+export type ProgressGoalTarget = "score" | "weight" | "reps" | "estimated_max";
+
+/** A coach- or athlete-authored target attached to one analytics context. */
+export interface ProgressGoal {
+  id: string;
+  athlete_id: string;
+  set_by_profile_id: string;
+  scope_type: ProgressGoalScope;
+  /** Plan/session id, grouped-day key, or normalized exercise name. */
+  scope_key: string | null;
+  scope_label: string;
+  metric: ProgressGoalMetric;
+  target_type: ProgressGoalTarget;
+  target_value: number;
+  unit: string;
+  deadline: string | null;
+  notes: string;
+  status: "active" | "achieved" | "cancelled";
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface XpEvent {

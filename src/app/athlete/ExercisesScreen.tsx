@@ -23,17 +23,22 @@ import { ExerciseCategoryTabs, type ExerciseCategoryFilter } from "../shared/Exe
 import { LibraryExerciseSheet, PageButtons } from "./ExerciseLibrarySheets";
 import { ExercisePresetLibrary } from "./LibrarySection";
 import { useExerciseLibrary } from "./useExerciseLibrary";
+import { exerciseStats, type ExerciseStat } from "../../domain/analytics";
+import type { ProgressGoal } from "../../data/types";
+import { ProgressGoalEditor, type GoalContextOption } from "../progress/ProgressGoalEditor";
+import { nameKey } from "../../domain/logging";
 
 const PAGE_SIZE = 20;
 
 export default function ExercisesScreen() {
-  const { profile, sessions, logs, presets, reload, showToast } = useWorkspace();
+  const { profile, sessions, logs, presets, goals, reload, showToast } = useWorkspace();
   const logged = useMemo(() => {
     const ids = new Set(sessions.map((session) => session.id));
     return new Set(
       logs.filter((log) => ids.has(log.session_id)).map((log) => log.exercise_name.trim().toLowerCase()),
     );
   }, [sessions, logs]);
+  const stats = useMemo(() => exerciseStats(sessions, logs), [sessions, logs]);
 
   return (
     <ExerciseLibraryScreen
@@ -42,6 +47,12 @@ export default function ExercisesScreen() {
       reload={reload}
       showToast={showToast}
       logged={logged}
+      goals={goals}
+      stats={stats}
+      athleteId={profile.id}
+      viewerId={profile.id}
+      onSaveGoal={async (goal) => { await api.saveProgressGoal(goal); await reload(); }}
+      onDeleteGoal={async (id) => { await api.deleteProgressGoal(id); await reload(); }}
     />
   );
 }
@@ -54,6 +65,12 @@ export function ExerciseLibraryScreen({
   logged = new Set<string>(),
   title = "Library",
   usage = "athlete",
+  goals = [],
+  stats = [],
+  athleteId,
+  viewerId,
+  onSaveGoal,
+  onDeleteGoal,
 }: {
   profile: ReturnType<typeof useWorkspace>["profile"];
   presets: ReturnType<typeof useWorkspace>["presets"];
@@ -62,6 +79,12 @@ export function ExerciseLibraryScreen({
   logged?: Set<string>;
   title?: string;
   usage?: "athlete" | "coach";
+  goals?: ProgressGoal[];
+  stats?: ExerciseStat[];
+  athleteId?: string;
+  viewerId?: string;
+  onSaveGoal?: (goal: ProgressGoal) => Promise<void>;
+  onDeleteGoal?: (id: string) => Promise<void>;
 }) {
   const canonical = useExerciseLibrary();
   const [view, setView] = useState<"mine" | "browse">("mine");
@@ -104,7 +127,19 @@ export function ExerciseLibraryScreen({
       </div>
 
       {view === "mine" && (
-        <ExercisePresetLibrary profile={profile} presets={presets} reload={reload} showToast={showToast} usage={usage} />
+        <ExercisePresetLibrary
+          profile={profile}
+          presets={presets}
+          reload={reload}
+          showToast={showToast}
+          usage={usage}
+          goals={goals}
+          stats={stats}
+          athleteId={athleteId}
+          viewerId={viewerId}
+          onSaveGoal={onSaveGoal}
+          onDeleteGoal={onDeleteGoal}
+        />
       )}
       {view === "browse" && (
         <BrowseList
@@ -116,6 +151,12 @@ export function ExerciseLibraryScreen({
           usage={usage}
           onRetry={canonical.retry}
           onSave={saveOrMatch}
+          goals={goals}
+          stats={stats}
+          athleteId={athleteId}
+          viewerId={viewerId}
+          onSaveGoal={onSaveGoal}
+          onDeleteGoal={onDeleteGoal}
         />
       )}
     </>
@@ -131,6 +172,12 @@ function BrowseList({
   usage,
   onRetry,
   onSave,
+  goals,
+  stats,
+  athleteId,
+  viewerId,
+  onSaveGoal,
+  onDeleteGoal,
 }: {
   exercises: LibraryExercise[];
   loading: boolean;
@@ -140,11 +187,19 @@ function BrowseList({
   usage: "athlete" | "coach";
   onRetry: () => void;
   onSave: (exercise: LibraryExercise) => Promise<void>;
+  goals: ProgressGoal[];
+  stats: ExerciseStat[];
+  athleteId?: string;
+  viewerId?: string;
+  onSaveGoal?: (goal: ProgressGoal) => Promise<void>;
+  onDeleteGoal?: (id: string) => Promise<void>;
 }) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<ExerciseCategoryFilter>("all");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<LibraryExercise | null>(null);
+  const [goalExercise, setGoalExercise] = useState<LibraryExercise | null>(null);
+  const [editingGoal, setEditingGoal] = useState<ProgressGoal | null>(null);
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return exercises.filter((item) =>
@@ -204,6 +259,9 @@ function BrowseList({
               {shown.map((exercise) => {
                 const saved = linkedIds.has(exercise.wgerId);
                 const legacy = legacyNames.has(exercise.name.toLowerCase());
+                const key = nameKey(exercise.name);
+                const goal = goals.find((item) => item.scope_type === "exercise" && item.scope_key === key && item.status === "active");
+                const stat = stats.find((item) => item.key === key);
                 return (
                   <div key={exercise.wgerId} className="flex items-center gap-2 rounded-2xl border border-line bg-surface p-2.5">
                     <button className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={() => setSelected(exercise)}>
@@ -212,6 +270,7 @@ function BrowseList({
                         <p className="truncate text-[11px] font-bold uppercase text-muted">
                           {exercise.wgerCategoryName || exercise.category}
                           {logged.has(exercise.name.trim().toLowerCase()) && " · logged"}
+                          {goal && ` · ${Math.round(goalProgress(goal, stat))}% to goal`}
                         </p>
                       </div>
                     </button>
@@ -224,6 +283,15 @@ function BrowseList({
                       {saved ? <Icon.check className="h-4 w-4" /> : legacy ? <Icon.link className="h-4 w-4" /> : <Icon.plus className="h-4 w-4" />}
                       {saved ? "Saved" : legacy ? "Match" : "Save"}
                     </Button>
+                    {usage === "athlete" && athleteId && viewerId && onSaveGoal && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => { setEditingGoal(goal ?? null); setGoalExercise(exercise); }}
+                      >
+                        {goal ? "Goal ✓" : "Set goal"}
+                      </Button>
+                    )}
                   </div>
                 );
               })}
@@ -254,6 +322,38 @@ function BrowseList({
           onClose={() => setSelected(null)}
         />
       )}
+      {goalExercise && athleteId && viewerId && onSaveGoal && (() => {
+        const contexts: GoalContextOption[] = [{ scopeType: "exercise", key: nameKey(goalExercise.name), label: goalExercise.name }];
+        const exerciseStat = stats.find((item) => item.key === nameKey(goalExercise.name));
+        return (
+          <ProgressGoalEditor
+            open
+            goal={editingGoal}
+            athleteId={athleteId}
+            viewerId={viewerId}
+            contexts={contexts}
+            defaultContext={contexts[0]}
+            defaultTargetType={exerciseStat?.hasWeight === false ? "reps" : "weight"}
+            suggestedTargetValue={exerciseStat
+              ? exerciseStat.hasWeight
+                ? Math.max(1, Math.ceil(exerciseStat.best * 1.05 / 2.5) * 2.5)
+                : Math.max(1, Math.ceil(exerciseStat.bestReps * 1.1))
+              : undefined}
+            metric="exercise_pr"
+            onClose={() => setGoalExercise(null)}
+            onSave={onSaveGoal}
+            onDelete={onDeleteGoal}
+          />
+        );
+      })()}
     </>
   );
+}
+
+function goalProgress(goal: ProgressGoal, stat?: ExerciseStat): number {
+  if (!stat || goal.target_value <= 0) return 0;
+  const current = goal.target_type === "reps" ? stat.bestReps
+    : goal.target_type === "estimated_max" ? stat.best1RM
+      : stat.best;
+  return Math.max(0, Math.min(100, current / goal.target_value * 100));
 }

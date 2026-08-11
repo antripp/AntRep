@@ -36,6 +36,7 @@ import {
   type MakeupCandidate,
 } from "../../domain/makeup";
 import { dayForDate, resolveSegments, slotLabel, typeIcon, type ResolvedSegment } from "../../domain/plan";
+import { remarkPeriodIndex, remarkPeriodNoun } from "../../domain/planRemarks";
 import { loggedSessionIds, nameKey } from "../../domain/logging";
 import { plural } from "../../domain/text";
 import {
@@ -545,12 +546,21 @@ function SegmentBlock({
   allowTimer: boolean;
   makeup?: boolean;
 }) {
-  const { sessionForSegment, ensureSession, resumeTimer, showToast } = useWorkspace();
+  const { sessionForSegment, ensureSession, resumeTimer, showToast, workspace, remarks } = useWorkspace();
   const dateStr = localDate(date);
   const session = sessionForSegment(segment, dateStr);
   const progress = progressFor(segment, date, session);
   const slots = loggingSlots(visibleExercises(segment, date));
   const [picked, setPicked] = useState<Record<string, string>>({});
+  const assigned = workspace.assigned.find((item) => item.bundle.plan.id === segment.plan.id);
+  const assignmentRemarks = assigned
+    ? remarks.filter((remark) => remark.assignment_id === assigned.assignment.id)
+    : [];
+  const block = remarkPeriodIndex(segment.plan, date, assigned?.assignment.start_date);
+  const planRemark = assignmentRemarks.find((remark) => remark.scope === "plan")?.note;
+  const weekRemark = assignmentRemarks.find(
+    (remark) => remark.scope === "week" && remark.week_index === block,
+  )?.note;
 
   const canStart = allowTimer && !liveSessionId && canStartTimer(session);
   const canResume = allowTimer && !liveSessionId && canResumeTimer(session);
@@ -609,6 +619,19 @@ function SegmentBlock({
         </div>
       )}
 
+      {(segment.plan.notes || planRemark || weekRemark) && (
+        <div className="mb-3 space-y-2">
+          {segment.plan.notes && <OutlineGuidance note={segment.plan.notes} />}
+          {planRemark && <CoachGuidance label="Plan focus" note={planRemark} />}
+          {weekRemark && (
+            <CoachGuidance
+              label={`${remarkPeriodNoun(segment.plan)} ${block}`}
+              note={weekRemark}
+            />
+          )}
+        </div>
+      )}
+
       <div className="space-y-2">
         {slots.map((slot) => {
           const chosenId = picked[slot[0].alternate_group_id || slot[0].id];
@@ -625,6 +648,12 @@ function SegmentBlock({
                 setPicked((p) => ({ ...p, [slot[0].alternate_group_id || slot[0].id]: alt.id }))
               }
               onNeedSession={() => ensureSession(segment, dateStr)}
+              coachRemark={assignmentRemarks.find(
+                (remark) =>
+                  remark.scope === "exercise" &&
+                  remark.week_index === block &&
+                  remark.plan_exercise_id === exercise.id,
+              )?.note}
             />
           );
         })}
@@ -635,6 +664,24 @@ function SegmentBlock({
         )}
       </div>
     </section>
+  );
+}
+
+function OutlineGuidance({ note }: { note: string }) {
+  return (
+    <div className="rounded-xl bg-inset px-3 py-2">
+      <p className="text-[10px] font-black uppercase tracking-wide text-muted">Outline · Generic plan note</p>
+      <p className="mt-0.5 text-xs font-semibold leading-snug text-ink">{note}</p>
+    </div>
+  );
+}
+
+function CoachGuidance({ label, note }: { label: string; note: string }) {
+  return (
+    <div className="rounded-xl border border-accent/30 bg-accent/10 px-3 py-2">
+      <p className="text-[10px] font-black uppercase tracking-wide text-accent">Coach · {label}</p>
+      <p className="mt-0.5 text-xs font-semibold leading-snug text-ink">{note}</p>
+    </div>
   );
 }
 

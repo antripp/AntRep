@@ -80,14 +80,55 @@ export function isCyclePlan(plan: Pick<Plan, "schedule_mode" | "cycle_length">):
   return plan.schedule_mode === "cycle" && plan.cycle_length > 0;
 }
 
+/** Overall inclusive run length stored on the date-free template. */
+export function planDurationDays(
+  plan: Pick<Plan, "duration_days" | "weeks" | "schedule_mode" | "cycle_length">,
+): number {
+  if (plan.duration_days > 0) return Math.max(1, plan.duration_days);
+  return isCyclePlan(plan)
+    ? Math.max(1, plan.weeks || 1) * Math.max(2, plan.cycle_length || 7)
+    : Math.max(1, plan.weeks || 1) * 7;
+}
+
+/** Normalized active-day count for each custom split. */
+export function planSplitLengths(
+  plan: Pick<Plan, "split_lengths" | "weeks" | "cycle_length" | "repeat_mode">,
+): number[] {
+  const legacyLength = Math.max(2, plan.cycle_length || 7);
+  const requested = plan.repeat_mode === "custom" ? Math.max(1, plan.weeks || 1) : 1;
+  const source = Array.isArray(plan.split_lengths) && plan.split_lengths.length > 0
+    ? plan.split_lengths
+    : [legacyLength];
+  return Array.from({ length: requested }, (_, index) =>
+    Math.max(1, Math.min(60, Number(source[index] ?? source[0] ?? legacyLength) || legacyLength)),
+  );
+}
+
+/** Normalized rest interval after each split. */
+export function planSplitRests(
+  plan: Pick<Plan, "split_rest_days" | "split_lengths" | "weeks" | "cycle_length" | "repeat_mode">,
+): number[] {
+  const lengths = planSplitLengths(plan);
+  const source = Array.isArray(plan.split_rest_days) ? plan.split_rest_days : [];
+  return lengths.map((_, index) =>
+    Math.max(0, Math.min(30, Number(source[index] ?? source[0] ?? 0) || 0)),
+  );
+}
+
 /** How many day slots one pass through the plan has: 7 for a week, else the cycle. */
-export function slotCount(plan: Pick<Plan, "schedule_mode" | "cycle_length">): number {
-  return isCyclePlan(plan) ? Math.max(2, plan.cycle_length) : 7;
+export function slotCount(
+  plan: Pick<Plan, "schedule_mode" | "cycle_length" | "split_lengths" | "weeks" | "repeat_mode">,
+  blockIndex = 1,
+): number {
+  return isCyclePlan(plan) ? (planSplitLengths(plan)[Math.max(1, blockIndex) - 1] ?? 1) : 7;
 }
 
 /** Every slot position of one pass, in order: 1…7 or 1…cycle_length. */
-export function planSlots(plan: Pick<Plan, "schedule_mode" | "cycle_length">): number[] {
-  return Array.from({ length: slotCount(plan) }, (_, i) => i + 1);
+export function planSlots(
+  plan: Pick<Plan, "schedule_mode" | "cycle_length" | "split_lengths" | "weeks" | "repeat_mode">,
+  blockIndex = 1,
+): number[] {
+  return Array.from({ length: slotCount(plan, blockIndex) }, (_, i) => i + 1);
 }
 
 /**
@@ -147,15 +188,34 @@ export function planWeekIndex(
  * from its start date, so day 1 is the start date itself.
  */
 export function planCycleDay(
-  plan: Pick<Plan, "start_date" | "schedule_mode" | "cycle_length">,
+  plan: Pick<Plan, "start_date" | "schedule_mode" | "cycle_length" | "split_lengths" | "split_rest_days" | "weeks" | "repeat_mode" | "duration_days">,
   date: Date,
   startOverride?: string | null,
 ): number | null {
   const startStr = startOverride ?? plan.start_date;
   if (!startStr) return null;
   const offset = daysBetween(startStr, localDate(date));
-  if (offset < 0) return null;
-  return (offset % slotCount(plan)) + 1;
+  if (offset < 0 || offset >= planDurationDays(plan)) return null;
+  return splitPosition(plan, offset)?.slot ?? null;
+}
+
+/** Split and active slot at an elapsed offset; null means an interval rest day. */
+export function splitPosition(
+  plan: Pick<Plan, "split_lengths" | "split_rest_days" | "weeks" | "cycle_length" | "repeat_mode">,
+  elapsedDays: number,
+): { block: number; slot: number } | null {
+  const lengths = planSplitLengths(plan);
+  const rests = planSplitRests(plan);
+  const patternDays = lengths.reduce((total, length, index) => total + length + rests[index], 0);
+  if (patternDays <= 0) return null;
+  let cursor = ((elapsedDays % patternDays) + patternDays) % patternDays;
+  for (let index = 0; index < lengths.length; index += 1) {
+    if (cursor < lengths[index]) return { block: index + 1, slot: cursor + 1 };
+    cursor -= lengths[index];
+    if (cursor < rests[index]) return null;
+    cursor -= rests[index];
+  }
+  return null;
 }
 
 /**
@@ -168,7 +228,7 @@ export function planCycleDay(
  * Returns null if the plan has no start date to count from.
  */
 export function occurrenceDate(
-  plan: Pick<Plan, "start_date" | "schedule_mode" | "cycle_length">,
+  plan: Pick<Plan, "start_date" | "schedule_mode" | "cycle_length" | "split_lengths" | "split_rest_days" | "weeks" | "repeat_mode" | "duration_days">,
   slot: number,
   occurrence: number,
   startOverride?: string | null,
@@ -179,8 +239,15 @@ export function occurrenceDate(
   const nth = Math.max(1, occurrence) - 1;
 
   if (isCyclePlan(plan)) {
-    // Day 1 IS the start date — no weekday alignment.
-    return localDate(addDays(start, slot - 1 + nth * slotCount(plan)));
+    // Variable splits and interval rests make the period non-uniform. Walk the
+    // bounded template timeline so rest days are never returned as training.
+    let seen = 0;
+    for (let offset = 0; offset < planDurationDays(plan); offset += 1) {
+      if (splitPosition(plan, offset)?.slot !== slot) continue;
+      if (seen === nth) return localDate(addDays(start, offset));
+      seen += 1;
+    }
+    return null;
   }
 
   // Weekly: the slot is an ISO weekday, so find its first occurrence on or
@@ -233,15 +300,20 @@ export interface PlanRun {
  * the plan-level end belongs to the earlier timeline. Inheriting it would end
  * the new run before its first session.
  */
-export function planEnd(plan: Pick<Plan, "end_date">, run?: PlanRun | null): string | null {
+export function planEnd(
+  plan: Pick<Plan, "end_date" | "start_date" | "duration_days" | "weeks" | "schedule_mode" | "cycle_length">,
+  run?: PlanRun | null,
+): string | null {
   if (run?.end_date) return run.end_date;
+  const start = run?.start_date ?? plan.start_date;
+  if (start) return localDate(addDays(parseDate(start), planDurationDays(plan) - 1));
   if (plan.end_date && run?.start_date && run.start_date > plan.end_date) return null;
   return plan.end_date ?? null;
 }
 
 /** Has this plan run past its end date? Never true for an open-ended plan. */
 export function planHasEnded(
-  plan: Pick<Plan, "end_date">,
+  plan: Pick<Plan, "end_date" | "start_date" | "duration_days" | "weeks" | "schedule_mode" | "cycle_length">,
   today: Date | string = new Date(),
   run?: PlanRun | null,
 ): boolean {
@@ -259,11 +331,16 @@ export function planHasEnded(
  * readable in past plans instead of being switched off and forgotten.
  */
 export function planIsLive(
-  plan: Pick<Plan, "end_date" | "is_active" | "is_archived">,
+  plan: Pick<Plan, "end_date" | "start_date" | "duration_days" | "weeks" | "schedule_mode" | "cycle_length" | "is_active" | "is_archived">,
   today: Date | string = new Date(),
   run?: PlanRun | null,
 ): boolean {
-  if (!plan.is_active || plan.is_archived) return false;
+  // `is_active` is only the activation switch for athlete-owned plans. A
+  // coach template is activated by its assignment run, not globally.
+  if ((!run && !plan.is_active) || plan.is_archived) return false;
+  const day = typeof today === "string" ? today : localDate(today);
+  const start = run?.start_date ?? plan.start_date;
+  if (!start || day < start) return false;
   return !planHasEnded(plan, today, run);
 }
 
@@ -285,7 +362,7 @@ export function blockLabel(
  * Monday, but the modulo is the same idea.
  */
 export function planBlockIndex(
-  plan: Pick<Plan, "start_date" | "weeks" | "repeat_mode" | "schedule_mode" | "cycle_length">,
+  plan: Pick<Plan, "start_date" | "weeks" | "repeat_mode" | "schedule_mode" | "cycle_length" | "split_lengths" | "split_rest_days" | "duration_days">,
   date: Date,
   startOverride?: string | null,
 ): number {
@@ -295,7 +372,7 @@ export function planBlockIndex(
   if (!startStr) return 1;
   const offset = daysBetween(startStr, localDate(date));
   if (offset < 0) return 1;
-  return (Math.floor(offset / slotCount(plan)) % blockCount(plan)) + 1;
+  return splitPosition(plan, offset)?.block ?? 1;
 }
 
 /** The plan's days that are in play on `date`, in slot order. */
@@ -335,16 +412,28 @@ export function dayForDate(
  * why "last Tuesday" reasoning cannot be used for one.
  */
 export function daysSinceSlot(
-  plan: Pick<Plan, "start_date" | "schedule_mode" | "cycle_length">,
-  day: Pick<PlanDay, "weekday" | "cycle_day">,
+  plan: Pick<Plan, "start_date" | "schedule_mode" | "cycle_length" | "split_lengths" | "split_rest_days" | "duration_days" | "weeks" | "repeat_mode">,
+  day: Pick<PlanDay, "weekday" | "cycle_day" | "week_index">,
   from: Date,
   startOverride?: string | null,
 ): number | null {
-  const length = slotCount(plan);
   const target = slotIndex(plan, day);
-  const current = isCyclePlan(plan) ? planCycleDay(plan, from, startOverride) : isoWeekday(from);
-  if (current === null) return null;
-  return (current - target + length) % length;
+  if (isCyclePlan(plan)) {
+    const start = startOverride ?? plan.start_date;
+    if (!start) return null;
+    const elapsed = daysBetween(start, localDate(from));
+    if (elapsed < 0) return null;
+    const patternLimit = planSplitLengths(plan).reduce(
+      (total, length, index) => total + length + planSplitRests(plan)[index],
+      0,
+    );
+    for (let back = 0; back <= Math.min(elapsed, Math.max(1, patternLimit)); back += 1) {
+      const position = splitPosition(plan, elapsed - back);
+      if (position?.block === day.week_index && position.slot === target) return back;
+    }
+    return null;
+  }
+  return (isoWeekday(from) - target + 7) % 7;
 }
 
 /** Ordered segments of a day — always at least one. */
@@ -473,7 +562,7 @@ export function hasTrainableContent(bundle: PlanBundle, day: PlanDay): boolean {
 
 /** Empty skeleton for one pass of a plan: a rest day in every slot. */
 export function emptyDays(plan: Plan, weekIndex: number, newId: () => string): PlanDay[] {
-  return planSlots(plan).map((slot) => ({
+  return planSlots(plan, weekIndex).map((slot) => ({
     id: newId(),
     plan_id: plan.id,
     week_index: weekIndex,
@@ -501,9 +590,12 @@ export function restDayPredicate(
   plans: { bundle: PlanBundle; start?: string | null }[],
 ): (date: Date) => boolean {
   if (plans.length === 0) return () => false;
-  return (date: Date) =>
-    plans.some(({ bundle, start }) => {
-      const day = dayForDate(bundle, date, start);
-      return Boolean(day && (day.day_type === "rest" || day.is_optional));
-    });
+  return (date: Date) => {
+    const scheduled = plans
+      .map(({ bundle, start }) => dayForDate(bundle, date, start))
+      .filter((day): day is PlanDay => Boolean(day));
+    // If another active plan requires work on the same date, that required day
+    // wins over an optional/rest day in a companion plan.
+    return scheduled.length > 0 && scheduled.every((day) => day.day_type === "rest" || day.is_optional);
+  };
 }

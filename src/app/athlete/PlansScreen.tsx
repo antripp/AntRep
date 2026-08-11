@@ -1,18 +1,21 @@
 /** Plans — sync what a coach assigned, or build your own. */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useDraft } from "../usePersisted";
 import { api } from "../../data";
 import { makePlan, makePreset, newId } from "../../data/factories";
 import type { AssignedPlan, PlanBundle, Session } from "../../data/types";
-import { formatShortDate, localDate, startOfWeek } from "../../domain/dates";
+import { addDays, formatShortDate, localDate, parseDate } from "../../domain/dates";
 import {
   blockCount,
   emptyDays,
   isCyclePlan,
   planEnd,
+  planDurationDays,
   planIsLive,
   planSlots,
+  planSplitLengths,
+  planSplitRests,
   resolveSegments,
   slotIndex,
   slotLabel,
@@ -33,6 +36,9 @@ import {
   SectionHeader,
   Segmented,
   Spinner,
+  Field,
+  Sheet,
+  TextField,
 } from "../../ui/kit";
 import { PlanDetail } from "../plans/PlanDetail";
 import { PlanEditor } from "../plans/PlanEditor";
@@ -40,7 +46,13 @@ import { useWorkspace } from "../workspace";
 
 type PlanTab = "active" | "coaches" | "mine" | "past";
 
-export default function PlansScreen({ onBatchLog }: { onBatchLog: (planId: string) => void }) {
+export default function PlansScreen({
+  onBatchLog,
+  context = "athlete",
+}: {
+  onBatchLog: (planId: string) => void;
+  context?: "athlete" | "coach-training";
+}) {
   const { profile, workspace, sessions, logs, reload, showToast } = useWorkspace();
   const loggedIds = loggedSessionIds(logs);
   // A plan is a lot of typing. Keep it across reloads, per profile, and drop it
@@ -51,6 +63,7 @@ export default function PlansScreen({ onBatchLog }: { onBatchLog: (planId: strin
   const [viewing, setViewing] = useState<PlanBundle | null>(null);
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState<PlanTab>("active");
+  const [activating, setActivating] = useState<PlanBundle | null>(null);
 
   // Say so when work comes back, or a restored draft looks like a bug.
   const announced = useRef(false);
@@ -96,14 +109,17 @@ export default function PlansScreen({ onBatchLog }: { onBatchLog: (planId: strin
     (b) => !b.plan.is_archived && planIsLive(b.plan, today),
   );
   const pastOwn = workspace.ownPlans.filter(
-    (b) => !b.plan.is_archived && !planIsLive(b.plan, today),
+    (b) => !b.plan.is_archived && b.plan.is_active && Boolean(b.plan.start_date) && !planIsLive(b.plan, today),
   );
-  const currentAssigned = workspace.assigned.filter(({ bundle, assignment }) =>
-    planIsLive(bundle.plan, today, assignment),
+  const ownTemplates = workspace.ownPlans.filter(
+    (b) => !b.plan.is_archived && (!b.plan.is_active || !b.plan.start_date),
+  );
+  const currentAssigned = workspace.assigned.filter(({ assignment }) =>
+    assignment.status !== "declined" && (!assignment.end_date || assignment.end_date >= today),
   );
   const activeAssigned = currentAssigned.filter(({ assignment }) => assignment.status === "active");
-  const pastAssigned = workspace.assigned.filter(({ bundle, assignment }) =>
-    !planIsLive(bundle.plan, today, assignment),
+  const pastAssigned = workspace.assigned.filter(({ assignment }) =>
+    assignment.status === "declined" || Boolean(assignment.end_date && assignment.end_date < today),
   );
   const coachGroups = useMemo(() => {
     const groups = new Map<string, { name: string; plans: AssignedPlan[] }>();
@@ -120,8 +136,9 @@ export default function PlansScreen({ onBatchLog }: { onBatchLog: (planId: strin
   function createPlan() {
     const plan = makePlan(profile.id, {
       name: "My plan",
-      start_date: localDate(startOfWeek()),
-      is_active: workspace.ownPlans.length === 0,
+      start_date: null,
+      end_date: null,
+      is_active: false,
     });
     setDraft({ plan, days: emptyDays(plan, 1, newId), segments: [], exercises: [] });
   }
@@ -150,9 +167,29 @@ export default function PlansScreen({ onBatchLog }: { onBatchLog: (planId: strin
     }
   }
 
+  async function activateOwnPlan(bundle: PlanBundle, startDate: string) {
+    try {
+      const endDate = localDate(addDays(parseDate(startDate), planDurationDays(bundle.plan) - 1));
+      await api.savePlan({
+        ...bundle,
+        plan: { ...bundle.plan, start_date: startDate, end_date: endDate, is_active: true, is_archived: false },
+      });
+      setActivating(null);
+      await reload();
+      showToast(startDate === localDate() ? `${bundle.plan.name} is active now` : `${bundle.plan.name} scheduled for ${formatShortDate(startDate)}`);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Couldn't activate that plan.");
+    }
+  }
+
   async function syncPlan(assignmentId: string, status: "active" | "declined") {
     try {
-      await api.setAssignmentStatus(assignmentId, status);
+      const assignment = workspace.assigned.find((item) => item.assignment.id === assignmentId)?.assignment;
+      await api.setAssignmentStatus(
+        assignmentId,
+        status,
+        status === "active" && !assignment?.start_date ? localDate() : undefined,
+      );
       await reload();
       showToast(status === "active" ? "Plan synced — it's on your Home now" : "Plan declined");
     } catch (error) {
@@ -228,7 +265,7 @@ export default function PlansScreen({ onBatchLog }: { onBatchLog: (planId: strin
 
   return (
     <>
-      <ScreenTitle title="Plans" />
+      <ScreenTitle title={context === "coach-training" ? "My training plans" : "Plans"} />
 
       <div className="mb-4">
         <Segmented
@@ -236,45 +273,64 @@ export default function PlansScreen({ onBatchLog }: { onBatchLog: (planId: strin
           onChange={setTab}
           options={[
             { value: "active", label: `Active (${activeAssigned.length + runningOwn.length})` },
-            { value: "coaches", label: "Coaches" },
-            { value: "mine", label: "My plans" },
-            { value: "past", label: `Past (${pastAssigned.length + pastOwn.length})` },
+            { value: "coaches", label: context === "coach-training" ? "Self-coached" : "By coach" },
+            { value: "mine", label: context === "coach-training" ? "My outlines" : "Created by me" },
+            { value: "past", label: `History (${pastAssigned.length + pastOwn.length})` },
           ]}
         />
       </div>
 
       {tab === "active" && (
         <>
-          <SectionHeader title="Current plans" />
           {activeAssigned.length === 0 && runningOwn.length === 0 ? (
             <EmptyState
               title="No active plans"
               subtitle="Sync a coach plan or activate one of your own plans."
             />
           ) : (
-            <div className="space-y-2">
-              {activeAssigned.map((assigned) => (
-                <CoachPlanCard
-                  key={assigned.assignment.id}
-                  assigned={assigned}
-                  today={today}
-                  sessions={sessions}
-                  loggedIds={loggedIds}
-                  onView={() => setViewing(assigned.bundle)}
-                  onSync={syncPlan}
-                  onBatchLog={onBatchLog}
-                />
-              ))}
-              {runningOwn.map((bundle) => (
-                <OwnPlanCard
-                  key={bundle.plan.id}
-                  bundle={bundle}
-                  sessions={sessions}
-                  loggedIds={loggedIds}
-                  onView={() => setViewing(bundle)}
-                  onBatchLog={onBatchLog}
-                />
-              ))}
+            <div className="space-y-4">
+              {activeAssigned.length > 0 && (
+                <PlanListGroup
+                  title={context === "coach-training" ? "Self-assigned" : "From your coaches"}
+                  subtitle={context === "coach-training" ? "Coach outlines assigned to your training profile" : "Plans prescribed and progressed by a coach"}
+                  icon={context === "coach-training" ? "🪞" : "👥"}
+                  tint="var(--t-accent)"
+                  count={activeAssigned.length}
+                >
+                  {activeAssigned.map((assigned) => (
+                    <CoachPlanCard
+                      key={assigned.assignment.id}
+                      assigned={assigned}
+                      today={today}
+                      sessions={sessions}
+                      loggedIds={loggedIds}
+                      onView={() => setViewing(assigned.bundle)}
+                      onSync={syncPlan}
+                      onBatchLog={onBatchLog}
+                    />
+                  ))}
+                </PlanListGroup>
+              )}
+              {runningOwn.length > 0 && (
+                <PlanListGroup
+                  title={context === "coach-training" ? "Athlete-side plans" : "Created by you"}
+                  subtitle="Plans owned and activated from this training profile"
+                  icon="🗓️"
+                  tint="var(--color-done)"
+                  count={runningOwn.length}
+                >
+                  {runningOwn.map((bundle) => (
+                    <OwnPlanCard
+                      key={bundle.plan.id}
+                      bundle={bundle}
+                      sessions={sessions}
+                      loggedIds={loggedIds}
+                      onView={() => setViewing(bundle)}
+                      onBatchLog={onBatchLog}
+                    />
+                  ))}
+                </PlanListGroup>
+              )}
             </div>
           )}
         </>
@@ -288,10 +344,16 @@ export default function PlansScreen({ onBatchLog }: { onBatchLog: (planId: strin
               subtitle="Link a coach in Settings, then their assigned plans appear here under their name."
             />
           ) : (
-            coachGroups.map((group) => (
-              <div key={group.id}>
-                <SectionHeader title={group.name} />
-                <div className="space-y-2">
+            <div className="space-y-4">
+              {coachGroups.map((group) => (
+                <PlanListGroup
+                  key={group.id}
+                  title={context === "coach-training" ? "Assigned by you" : group.name}
+                  subtitle={context === "coach-training" ? "Your coach outlines running on your own athlete profile" : `Plans and progression owned by ${group.name}`}
+                  icon={context === "coach-training" ? "🪞" : "🧑‍🏫"}
+                  tint="var(--t-accent)"
+                  count={group.plans.length}
+                >
                   {group.plans.map((assigned) => (
                     <CoachPlanCard
                       key={assigned.assignment.id}
@@ -304,9 +366,9 @@ export default function PlansScreen({ onBatchLog }: { onBatchLog: (planId: strin
                       onBatchLog={onBatchLog}
                     />
                   ))}
-                </div>
-              </div>
-            ))
+                </PlanListGroup>
+              ))}
+            </div>
           )}
         </>
       )}
@@ -314,22 +376,28 @@ export default function PlansScreen({ onBatchLog }: { onBatchLog: (planId: strin
       {tab === "mine" && (
         <>
           <SectionHeader
-            title="My current plans"
+            title={context === "coach-training" ? "Training-profile outlines" : "Your plan outlines"}
             action={
               <Button size="sm" variant="ghost" onClick={createPlan}>
                 <Icon.plus className="h-4 w-4" /> New
               </Button>
             }
           />
-          {runningOwn.length === 0 ? (
+          {runningOwn.length === 0 && ownTemplates.length === 0 ? (
             <EmptyState
               title="Build your own plan"
               subtitle="Set up your week, add exercises, and log against it — with or without a coach."
               action={<Button onClick={createPlan}>Create a plan</Button>}
             />
           ) : (
-            <div className="space-y-2">
-              {runningOwn.map((bundle) => (
+            <PlanListGroup
+              title={context === "coach-training" ? "Owned by your athlete profile" : "Created by you"}
+              subtitle="Reusable outlines you can activate independently"
+              icon="✍️"
+              tint="var(--color-done)"
+              count={runningOwn.length + ownTemplates.length}
+            >
+              {[...runningOwn, ...ownTemplates].map((bundle) => (
                 <OwnPlanCard
                   key={bundle.plan.id}
                   bundle={bundle}
@@ -337,21 +405,24 @@ export default function PlansScreen({ onBatchLog }: { onBatchLog: (planId: strin
                   loggedIds={loggedIds}
                   onView={() => setViewing(bundle)}
                   onBatchLog={onBatchLog}
+                  inactive={!bundle.plan.is_active || !bundle.plan.start_date}
+                  onActivate={() => setActivating(bundle)}
                 />
               ))}
-            </div>
+            </PlanListGroup>
           )}
         </>
       )}
 
       {tab === "past" && (
         <>
-          <SectionHeader title="Past plans" />
+          <SectionHeader title="Plan history" />
           {pastAssigned.length === 0 && pastOwn.length === 0 ? (
             <EmptyState title="No past plans" subtitle="Plans appear here after they finish or are switched off." />
           ) : (
-            <div className="space-y-2">
-              {pastAssigned.map((assigned) => (
+            <div className="space-y-4">
+              {pastAssigned.length > 0 && <PlanListGroup title="Previously assigned" subtitle="Finished or stopped coach plans" icon="📦" tint="var(--t-muted)" count={pastAssigned.length}>
+                {pastAssigned.map((assigned) => (
                 <CoachPlanCard
                   key={assigned.assignment.id}
                   assigned={assigned}
@@ -362,8 +433,10 @@ export default function PlansScreen({ onBatchLog }: { onBatchLog: (planId: strin
                   onSync={syncPlan}
                   onBatchLog={onBatchLog}
                 />
-              ))}
-              {pastOwn.map((bundle) => (
+                ))}
+              </PlanListGroup>}
+              {pastOwn.length > 0 && <PlanListGroup title="Your finished plans" subtitle="Plans previously activated by you" icon="🗃️" tint="var(--t-muted)" count={pastOwn.length}>
+                {pastOwn.map((bundle) => (
                 <OwnPlanCard
                   key={bundle.plan.id}
                   bundle={bundle}
@@ -374,12 +447,58 @@ export default function PlansScreen({ onBatchLog }: { onBatchLog: (planId: strin
                   onBatchLog={onBatchLog}
                   onRestart={() => restartPlan(bundle)}
                 />
-              ))}
+                ))}
+              </PlanListGroup>}
             </div>
           )}
         </>
       )}
+
+
+      {activating && (
+        <ActivatePlanSheet
+          bundle={activating}
+          onClose={() => setActivating(null)}
+          onActivate={(startDate) => activateOwnPlan(activating, startDate)}
+        />
+      )}
     </>
+  );
+}
+
+/** A role-labelled collection whose plans remain separate, scannable cards. */
+export function PlanListGroup({
+  title,
+  subtitle,
+  icon,
+  tint,
+  count,
+  children,
+}: {
+  title: string;
+  subtitle: string;
+  icon: string;
+  tint: string;
+  count: number;
+  children: ReactNode;
+}) {
+  return (
+    <section className="space-y-3">
+      <div
+        className="flex items-center gap-3 rounded-[1.35rem] border border-line px-4 py-3 shadow-[0_1px_0_0_rgba(0,0,0,0.04)]"
+        style={{ background: `${tint}12` }}
+      >
+        <IconTile emoji={icon} tint={tint} size={36} />
+        <div className="min-w-0 flex-1">
+          <h2 className="text-sm font-black text-ink">{title}</h2>
+          <p className="truncate text-[11px] font-semibold text-muted">{subtitle}</p>
+        </div>
+        <Pill tint={tint}>{plural(count, "plan")}</Pill>
+      </div>
+      <div className="space-y-3 [&>.ui-card]:overflow-hidden [&>.ui-card]:border-line [&>.ui-card]:shadow-[0_2px_8px_rgba(0,0,0,0.035)]">
+        {children}
+      </div>
+    </section>
   );
 }
 
@@ -402,6 +521,8 @@ function CoachPlanCard({
 }) {
   const { bundle, assignment, coach } = assigned;
   const live = planIsLive(bundle.plan, today, assignment);
+  const upcoming = Boolean(assignment.start_date && assignment.start_date > today);
+  const waiting = assignment.status === "offered" || !assignment.start_date;
   return (
     <Card>
       <div className="flex items-center gap-3">
@@ -412,13 +533,17 @@ function CoachPlanCard({
             {coach?.display_name ?? "Coach"} · {planShape(bundle)} ·{" "}
             {live
               ? plural(bundle.exercises.length, "exercise")
-              : `ended ${formatShortDate(planEnd(bundle.plan, assignment) ?? bundle.plan.start_date)}`}
+              : upcoming
+                ? `starts ${formatShortDate(assignment.start_date!)}`
+                : waiting
+                  ? "waiting for you to activate"
+                  : `ended ${formatShortDate(planEnd(bundle.plan, assignment) ?? today)}`}
           </p>
         </button>
-        {live && assignment.status !== "active" ? (
+        {waiting ? (
           <Button size="sm" onClick={() => onSync(assignment.id, "active")}>Sync</Button>
         ) : (
-          <Pill tint={live ? "var(--t-accent)" : "var(--t-muted)"}>{live ? "Active" : "Past"}</Pill>
+          <Pill tint={live ? "var(--t-accent)" : "var(--t-muted)"}>{live ? "Active" : upcoming ? "Scheduled" : "Past"}</Pill>
         )}
       </div>
       <WeekStrip bundle={bundle} />
@@ -436,7 +561,7 @@ function CoachPlanCard({
             <Icon.edit className="h-3.5 w-3.5" /> Batch log
           </Button>
         )}
-        {live && assignment.status === "active" && (
+        {(live || upcoming) && assignment.status === "active" && (
           <button className="ml-auto text-xs font-black text-muted" onClick={() => onSync(assignment.id, "declined")}>
             Stop following
           </button>
@@ -454,6 +579,8 @@ function OwnPlanCard({
   onView,
   onBatchLog,
   onRestart,
+  inactive = false,
+  onActivate,
 }: {
   bundle: PlanBundle;
   past?: boolean;
@@ -462,11 +589,13 @@ function OwnPlanCard({
   onView: () => void;
   onBatchLog: (planId: string) => void;
   onRestart?: () => void;
+  inactive?: boolean;
+  onActivate?: () => void;
 }) {
   return (
     <Card>
       <div className="flex items-center gap-3">
-        <IconTile emoji={past ? "📦" : "🗓️"} tint={past ? "var(--t-muted)" : "var(--t-accent)"} />
+        <IconTile emoji={past ? "📦" : "🗓️"} tint={past || inactive ? "var(--t-muted)" : "var(--t-accent)"} />
         <button className="min-w-0 flex-1 text-left" onClick={onView}>
           <p className="truncate text-[15px] font-black text-ink">{bundle.plan.name}</p>
           <p className="truncate text-xs font-bold text-muted">
@@ -474,18 +603,67 @@ function OwnPlanCard({
             {bundle.plan.end_date && ` · ended ${formatShortDate(bundle.plan.end_date)}`}
           </p>
         </button>
-        <Pill tint={past ? "var(--t-muted)" : "var(--t-accent)"}>{past ? "Past" : "Active"}</Pill>
+        <Pill tint={past || inactive ? "var(--t-muted)" : "var(--t-accent)"}>{past ? "Past" : inactive ? "Template" : "Active"}</Pill>
       </div>
       {!past && <WeekStrip bundle={bundle} />}
       <PreservedLogWarning bundle={bundle} sessions={sessions} loggedIds={loggedIds} />
       <div className="mt-3 flex flex-wrap gap-2">
         <Button size="sm" variant="secondary" onClick={onView}>View plan</Button>
-        <Button size="sm" variant="secondary" onClick={() => onBatchLog(bundle.plan.id)}>
+        {!inactive && <Button size="sm" variant="secondary" onClick={() => onBatchLog(bundle.plan.id)}>
           <Icon.edit className="h-3.5 w-3.5" /> Batch log
-        </Button>
+        </Button>}
+        {onActivate && inactive && <Button size="sm" onClick={onActivate}>Activate</Button>}
         {onRestart && <Button size="sm" variant="secondary" onClick={onRestart}>Restart</Button>}
       </div>
     </Card>
+  );
+}
+
+function ActivatePlanSheet({
+  bundle,
+  onClose,
+  onActivate,
+}: {
+  bundle: PlanBundle;
+  onClose: () => void;
+  onActivate: (startDate: string) => Promise<void>;
+}) {
+  const [mode, setMode] = useState<"now" | "scheduled">("now");
+  const [start, setStart] = useState(localDate());
+  const effectiveStart = mode === "now" ? localDate() : start;
+  const end = effectiveStart
+    ? localDate(addDays(parseDate(effectiveStart), planDurationDays(bundle.plan) - 1))
+    : null;
+
+  return (
+    <Sheet open onClose={onClose} title={`Activate ${bundle.plan.name}`}>
+      <div className="space-y-4">
+        <Segmented
+          value={mode}
+          onChange={setMode}
+          options={[
+            { value: "now", label: "Switch now" },
+            { value: "scheduled", label: "Start by date" },
+          ]}
+        />
+        {mode === "scheduled" && (
+          <Field label="Start date" hint={end ? `Automatically ends ${formatShortDate(end)}` : undefined}>
+            <TextField type="date" value={start} onChange={(event) => setStart(event.target.value)} />
+          </Field>
+        )}
+        {mode === "now" && (
+          <Card>
+            <p className="text-sm font-black text-ink">Starts today</p>
+            <p className="mt-1 text-xs font-semibold text-muted">
+              {planDurationDays(bundle.plan)} days · ends {end ? formatShortDate(end) : "automatically"}
+            </p>
+          </Card>
+        )}
+        <Button full disabled={!effectiveStart} onClick={() => onActivate(effectiveStart)}>
+          {mode === "now" ? "Make active now" : "Schedule activation"}
+        </Button>
+      </div>
+    </Sheet>
   );
 }
 
@@ -525,46 +703,94 @@ function PreservedLogWarning({
 export function planShape(bundle: PlanBundle): string {
   const blocks = blockCount(bundle.plan);
   if (isCyclePlan(bundle.plan)) {
-    const base = `${bundle.plan.cycle_length}-day split`;
-    return blocks > 1 ? `${base} × ${blocks}` : base;
+    const lengths = planSplitLengths(bundle.plan);
+    const rests = planSplitRests(bundle.plan);
+    const base = lengths
+      .map((length, index) => `${length} day${length === 1 ? "" : "s"}${rests[index] ? ` + ${rests[index]} rest` : ""}`)
+      .join(" / ");
+    // The list card describes the actual split pattern. Overall duration is
+    // assignment metadata and belongs on the detail/customization screen.
+    return blocks > 1 ? `${blocks} splits · ${base}` : `${base} split`;
   }
-  return plural(blocks, "week");
+  return plural(bundle.plan.weeks, "week");
 }
 
 /**
- * One pass through the plan at a glance: seven weekdays, or every day of the
- * split. A long cycle scrolls sideways rather than squeezing the tiles flat.
+ * The schedule at a glance. Weekly plans show seven weekdays; custom plans
+ * show every main split as a horizontally scrollable carousel.
  */
 export function WeekStrip({ bundle }: { bundle: PlanBundle }) {
   const cycle = isCyclePlan(bundle.plan);
-  // The first block: this strip is a shape preview, not the whole programme.
-  const pool = bundle.days.filter(
-    (d) => (cycle ? d.cycle_day !== null : d.cycle_day === null) && d.week_index === 1,
-  );
+  if (cycle) {
+    const lengths = planSplitLengths(bundle.plan);
+    const rests = planSplitRests(bundle.plan);
+    return (
+      <div className="-mx-1 mt-3 flex snap-x snap-mandatory gap-2 overflow-x-auto px-1 pb-2">
+        {lengths.map((length, index) => {
+          const block = index + 1;
+          const slots = planSlots(bundle.plan, block);
+          const ownPool = bundle.days.filter(
+            (day) => day.cycle_day !== null && day.week_index === block,
+          );
+          const fallbackPool = bundle.days.filter(
+            (day) => day.cycle_day !== null && day.week_index === 1,
+          );
+          const pool = ownPool.length > 0 ? ownPool : fallbackPool;
+          return (
+            <div key={block} className="w-[17rem] shrink-0 snap-start rounded-2xl border border-line bg-inset/60 p-2.5">
+              <div className="mb-2 flex items-center gap-2">
+                <p className="min-w-0 flex-1 text-[11px] font-black uppercase tracking-wide text-ink">Split {block}</p>
+                <Pill tint="var(--t-accent)">{plural(length, "day")}</Pill>
+                {rests[index] > 0 && <Pill tint="var(--t-muted)">+ {plural(rests[index], "rest day")}</Pill>}
+              </div>
+              <div className="flex gap-1 overflow-x-auto pb-0.5">
+                {slots.map((slot) => {
+                  const day = pool.find((candidate) => slotIndex(bundle.plan, candidate) === slot);
+                  return <PreviewDay key={slot} bundle={bundle} day={day} slot={slot} compact />;
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  const pool = bundle.days.filter((day) => day.cycle_day === null && day.week_index === 1);
   const slots = planSlots(bundle.plan);
-  const scrolls = slots.length > 7;
 
   return (
-    <div className={`mt-3 flex gap-1 ${scrolls ? "-mx-1 overflow-x-auto px-1 pb-1" : ""}`}>
+    <div className="mt-3 flex gap-1">
       {slots.map((slot) => {
         const day = pool.find((d) => slotIndex(bundle.plan, d) === slot);
-        const type = day?.day_type ?? "rest";
-        const count = day ? resolveSegments(bundle, day).reduce((t, s) => t + s.exercises.length, 0) : 0;
-        return (
-          <div
-            key={slot}
-            className={`rounded-xl px-1 py-1.5 text-center ${scrolls ? "w-9 shrink-0" : "flex-1"}`}
-            style={{ background: type === "rest" ? "var(--t-inset)" : `${typeColor(type, day?.color_hex)}22` }}
-            title={day?.title || "Rest"}
-          >
-            <p className="text-[9px] font-black uppercase text-muted">
-              {slotLabel(bundle.plan, slot, true)}
-            </p>
-            <p className="text-sm leading-tight">{typeIcon(type, day?.icon_name)}</p>
-            {count > 0 && <p className="text-[9px] font-bold text-muted">{count}</p>}
-          </div>
-        );
+        return <PreviewDay key={slot} bundle={bundle} day={day} slot={slot} />;
       })}
+    </div>
+  );
+}
+
+function PreviewDay({
+  bundle,
+  day,
+  slot,
+  compact = false,
+}: {
+  bundle: PlanBundle;
+  day: PlanBundle["days"][number] | undefined;
+  slot: number;
+  compact?: boolean;
+}) {
+  const type = day?.day_type ?? "rest";
+  const count = day ? resolveSegments(bundle, day).reduce((total, segment) => total + segment.exercises.length, 0) : 0;
+  return (
+    <div
+      className={`rounded-xl px-1 py-1.5 text-center ${compact ? "w-9 shrink-0" : "flex-1"}`}
+      style={{ background: type === "rest" ? "var(--t-inset)" : `${typeColor(type, day?.color_hex)}22` }}
+      title={day?.title || "Rest"}
+    >
+      <p className="text-[9px] font-black uppercase text-muted">{slotLabel(bundle.plan, slot, true)}</p>
+      <p className="text-sm leading-tight">{typeIcon(type, day?.icon_name)}</p>
+      {count > 0 && <p className="text-[9px] font-bold text-muted">{count}</p>}
     </div>
   );
 }

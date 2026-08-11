@@ -389,7 +389,7 @@ export function RpeSlider({
   return (
     <div className="w-full">
       <div className="flex items-baseline gap-2">
-        <span className="text-[10px] font-black uppercase tracking-wide text-muted">RPE</span>
+        <span className="text-[10px] font-black uppercase tracking-wide text-muted">Effort</span>
         <span
           className="text-[15px] font-black tabular-nums"
           style={{ color: rated ? color : "var(--t-muted)" }}
@@ -424,7 +424,7 @@ export function RpeSlider({
           <div
             className="absolute top-1/2 h-3.5 w-0.5 -translate-y-1/2 rounded-full bg-ink/40"
             style={{ left: `${targetPct}%` }}
-            title={`Target RPE ${target}`}
+            title={`Target effort ${target} out of 10`}
           />
         )}
         <input
@@ -433,8 +433,8 @@ export function RpeSlider({
           max={MAX}
           step={0.5}
           value={shown}
-          aria-label="RPE"
-          aria-valuetext={rated ? `RPE ${shown}, ${meaning}` : "Not rated"}
+          aria-label="Effort score"
+          aria-valuetext={rated ? `Effort ${shown} out of 10, ${meaning}` : "Not rated"}
           onChange={(e) => onChange(Number(e.target.value))}
           className="rpe-range absolute inset-0 w-full cursor-pointer appearance-none bg-transparent"
           style={{ ["--rpe-thumb" as string]: rated ? color : "var(--t-muted)" }}
@@ -534,7 +534,7 @@ export function SettingRow({
 export function ProgressRing({
   ratio,
   size = 72,
-  stroke = 9,
+  stroke = 6,
   color = "var(--t-accent)",
   label,
   sublabel,

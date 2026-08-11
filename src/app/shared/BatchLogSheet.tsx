@@ -497,7 +497,7 @@ export function BatchLogPage({
                     <th className="px-2 py-2">Incline</th>
                     <th className="px-2 py-2">Pace</th>
                     <th className="px-2 py-2">Custom / note</th>
-                    <th className="px-2 py-2">RPE</th>
+                    <th className="px-2 py-2">Effort (0–10)</th>
                     <th className="px-2 py-2" />
                   </tr>
                 </thead>
@@ -777,7 +777,15 @@ function DateInput({ label, value, min, max, onChange }: { label: string; value:
   return (
     <label className="text-[10px] font-black uppercase tracking-wide text-muted">
       {label}
-      <input type="date" value={value} min={min} max={max} onChange={(event) => onChange(event.target.value)} className="mt-1 h-10 w-full rounded-xl border border-line bg-surface px-3 text-sm font-bold text-ink" />
+      <input
+        type="date"
+        value={value}
+        min={min}
+        max={max}
+        onInput={(event) => onChange(event.currentTarget.value)}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-1 h-10 w-full rounded-xl border border-line bg-surface px-3 text-sm font-bold text-ink"
+      />
     </label>
   );
 }

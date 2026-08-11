@@ -97,6 +97,10 @@ export default function AthleteDetailScreen({
 
   const today = new Date();
   const todayStr = localDate(today);
+  const currentSessions = useMemo(
+    () => (training?.sessions ?? []).filter((session) => session.date <= todayStr),
+    [training, todayStr],
+  );
   const todaySegments = useMemo(() => {
     if (!training) return [];
     // Only plans the athlete is actually following drive "today".
@@ -123,9 +127,17 @@ export default function AthleteDetailScreen({
   const level = levelFor(athlete.profile.total_xp);
 
   const assignmentsForAthlete = workspace.assignments.filter((a) => a.athlete_id === athlete.profile.id);
+  const otherCoachAssignments = (training?.assignments ?? []).filter((assignment) => {
+    const bundle = training?.plans.find((plan) => plan.plan.id === assignment.plan_id);
+    return Boolean(
+      bundle &&
+      bundle.plan.owner_id !== coach.id &&
+      bundle.plan.owner_id !== athlete.profile.id,
+    );
+  });
 
   async function assign(planId: string) {
-    await api.assignPlan(planId, athlete.profile.id);
+    await api.assignPlan(planId, athlete.profile.id, { activation_mode: "manual" });
     await Promise.all([onChanged(), load()]);
     onToast("Plan sent — the athlete syncs it from their Plans tab");
   }
@@ -180,7 +192,7 @@ export default function AthleteDetailScreen({
           const assignment = training.assignments.find((item) => item.plan_id === bundle.plan.id);
           return {
             bundle,
-            start: assignment?.start_date ?? bundle.plan.start_date,
+            start: assignment?.start_date ?? bundle.plan.start_date ?? todayStr,
             end: planEnd(bundle.plan, assignment),
           };
         })}
@@ -193,11 +205,46 @@ export default function AthleteDetailScreen({
   }
 
   if (viewingPlan) {
+    const ownedAssignment = workspace.assignments.find(
+      (assignment) =>
+        assignment.plan_id === viewingPlan.plan.id && assignment.athlete_id === athlete.profile.id,
+    );
+    const ownedTemplate = workspace.plans.find((bundle) => bundle.plan.id === viewingPlan.plan.id);
     return (
       <PlanDetail
         bundle={viewingPlan}
         subtitle={`Followed by ${athlete.profile.display_name || "this athlete"}`}
         onClose={() => setViewingPlan(null)}
+        footer={ownedAssignment && ownedTemplate ? (
+          <Button
+            full
+            onClick={() => {
+              setCustomizing({ template: ownedTemplate, assignment: ownedAssignment });
+              setViewingPlan(null);
+            }}
+          >
+            <Icon.edit className="h-4 w-4" /> Customize for {athlete.profile.display_name || "athlete"}
+          </Button>
+        ) : undefined}
+      />
+    );
+  }
+
+  if (customizing && training) {
+    return (
+      <AthletePlanCustomizer
+        open
+        athleteName={athlete.profile.display_name || "athlete"}
+        template={customizing.template}
+        assignment={customizing.assignment}
+        coachId={coach.id}
+        remarks={training.remarks}
+        loggedSessions={training.sessions.filter((session) => loggedIds.has(session.id))}
+        onClose={() => setCustomizing(null)}
+        onSaved={async () => {
+          await Promise.all([onChanged(), load()]);
+        }}
+        onToast={onToast}
       />
     );
   }
@@ -232,26 +279,11 @@ export default function AthleteDetailScreen({
           options={[
             { value: "overview", label: "Overview" },
             { value: "progress", label: "Progress" },
-            { value: "assign", label: "Assign" },
+            { value: "assign", label: "Plans" },
             { value: "coaching", label: "Coaching" },
           ]}
         />
       </div>
-
-      <button
-        type="button"
-        onClick={() => setShowBatch(true)}
-        className="mb-4 flex w-full items-center gap-3 rounded-2xl border border-accent/30 bg-accent/10 px-4 py-3 text-left transition active:scale-[0.99]"
-      >
-        <Icon.edit className="h-5 w-5 shrink-0 text-accent" />
-        <span className="min-w-0 flex-1">
-          <span className="block text-sm font-black text-ink">Log or edit athlete data</span>
-          <span className="block text-xs font-semibold text-muted">
-            Enter today's work or correct existing planned sessions for {athlete.profile.display_name || "this athlete"}.
-          </span>
-        </span>
-        <Icon.chevron className="h-4 w-4 shrink-0 text-accent" />
-      </button>
 
       {!training ? (
         <div className="flex justify-center py-16">
@@ -298,7 +330,7 @@ export default function AthleteDetailScreen({
               )}
 
               <SectionHeader title="Latest sessions" />
-              <SessionList sessions={training.sessions} logs={training.logs} limit={4} />
+              <SessionList sessions={currentSessions} logs={training.logs} limit={4} />
             </>
           )}
 
@@ -315,6 +347,16 @@ export default function AthleteDetailScreen({
                 clearAthleteExercise(session.id, exerciseName)
               }
               onEditSession={setEditingSession}
+              planRuns={training.plans.flatMap((bundle) => {
+                const assignment = training.assignments.find((item) => item.plan_id === bundle.plan.id);
+                const start = assignment?.start_date ?? bundle.plan.start_date;
+                return start ? [{ bundle, start, end: planEnd(bundle.plan, assignment) }] : [];
+              })}
+              athleteId={athlete.profile.id}
+              viewerId={coach.id}
+              goals={training.goals}
+              onSaveGoal={async (goal) => { await api.saveProgressGoal(goal); await load(); }}
+              onDeleteGoal={async (id) => { await api.deleteProgressGoal(id); await load(); }}
             />
           )}
 
@@ -391,7 +433,7 @@ export default function AthleteDetailScreen({
                             <p className="text-xs font-bold text-muted">
                               {!planIsLive(bundle.plan, todayStr, assignment)
                                 ? `Finished ${formatShortDate(
-                                    planEnd(bundle.plan, assignment) ?? bundle.plan.start_date,
+                                    planEnd(bundle.plan, assignment) ?? assignment.start_date ?? todayStr,
                                   )}`
                                 : assignment.status === "active"
                                   ? `Synced ${assignment.accepted_at ? formatShortDate(assignment.accepted_at.slice(0, 10)) : ""}`
@@ -428,6 +470,37 @@ export default function AthleteDetailScreen({
                     );
                   })}
                 </div>
+              )}
+
+              {otherCoachAssignments.length > 0 && (
+                <>
+                  <SectionHeader title="Assigned by other coaches" />
+                  <div className="space-y-2">
+                    {otherCoachAssignments.map((assignment) => {
+                      const bundle = training.plans.find((plan) => plan.plan.id === assignment.plan_id);
+                      if (!bundle) return null;
+                      const owner = training.planOwners.find((profile) => profile.id === bundle.plan.owner_id);
+                      return (
+                        <Card key={assignment.id} onClick={() => setViewingPlan(bundle)}>
+                          <div className="flex items-center gap-3">
+                            <IconTile emoji="👀" tint="var(--t-muted)" />
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-black text-ink">{bundle.plan.name}</p>
+                              <p className="text-xs font-bold text-muted">
+                                {owner?.display_name || "Another coach"} · {assignment.status === "active" ? "active" : assignment.status}
+                              </p>
+                            </div>
+                            <Pill tint="var(--t-muted)">Read only</Pill>
+                          </div>
+                          <WeekStrip bundle={bundle} />
+                          <p className="mt-2 text-[10px] font-semibold text-muted">
+                            Visible because you coach {athlete.profile.display_name || "this athlete"}. Only the plan owner can change its schedule, workload, or remarks.
+                          </p>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                </>
               )}
 
               <SectionHeader title="Send another plan" />
@@ -551,20 +624,6 @@ export default function AthleteDetailScreen({
         onToast={onToast}
       />
 
-      {customizing && (
-        <AthletePlanCustomizer
-          open
-          athleteName={athlete.profile.display_name || "athlete"}
-          template={customizing.template}
-          assignment={customizing.assignment}
-          loggedSessions={(training?.sessions ?? []).filter((session) => loggedIds.has(session.id))}
-          onClose={() => setCustomizing(null)}
-          onSaved={async () => {
-            await Promise.all([onChanged(), load()]);
-          }}
-          onToast={onToast}
-        />
-      )}
     </>
   );
 }
@@ -583,16 +642,25 @@ function CoachOverview({
   streak: number;
   today: Date;
 }) {
+  const cutoff = localDate(today);
+  const currentSessions = useMemo(
+    () => training.sessions.filter((session) => session.date <= cutoff),
+    [training.sessions, cutoff],
+  );
   const plans = useMemo(
     () =>
       training.plans
-        .filter((bundle) => bundle.plan.is_active && !bundle.plan.is_archived)
         .map((bundle) => ({
           bundle,
+          assignment: training.assignments.find((a) => a.plan_id === bundle.plan.id),
+        }))
+        .filter(({ bundle, assignment }) =>
+          !bundle.plan.is_archived && assignment?.status === "active" && Boolean(assignment.start_date),
+        )
+        .map(({ bundle, assignment }) => ({
+          bundle,
           // Weeks before this athlete joined the plan aren't their misses.
-          start:
-            training.assignments.find((a) => a.plan_id === bundle.plan.id)?.start_date ??
-            bundle.plan.start_date,
+          start: assignment!.start_date!,
         })),
     [training.plans, training.assignments],
   );
@@ -619,8 +687,8 @@ function CoachOverview({
     [training.sessions, training.logs, today],
   );
   const totals = useMemo(
-    () => lifetimeTotals(training.sessions, training.logs),
-    [training.sessions, training.logs],
+    () => lifetimeTotals(training.sessions, training.logs, today),
+    [training.sessions, training.logs, today],
   );
   const records = useMemo(
     () => recentRecords(exerciseStats(training.sessions, training.logs), 21, today),
@@ -628,11 +696,11 @@ function CoachOverview({
   );
 
   const thisWeek = adherence.at(-1);
-  const lastSession = training.sessions.reduce<string | null>(
+  const lastSession = currentSessions.reduce<string | null>(
     (newest, s) => (!newest || s.date > newest ? s.date : newest),
     null,
   );
-  const offPlan = offPlanCount(training.sessions, logged);
+  const offPlan = offPlanCount(currentSessions, logged);
   const doneRatio = thisWeek && thisWeek.planned > 0 ? thisWeek.completed / thisWeek.planned : 0;
 
   return (

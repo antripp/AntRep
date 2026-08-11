@@ -1,7 +1,7 @@
 /** Row constructors — every field defaulted so inserts never miss a column. */
 
-import { localDate } from "../domain/dates";
 import { catalogEntry, categoryFor, inferLogType } from "./catalog";
+import { localDate } from "../domain/dates";
 import type {
   CheckIn,
   CoachNote,
@@ -32,12 +32,15 @@ export function makePlan(ownerId: string, patch: Partial<Plan> = {}): Plan {
     name: "Training plan",
     is_active: true,
     is_archived: false,
-    start_date: localDate(),
+    start_date: null,
     end_date: null,
-    weeks: 1,
+    weeks: 4,
     repeat_mode: "auto",
     schedule_mode: "weekly",
     cycle_length: 0,
+    duration_days: 28,
+    split_lengths: [7],
+    split_rest_days: [0],
     icon_name: "",
     color_hex: "",
     notes: "",

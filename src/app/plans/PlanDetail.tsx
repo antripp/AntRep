@@ -2,13 +2,15 @@
 
 import { useMemo, useState } from "react";
 import { DAY_TYPE_LABELS, type PlanBundle, type PlanDay } from "../../data/types";
-import { formatShortDate } from "../../domain/dates";
 import { loggingSlots } from "../../domain/logging";
 import {
   blockCount,
   blockLabel,
   isCyclePlan,
   planSlots,
+  planDurationDays,
+  planSplitLengths,
+  planSplitRests,
   resolveSegments,
   slotIndex,
   slotLabel,
@@ -40,7 +42,7 @@ export function PlanDetail({
     const pool = bundle.days.filter(
       (d) => (cycle ? d.cycle_day !== null : d.cycle_day === null) && d.week_index === week,
     );
-    return planSlots(bundle.plan).map((slot) => ({
+    return planSlots(bundle.plan, week).map((slot) => ({
       slot,
       day: pool.find((d) => slotIndex(bundle.plan, d) === slot) ?? null,
     }));
@@ -65,9 +67,7 @@ export function PlanDetail({
             {subtitle ??
               `${
                 cycle
-                  ? `${bundle.plan.cycle_length}-day split${
-                      blockCount(bundle.plan) > 1 ? ` × ${blockCount(bundle.plan)}` : ""
-                    }`
+                  ? `${planDurationDays(bundle.plan)} days · ${plural(planSplitLengths(bundle.plan).length, "split")}`
                   : plural(bundle.plan.weeks, "week")
               } · ${plural(bundle.exercises.length, "exercise")}`}
           </p>
@@ -81,15 +81,19 @@ export function PlanDetail({
 
       <Card className="mb-3">
         <div className="flex flex-wrap gap-x-6 gap-y-2">
-          <Detail label="Starts" value={formatShortDate(bundle.plan.start_date)} />
-          {cycle && <Detail label="Split length" value={`${bundle.plan.cycle_length} days`} />}
+          <Detail
+            label="Duration"
+            value={cycle ? `${planDurationDays(bundle.plan)} days` : plural(bundle.plan.weeks, "week")}
+          />
+          {cycle && <Detail label="This split" value={`${planSplitLengths(bundle.plan)[week - 1] ?? 1} active days`} />}
+          {cycle && <Detail label="Rest after" value={`${planSplitRests(bundle.plan)[week - 1] ?? 0} days`} />}
           <Detail
             label={cycle ? "Splits" : "Week blocks"}
             value={String(blockCount(bundle.plan))}
           />
           <Detail label="Training days" value={String(trainingDays)} />
           <Detail label={cycle ? "Exercises / split" : "Exercises / week"} value={String(weekExercises)} />
-          <Detail label="Status" value={bundle.plan.is_active ? "Active" : "Inactive"} />
+          <Detail label="Timeline" value="Set per athlete" />
         </div>
         {bundle.plan.notes && (
           <p className="mt-3 rounded-2xl bg-inset px-3 py-2 text-xs font-semibold text-muted">
@@ -119,7 +123,7 @@ export function PlanDetail({
           blockCount(bundle.plan) > 1
             ? blockLabel(bundle.plan, week)
             : cycle
-              ? `The ${bundle.plan.cycle_length}-day split`
+              ? `The ${planSplitLengths(bundle.plan)[week - 1] ?? 1}-day split`
               : "The week"
         }
       />
@@ -216,7 +220,7 @@ function DayCard({ bundle, day }: { bundle: PlanBundle; day: PlanDay }) {
                           {primary.rep_scheme || `${primary.target_sets} × ${primary.target_reps}`}
                           {primary.target_weight_kg > 0 && ` · ${primary.target_weight_kg} kg`}
                           {primary.rest_sec > 0 && ` · ${primary.rest_sec}s rest`}
-                          {primary.rpe_target > 0 && ` · RPE ${primary.rpe_target}`}
+                          {primary.rpe_target > 0 && ` · effort ${primary.rpe_target}/10`}
                           {primary.tempo && ` · tempo ${primary.tempo}`}
                           {!primary.is_mandatory && " · optional"}
                           {primary.repeat_rule !== "weekly" && ` · ${primary.repeat_rule}`}

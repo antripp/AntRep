@@ -17,8 +17,10 @@ import type {
   CoachNote,
   DayType,
   ExercisePreset,
+  ProgressGoal,
   Plan,
   PlanAssignment,
+  PlanAssignmentRemark,
   PlanBundle,
   PlanDay,
   PlanExercise,
@@ -135,6 +137,26 @@ function toProfile(r: Row): Profile {
   };
 }
 
+function toProgressGoal(r: Row): ProgressGoal {
+  return {
+    id: str(r.id),
+    athlete_id: str(r.athlete_id),
+    set_by_profile_id: str(r.set_by_profile_id),
+    scope_type: str(r.scope_type, "overall") as ProgressGoal["scope_type"],
+    scope_key: (r.scope_key as string) ?? null,
+    scope_label: str(r.scope_label),
+    metric: str(r.metric, "strength") as ProgressGoal["metric"],
+    target_type: str(r.target_type, "score") as ProgressGoal["target_type"],
+    target_value: num(r.target_value),
+    unit: str(r.unit),
+    deadline: (r.deadline as string) ?? null,
+    notes: str(r.notes),
+    status: str(r.status, "active") as ProgressGoal["status"],
+    created_at: (r.created_at as string) ?? undefined,
+    updated_at: (r.updated_at as string) ?? undefined,
+  };
+}
+
 function toPlan(r: Row): Plan {
   const owner = str(r.owner_id) || str(r.trainer_id);
   return {
@@ -144,12 +166,24 @@ function toPlan(r: Row): Plan {
     name: str(r.name, "Training plan"),
     is_active: bool(r.is_active, true),
     is_archived: bool(r.is_archived),
-    start_date: str(r.start_date, localDate()),
+    start_date: (r.start_date as string) ?? null,
     end_date: (r.end_date as string) ?? null,
     weeks: num(r.weeks, 1),
     repeat_mode: str(r.repeat_mode, "auto") === "custom" ? "custom" : "auto",
     schedule_mode: str(r.schedule_mode, "weekly") === "cycle" ? "cycle" : "weekly",
     cycle_length: num(r.cycle_length, 0),
+    duration_days: num(
+      r.duration_days,
+      str(r.schedule_mode, "weekly") === "cycle"
+        ? Math.max(1, num(r.weeks, 1) * Math.max(2, num(r.cycle_length, 7)))
+        : Math.max(1, num(r.weeks, 1) * 7),
+    ),
+    split_lengths: arr<number>(r.split_lengths).length
+      ? arr<number>(r.split_lengths).map((value) => Math.max(1, Number(value) || 1))
+      : [Math.max(2, num(r.cycle_length, 7))],
+    split_rest_days: arr<number>(r.split_rest_days).length
+      ? arr<number>(r.split_rest_days).map((value) => Math.max(0, Number(value) || 0))
+      : [0],
     icon_name: str(r.icon_name),
     color_hex: str(r.color_hex),
     notes: str(r.notes),
@@ -367,9 +401,24 @@ function toAssignment(r: Row): PlanAssignment {
     start_date: (r.start_date as string) ?? null,
     end_date: (r.end_date as string) ?? null,
     status: str(r.status, "active") as PlanAssignment["status"],
+    activation_mode: str(r.activation_mode, "scheduled") === "manual" ? "manual" : "scheduled",
     exercise_overrides: obj(r.exercise_overrides),
     accepted_at: (r.accepted_at as string) ?? null,
     created_at: (r.created_at as string) ?? undefined,
+  };
+}
+
+function toAssignmentRemark(r: Row): PlanAssignmentRemark {
+  return {
+    id: str(r.id),
+    assignment_id: str(r.assignment_id),
+    coach_id: str(r.coach_id),
+    scope: str(r.scope, "plan") as PlanAssignmentRemark["scope"],
+    week_index: numOrNull(r.week_index),
+    plan_exercise_id: (r.plan_exercise_id as string) ?? null,
+    note: str(r.note),
+    created_at: (r.created_at as string) ?? undefined,
+    updated_at: (r.updated_at as string) ?? undefined,
   };
 }
 
@@ -648,28 +697,27 @@ export const supabaseApi: Api = {
   },
 
   async athleteWorkspace(profile): Promise<AthleteWorkspace> {
-    // A dual-role account is one person. The coach and athlete rows are
-    // implementation identities for RLS/FKs, not two separate users. Plans
-    // owned through either identity are therefore "mine" in My training.
-    // A genuinely separate athlete still sees coach plans only via an explicit
-    // plan_assignment below.
-    const ownProfileRes = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("user_id", profile.user_id);
-    const ownProfileIds = readRows("load your account profiles", ownProfileRes).map((r) => str(r.id));
-    if (!ownProfileIds.includes(profile.id)) ownProfileIds.push(profile.id);
-
-    const [ownPlansRes, assignmentsRes, presetsRes, linksRes] = await Promise.all([
-      supabase.from("plans").select("id").in("owner_id", ownProfileIds),
+    const [ownPlansRes, assignmentsRes, presetsRes, linksRes, goalsRes] = await Promise.all([
+      // Coach-owned outlines enter My training through a real assignment to
+      // this athlete identity. That keeps reusable coach templates out of the
+      // athlete UI until the coach deliberately assigns one to themselves.
+      supabase.from("plans").select("id").eq("owner_id", profile.id),
       supabase.from("plan_assignments").select("*").eq("athlete_id", profile.id),
       supabase.from("exercise_presets").select("*").eq("owner_id", profile.id),
       supabase.from("coach_links").select("*").eq("athlete_id", profile.id).eq("status", "active"),
+      supabase.from("progress_goals").select("*").eq("athlete_id", profile.id).order("created_at", { ascending: false }),
     ]);
 
     const presetRows = readRows("load your exercises", presetsRes);
     const linkRows = readRows("load your coaches", linksRes);
     const assignments = readRows("load assigned plans", assignmentsRes).map((r) => toAssignment(r));
+    const assignmentIds = assignments.map((assignment) => assignment.id);
+    const remarksRes = assignmentIds.length
+      ? await supabase.from("plan_assignment_remarks").select("*").in("assignment_id", assignmentIds)
+      : { data: [], error: null };
+    const remarks = readRows("load plan guidance", remarksRes).map((row) =>
+      toAssignmentRemark(row),
+    );
     const ownIds = readRows("load your plans", ownPlansRes).map((r) => str(r.id));
     const assignedIds = assignments.map((a) => a.plan_id).filter((id) => !ownIds.includes(id));
 
@@ -706,6 +754,8 @@ export const supabaseApi: Api = {
         logs: training.logs,
         presets: presetRows.map((r) => toPreset(r)),
         coaches,
+        remarks,
+        goals: readRows("load your progression goals", goalsRes).map(toProgressGoal),
       };
     }
 
@@ -716,14 +766,21 @@ export const supabaseApi: Api = {
       logs: training.logs,
       presets: presetRows.map((r) => toPreset(r)),
       coaches: [],
+      remarks,
+      goals: readRows("load your progression goals", goalsRes).map(toProgressGoal),
     };
   },
 
   async coachWorkspace(profile): Promise<CoachWorkspace> {
-    const [linksRes, planIdsRes, presetsRes] = await Promise.all([
+    const [linksRes, planIdsRes, presetsRes, selfAthleteRes] = await Promise.all([
       supabase.from("coach_links").select("*").eq("trainer_id", profile.id),
       supabase.from("plans").select("id").eq("owner_id", profile.id),
       supabase.from("exercise_presets").select("*").eq("owner_id", profile.id),
+      supabase
+        .from("profiles")
+        .select("*")
+        .eq("user_id", profile.user_id)
+        .eq("role", "athlete"),
     ]);
 
     const links = readRows("load your athletes", linksRes).map((r) => toLink(r));
@@ -741,6 +798,7 @@ export const supabaseApi: Api = {
     ]);
 
     const athleteProfiles = readRows("load athlete profiles", athletesRes).map((r) => toProfile(r));
+    const selfAthlete = readRows("load your athlete profile", selfAthleteRes).map((r) => toProfile(r))[0] ?? null;
     const planIds = plans.map((p) => p.plan.id);
     const assignmentsRes = planIds.length
       ? await supabase.from("plan_assignments").select("*").in("plan_id", planIds)
@@ -755,17 +813,19 @@ export const supabaseApi: Api = {
           return athlete ? { link, profile: athlete } : null;
         })
         .filter((x): x is { link: CoachLink; profile: Profile } => Boolean(x)),
+      selfAthlete,
       pendingInvites: links.filter((l) => l.status === "pending"),
       assignments: readRows("load plan assignments", assignmentsRes).map((r) => toAssignment(r)),
     };
   },
 
   async athleteTraining(athleteId): Promise<AthleteTraining> {
-    const [training, profileRes, assignmentsRes, ownPlansRes] = await Promise.all([
+    const [training, profileRes, assignmentsRes, ownPlansRes, goalsRes] = await Promise.all([
       loadSessionsAndLogs(athleteId),
       supabase.from("profiles").select("*").eq("id", athleteId),
       supabase.from("plan_assignments").select("*").eq("athlete_id", athleteId),
       supabase.from("plans").select("id").eq("owner_id", athleteId),
+      supabase.from("progress_goals").select("*").eq("athlete_id", athleteId).order("created_at", { ascending: false }),
     ]);
 
     const assignments = readRows("load their plan assignments", assignmentsRes).map((r) =>
@@ -779,7 +839,19 @@ export const supabaseApi: Api = {
       ]),
     ];
 
-    const plans = await loadBundles(planIds);
+    const [plans, remarksRes] = await Promise.all([
+      loadBundles(planIds),
+      assignments.length
+        ? supabase
+            .from("plan_assignment_remarks")
+            .select("*")
+            .in("assignment_id", assignments.map((assignment) => assignment.id))
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+    const ownerIds = [...new Set(plans.map((bundle) => bundle.plan.owner_id))];
+    const ownersRes = ownerIds.length
+      ? await supabase.from("profiles").select("*").in("id", ownerIds)
+      : { data: [], error: null };
     return {
       sessions: training.sessions,
       logs: training.logs,
@@ -790,7 +862,12 @@ export const supabaseApi: Api = {
         ),
       ),
       assignments,
+      remarks: readRows("load their plan guidance", remarksRes).map((row) =>
+        toAssignmentRemark(row),
+      ),
+      planOwners: readRows("load plan owners", ownersRes).map((row) => toProfile(row)),
       profile: profileRows[0] ? toProfile(profileRows[0]) : null,
+      goals: readRows("load their progression goals", goalsRes).map(toProgressGoal),
     };
   },
 
@@ -843,6 +920,9 @@ export const supabaseApi: Api = {
       repeat_mode: plan.repeat_mode,
       schedule_mode: plan.schedule_mode,
       cycle_length: plan.cycle_length,
+      duration_days: plan.duration_days,
+      split_lengths: plan.split_lengths,
+      split_rest_days: plan.split_rest_days,
       icon_name: plan.icon_name,
       color_hex: plan.color_hex,
       notes: plan.notes,
@@ -870,17 +950,19 @@ export const supabaseApi: Api = {
     write("delete the plan", await supabase.from("plans").delete().eq("id", planId));
   },
 
-  async assignPlan(planId, athleteId) {
+  async assignPlan(planId, athleteId, run = {}) {
+    const activationMode = run.activation_mode ?? (run.start_date ? "scheduled" : "manual");
     write(
       "assign the plan",
       await supabase.from("plan_assignments").upsert(
         {
           plan_id: planId,
           athlete_id: athleteId,
-          // NULL inherits plans.start_date. Only an explicit restart should
-          // create a per-athlete timeline override.
-          start_date: null,
-          status: "offered",
+          start_date: run.start_date ?? null,
+          end_date: run.end_date ?? null,
+          activation_mode: activationMode,
+          status: activationMode === "manual" ? "offered" : "active",
+          accepted_at: activationMode === "manual" ? null : new Date().toISOString(),
         },
         { onConflict: "plan_id,athlete_id" },
       ),
@@ -917,6 +999,29 @@ export const supabaseApi: Api = {
         .from("plan_assignments")
         .update({ exercise_overrides: overrides })
         .eq("id", assignmentId),
+    );
+  },
+
+  async saveAssignmentRemark(remark) {
+    write(
+      "save plan guidance",
+      await supabase.from("plan_assignment_remarks").upsert({
+        id: remark.id,
+        assignment_id: remark.assignment_id,
+        coach_id: remark.coach_id,
+        scope: remark.scope,
+        week_index: remark.week_index,
+        plan_exercise_id: remark.plan_exercise_id,
+        note: remark.note.trim(),
+        updated_at: new Date().toISOString(),
+      }),
+    );
+  },
+
+  async deleteAssignmentRemark(remarkId) {
+    write(
+      "delete plan guidance",
+      await supabase.from("plan_assignment_remarks").delete().eq("id", remarkId),
     );
   },
 
@@ -973,6 +1078,14 @@ export const supabaseApi: Api = {
 
   async deletePreset(presetId) {
     write("delete the exercise", await supabase.from("exercise_presets").delete().eq("id", presetId));
+  },
+
+  async saveProgressGoal(goal) {
+    write("save the progression goal", await supabase.from("progress_goals").upsert(goal));
+  },
+
+  async deleteProgressGoal(goalId) {
+    write("delete the progression goal", await supabase.from("progress_goals").delete().eq("id", goalId));
   },
 
   /**

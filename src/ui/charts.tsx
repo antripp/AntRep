@@ -22,6 +22,16 @@ function indexFromPointer(event: ReactPointerEvent<SVGSVGElement | HTMLDivElemen
   return Math.max(0, Math.min(count - 1, Math.round(ratio * (count - 1))));
 }
 
+function smoothSvgPath(points: { x: number; y: number }[]): string {
+  if (points.length === 0) return "";
+  if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
+  return points.slice(1).reduce((path, current, index) => {
+    const previous = points[index];
+    const distance = current.x - previous.x;
+    return `${path} C ${previous.x + distance * 0.42} ${previous.y}, ${current.x - distance * 0.42} ${current.y}, ${current.x} ${current.y}`;
+  }, `M ${points[0].x} ${points[0].y}`);
+}
+
 export function BarChart({
   data,
   color = "var(--t-accent)",
@@ -74,9 +84,9 @@ export function BarChart({
         )}
 
         {data.map((d, i) => (
-          <div key={`${d.label}-${i}`} className="flex h-full flex-1 flex-col justify-end">
+          <div key={`${d.label}-${i}`} className="flex h-full flex-1 flex-col items-center justify-end">
             <div
-              className="ui-chart-bar w-full rounded-t-md transition-[height,opacity,transform] duration-500"
+              className="ui-chart-bar w-full max-w-5 rounded-t-md transition-[height,opacity,transform] duration-500"
               data-active={i === shown || undefined}
               style={{
                 height: `${Math.max(2, (d.value / max) * plot)}px`,
@@ -138,7 +148,8 @@ export function LineChart({
   const x = (i: number) => padX + (i * (width - padX * 2)) / (data.length - 1);
   const y = (v: number) => padTop + (1 - (v - min) / (max - min || 1)) * (height - padTop - padBottom);
 
-  const line = data.map((d, i) => `${i === 0 ? "M" : "L"} ${x(i)} ${y(d.value)}`).join(" ");
+  const coordinates = data.map((d, i) => ({ x: x(i), y: y(d.value) }));
+  const line = smoothSvgPath(coordinates);
   const area = `${line} L ${x(data.length - 1)} ${height - padBottom} L ${x(0)} ${height - padBottom} Z`;
   const shown = active ?? data.length - 1;
   const chartStyle = { "--chart-color": color } as CSSProperties;
@@ -163,7 +174,8 @@ export function LineChart({
       >
         <defs>
           <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--chart-color)" stopOpacity="0.32" />
+            <stop offset="0%" stopColor="var(--chart-color)" stopOpacity="0.24" />
+            <stop offset="55%" stopColor="var(--chart-color)" stopOpacity="0.08" />
             <stop offset="100%" stopColor="var(--chart-color)" stopOpacity="0" />
           </linearGradient>
         </defs>
@@ -181,7 +193,7 @@ export function LineChart({
         ))}
 
         <path className="ui-chart-area" d={area} fill={`url(#${gradientId})`} />
-        <path className="ui-chart-line" d={line} fill="none" stroke="var(--chart-color)" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+        <path className="ui-chart-line" d={line} fill="none" stroke="var(--chart-color)" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
 
         <line
           x1={x(shown)}
@@ -200,10 +212,10 @@ export function LineChart({
             key={`${d.label}-${i}`}
             cx={x(i)}
             cy={y(d.value)}
-            r={i === shown ? 4.5 : 2.5}
+            r={i === shown ? 3.5 : 1.8}
             fill={i === shown ? "var(--chart-color)" : "var(--t-surface)"}
             stroke="var(--chart-color)"
-            strokeWidth={2}
+            strokeWidth={1.5}
           />
         ))}
       </svg>
@@ -244,8 +256,8 @@ export function Sparkline({
       style={{ "--chart-color": color } as CSSProperties}
       aria-hidden="true"
     >
-      <path d={path} fill="none" stroke="var(--chart-color)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx={x(values.length - 1)} cy={y(values.at(-1)!)} r={2.5} fill="var(--chart-color)" />
+      <path d={path} fill="none" stroke="var(--chart-color)" strokeWidth={1.35} strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={x(values.length - 1)} cy={y(values.at(-1)!)} r={2} fill="var(--chart-color)" />
     </svg>
   );
 }
@@ -290,6 +302,76 @@ export function ShareBar({
           </span>
         ))}
       </div>
+    </div>
+  );
+}
+
+/** Angular/radial comparison — useful when the shape across categories matters. */
+export function AngularRadarChart({
+  data,
+  color = "var(--t-accent)",
+  size = 250,
+}: {
+  data: { label: string; value: number; detail?: string; color?: string }[];
+  color?: string;
+  size?: number;
+}) {
+  const [active, setActive] = useState(0);
+  if (data.length < 3) return null;
+  const centre = size / 2;
+  const radius = size * 0.34;
+  const max = Math.max(1, ...data.map((item) => item.value));
+  const point = (index: number, ratio: number) => {
+    const angle = -Math.PI / 2 + index * (Math.PI * 2 / data.length);
+    return { x: centre + Math.cos(angle) * radius * ratio, y: centre + Math.sin(angle) * radius * ratio };
+  };
+  const polygon = (ratio: number) => data.map((_, index) => {
+    const p = point(index, ratio);
+    return `${p.x},${p.y}`;
+  }).join(" ");
+  const values = data.map((item, index) => {
+    const p = point(index, Math.max(0.04, item.value / max));
+    return `${p.x},${p.y}`;
+  }).join(" ");
+
+  return (
+    <div className="ui-angular-chart">
+      <div className="mb-1 flex items-baseline justify-between gap-2">
+        <span className="text-lg font-black text-ink">{Math.round(data[active]?.value ?? 0).toLocaleString()}</span>
+        <span className="truncate text-[11px] font-bold text-muted">
+          {data[active]?.detail ?? data[active]?.label}
+        </span>
+      </div>
+      <svg viewBox={`0 0 ${size} ${size}`} className="mx-auto w-full max-w-[280px]" role="img" aria-label="Angular muscle load chart">
+        {[0.25, 0.5, 0.75, 1].map((ratio) => (
+          <polygon key={ratio} points={polygon(ratio)} fill="none" stroke="var(--t-line)" strokeWidth={1} />
+        ))}
+        {data.map((_, index) => {
+          const edge = point(index, 1);
+          return <line key={index} x1={centre} y1={centre} x2={edge.x} y2={edge.y} stroke="var(--t-line)" strokeWidth={1} />;
+        })}
+        <polygon points={values} fill={color} fillOpacity={0.12} stroke={color} strokeWidth={1.5} strokeLinejoin="round" />
+        {data.map((item, index) => {
+          const valuePoint = point(index, Math.max(0.04, item.value / max));
+          const labelPoint = point(index, 1.22);
+          return (
+            <g key={item.label} onClick={() => setActive(index)} className="cursor-pointer">
+              <circle cx={valuePoint.x} cy={valuePoint.y} r={index === active ? 4 : 2.75} fill={item.color ?? color} stroke="var(--t-surface)" strokeWidth={1.5} />
+              <text
+                x={labelPoint.x}
+                y={labelPoint.y}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fill={index === active ? "var(--t-ink)" : "var(--t-muted)"}
+                fontSize={9}
+                fontWeight={800}
+              >
+                {item.label}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
     </div>
   );
 }

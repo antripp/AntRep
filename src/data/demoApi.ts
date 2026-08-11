@@ -39,11 +39,13 @@ import type {
   Message,
   Plan,
   PlanAssignment,
+  PlanAssignmentRemark,
   PlanBundle,
   PlanDay,
   PlanExercise,
   PlanSegment,
   Profile,
+  ProgressGoal,
   Role,
   Session,
   SetLog,
@@ -76,9 +78,11 @@ interface DemoStore {
   segments: PlanSegment[];
   exercises: PlanExercise[];
   assignments: PlanAssignment[];
+  remarks: PlanAssignmentRemark[];
   sessions: Session[];
   logs: SetLog[];
   presets: ExercisePreset[];
+  goals: ProgressGoal[];
   messages: Message[];
   checkIns: CheckIn[];
   notes: CoachNote[];
@@ -563,6 +567,7 @@ function buildSeed(): DemoStore {
       end_date: null,
       start_date: mainStart,
       status: "active",
+      activation_mode: "scheduled",
       exercise_overrides: {},
       accepted_at: new Date(Date.now() - 28 * 86400000).toISOString(),
       created_at: new Date(Date.now() - 28 * 86400000).toISOString(),
@@ -575,6 +580,7 @@ function buildSeed(): DemoStore {
       end_date: null,
       start_date: localDate(startOfWeek()),
       status: "offered",
+      activation_mode: "manual",
       exercise_overrides: {},
       accepted_at: null,
       created_at: new Date(Date.now() - 2 * 86400000).toISOString(),
@@ -586,6 +592,7 @@ function buildSeed(): DemoStore {
       end_date: null,
       start_date: secondStart,
       status: "active",
+      activation_mode: "scheduled",
       exercise_overrides: {},
       accepted_at: new Date(Date.now() - 14 * 86400000).toISOString(),
       created_at: new Date(Date.now() - 14 * 86400000).toISOString(),
@@ -894,6 +901,7 @@ function buildSeed(): DemoStore {
     segments: plans.flatMap((p) => p.segments),
     exercises: plans.flatMap((p) => p.exercises),
     assignments,
+    remarks: [],
     sessions: [
       ...mainHistory.sessions,
       ...ownHistory.sessions,
@@ -915,6 +923,7 @@ function buildSeed(): DemoStore {
       ...extraIntervals.flatMap((e) => e.logs),
     ],
     presets,
+    goals: [],
     messages,
     checkIns,
     notes,
@@ -935,6 +944,8 @@ function load(): DemoStore {
     const raw = localStorage.getItem(STORE_KEY);
     if (raw) {
       store = JSON.parse(raw) as DemoStore;
+      store.remarks ??= [];
+      store.goals ??= [];
       return store;
     }
   } catch {
@@ -1155,11 +1166,8 @@ export const demoApi: Api = {
 
   async athleteWorkspace(profile) {
     const db = load();
-    const accountProfileIds = new Set(
-      db.profiles.filter((p) => p.user_id === profile.user_id).map((p) => p.id),
-    );
     const ownPlans = db.plans
-      .filter((p) => accountProfileIds.has(p.owner_id))
+      .filter((p) => p.owner_id === profile.id)
       .map((p) => bundleFor(db, p));
 
     const assigned = db.assignments
@@ -1194,6 +1202,10 @@ export const demoApi: Api = {
       logs: clone(db.logs.filter((l) => sessionIds.has(l.session_id))),
       presets: clone(db.presets.filter((p) => p.owner_id === profile.id)),
       coaches,
+      remarks: clone(db.remarks.filter((remark) =>
+        assigned.some((item) => item.assignment.id === remark.assignment_id),
+      )),
+      goals: clone(db.goals.filter((goal) => goal.athlete_id === profile.id)),
     };
   },
 
@@ -1215,6 +1227,9 @@ export const demoApi: Api = {
       plans,
       presets: clone(db.presets.filter((preset) => preset.owner_id === profile.id)),
       athletes,
+      selfAthlete: clone(
+        db.profiles.find((candidate) => candidate.user_id === profile.user_id && candidate.role === "athlete") ?? null,
+      ),
       pendingInvites: clone(links.filter((l) => l.status === "pending")),
       assignments: clone(db.assignments.filter((a) => planIds.has(a.plan_id))),
     };
@@ -1242,7 +1257,14 @@ export const demoApi: Api = {
       logs: clone(db.logs.filter((l) => sessionIds.has(l.session_id))),
       plans,
       assignments: clone(assignments),
+      remarks: clone(db.remarks.filter((remark) =>
+        assignments.some((assignment) => assignment.id === remark.assignment_id),
+      )),
+      planOwners: clone(
+        db.profiles.filter((owner) => plans.some((bundle) => bundle.plan.owner_id === owner.id)),
+      ),
       profile: profile ? clone(profile) : null,
+      goals: clone(db.goals.filter((goal) => goal.athlete_id === athleteId)),
     };
   },
 
@@ -1313,18 +1335,20 @@ export const demoApi: Api = {
     persist();
   },
 
-  async assignPlan(planId, athleteId) {
+  async assignPlan(planId, athleteId, run = {}) {
     const db = load();
     if (db.assignments.some((a) => a.plan_id === planId && a.athlete_id === athleteId)) return;
+    const activationMode = run.activation_mode ?? (run.start_date ? "scheduled" : "manual");
     db.assignments.push({
       id: newId(),
       plan_id: planId,
       athlete_id: athleteId,
-      end_date: null,
-      start_date: null,
-      status: "offered",
+      end_date: run.end_date ?? null,
+      start_date: run.start_date ?? null,
+      activation_mode: activationMode,
+      status: activationMode === "manual" ? "offered" : "active",
       exercise_overrides: {},
-      accepted_at: null,
+      accepted_at: activationMode === "manual" ? null : new Date().toISOString(),
       created_at: new Date().toISOString(),
     });
     persist();
@@ -1360,6 +1384,21 @@ export const demoApi: Api = {
     const assignment = db.assignments.find((a) => a.id === assignmentId);
     if (!assignment) return;
     assignment.exercise_overrides = clone(overrides);
+    persist();
+  },
+
+  async saveAssignmentRemark(remark) {
+    const db = load();
+    const index = db.remarks.findIndex((item) => item.id === remark.id);
+    const saved = { ...clone(remark), updated_at: new Date().toISOString() };
+    if (index >= 0) db.remarks[index] = saved;
+    else db.remarks.push(saved);
+    persist();
+  },
+
+  async deleteAssignmentRemark(remarkId) {
+    const db = load();
+    db.remarks = db.remarks.filter((remark) => remark.id !== remarkId);
     persist();
   },
 
@@ -1421,6 +1460,20 @@ export const demoApi: Api = {
   async deletePreset(presetId) {
     const db = load();
     db.presets = db.presets.filter((p) => p.id !== presetId);
+    persist();
+  },
+
+  async saveProgressGoal(goal) {
+    const db = load();
+    const index = db.goals.findIndex((item) => item.id === goal.id);
+    if (index >= 0) db.goals[index] = clone({ ...goal, updated_at: new Date().toISOString() });
+    else db.goals.push(clone({ ...goal, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }));
+    persist();
+  },
+
+  async deleteProgressGoal(goalId) {
+    const db = load();
+    db.goals = db.goals.filter((goal) => goal.id !== goalId);
     persist();
   },
 

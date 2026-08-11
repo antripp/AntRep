@@ -73,9 +73,27 @@ export function currentStreak(
   const active = activeDates(sessions, logged);
   if (active.size === 0) return 0;
 
-  const todayStr = localDate(today);
-  const yesterdayStr = localDate(addDays(today, -1));
-  let cursor = active.has(todayStr) ? today : active.has(yesterdayStr) ? addDays(today, -1) : null;
+  // Find the latest required day. Consecutive rest/optional days are neutral,
+  // so recovery blocks bridge the chain without adding artificial streak days.
+  let latestRequired = today;
+  let bridgeGuard = 0;
+  while (bridgeGuard < 31 && isRestDay(latestRequired)) {
+    latestRequired = addDays(latestRequired, -1);
+    bridgeGuard += 1;
+  }
+
+  // Keep a one-required-day grace period so an untrained morning does not
+  // erase yesterday's completed streak.
+  let cursor: Date | null = active.has(localDate(latestRequired)) ? latestRequired : null;
+  if (!cursor) {
+    let previousRequired = addDays(latestRequired, -1);
+    bridgeGuard = 0;
+    while (bridgeGuard < 31 && isRestDay(previousRequired)) {
+      previousRequired = addDays(previousRequired, -1);
+      bridgeGuard += 1;
+    }
+    cursor = active.has(localDate(previousRequired)) ? previousRequired : null;
+  }
   if (!cursor) return 0;
 
   let streak = 0;
@@ -83,16 +101,18 @@ export function currentStreak(
   while (guard < 800) {
     guard += 1;
     const key = localDate(cursor);
+    // Required-day consistency deliberately ignores optional/rest days even if
+    // the athlete chooses to train on them. They are neutral recovery space.
+    if (isRestDay(cursor)) {
+      cursor = addDays(cursor, -1);
+      continue;
+    }
     if (active.has(key)) {
       streak += 1;
       cursor = addDays(cursor, -1);
       continue;
     }
     // A scheduled rest day keeps the chain alive without counting.
-    if (isRestDay(cursor)) {
-      cursor = addDays(cursor, -1);
-      continue;
-    }
     break;
   }
   return streak;
@@ -109,11 +129,13 @@ export function recentDays(
   count = 10,
   today = new Date(),
   logged?: Set<string>,
+  isNeutralDay: (date: Date) => boolean = () => false,
 ): DayDot[] {
   const active = activeDates(sessions, logged);
   return Array.from({ length: count }, (_, i) => {
     const date = localDate(addDays(today, -(count - 1 - i)));
-    return { date, level: (active.has(date) ? 2 : 0) as 0 | 1 | 2 };
+    const day = addDays(today, -(count - 1 - i));
+    return { date, level: (isNeutralDay(day) ? 1 : active.has(date) ? 2 : 0) as 0 | 1 | 2 };
   });
 }
 

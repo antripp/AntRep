@@ -166,6 +166,6 @@ export function describeSet(set: SetLog): string {
   if (set.reps) parts.push(`${set.reps} reps`);
   if (set.distance_km) parts.push(`${set.distance_km} km`);
   if (set.duration_sec) parts.push(formatDuration(set.duration_sec));
-  if (set.rpe) parts.push(`RPE ${set.rpe}`);
+  if (set.rpe) parts.push(`Effort ${set.rpe}/10`);
   return parts.length > 0 ? parts.join(" · ") : "logged";
 }

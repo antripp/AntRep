@@ -168,7 +168,7 @@ export function coachFlags({
       flags.push({
         id: "volume",
         tone: change > 0 ? "good" : "info",
-        title: `Volume ${change > 0 ? "up" : "down"} ${Math.abs(Math.round(change * 100))}%`,
+        title: `Total lifting work ${change > 0 ? "up" : "down"} ${Math.abs(Math.round(change * 100))}%`,
         detail: `${thisWeek.volume.toLocaleString()} kg vs ${lastWeek.volume.toLocaleString()} kg last week.`,
       });
     }

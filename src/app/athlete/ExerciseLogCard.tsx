@@ -62,6 +62,7 @@ export function ExerciseLogCard({
   onPickAlternate,
   tint: tintOverride,
   onRemove,
+  coachRemark,
 }: {
   exercise: PlanExercise;
   /** Omitted for extra work logged outside the plan. */
@@ -73,6 +74,8 @@ export function ExerciseLogCard({
   onPickAlternate?: (exercise: PlanExercise) => void;
   tint?: string;
   onRemove?: () => void;
+  /** Week-specific guidance for this athlete's assigned plan. */
+  coachRemark?: string;
 }) {
   const { logs, sessions, saveSets, clearExercise, setExerciseDone } = useWorkspace();
   const stored = useMemo(() => setsForExercise(logs, session?.id, exercise.name), [logs, session?.id, exercise.name]);
@@ -326,7 +329,7 @@ export function ExerciseLogCard({
         {!open && <RestTimerPill timer={restTimer} tint={tint} />}
 
         {exercise.rpe_target > 0 && (open || !(restTimer.running || restTimer.finished)) && (
-          <Pill tint={tint}>RPE {exercise.rpe_target}</Pill>
+          <Pill tint={tint}>Effort {exercise.rpe_target}/10</Pill>
         )}
 
         {editable && onRemove && (
@@ -357,6 +360,12 @@ export function ExerciseLogCard({
 
       {open && (
         <div className="border-t border-line px-3 pb-3 pt-2">
+          {coachRemark && (
+            <div className="mb-2 rounded-xl border border-accent/30 bg-accent/10 px-3 py-2">
+              <p className="text-[10px] font-black uppercase tracking-wide text-accent">Coach update</p>
+              <p className="mt-0.5 text-xs font-semibold leading-snug text-ink">{coachRemark}</p>
+            </div>
+          )}
           {(exercise.trainer_notes || exercise.instructions) && (
             <p className="mb-2 rounded-xl bg-inset px-3 py-2 text-xs font-semibold leading-snug text-muted">
               {exercise.trainer_notes || exercise.instructions}
@@ -438,7 +447,7 @@ export function ExerciseLogCard({
                         className="rounded-full px-2 py-0.5 text-[10px] font-black"
                         style={{ background: `${rpeColor(set.rpe)}22`, color: rpeColor(set.rpe) }}
                       >
-                        RPE {set.rpe}
+                        Effort {set.rpe}/10
                       </span>
                     ) : null}
 
@@ -592,7 +601,7 @@ export function ExerciseLogCard({
                 onClick={() => setShowEffort(true)}
                 className="inline-flex h-10 items-center rounded-full border border-line bg-inset px-3 text-xs font-black text-muted"
               >
-                + RPE
+                + effort
               </button>
             )}
             {exercise.rest_sec > 0 && (

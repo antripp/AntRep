@@ -11,12 +11,13 @@
  */
 
 import { useMemo, useState } from "react";
+import { api } from "../../data";
 import type { PlanBundle, Session, SetLog } from "../../data/types";
 import { exerciseStats } from "../../domain/analytics";
 import { restDayPredicate } from "../../domain/plan";
 import { namesMatch, setHasData } from "../../domain/logging";
 import { plural } from "../../domain/text";
-import { Button, EmptyState, Icon, ScreenTitle, Segmented } from "../../ui/kit";
+import { Button, Card, EmptyState, Icon, IconTile, ScreenTitle, Segmented } from "../../ui/kit";
 import { useWorkspace } from "../workspace";
 import { ExerciseDetail } from "./ExerciseDetail";
 import { ExercisesTab } from "./ExercisesTab";
@@ -27,6 +28,9 @@ import { groupSessionsByDay } from "../../domain/dayTrends";
 import { DayDetail } from "./DayDetail";
 import { DaysTab } from "./DaysTab";
 import { useProgressScope } from "./useProgressScope";
+import { DimensionDetail } from "./DimensionDetail";
+import type { DimensionKey } from "../../domain/trainingIntelligence";
+import type { ProgressPlanRun } from "../../domain/consistency";
 
 const TABS = [
   { value: "overview", label: "Overview" },
@@ -36,9 +40,10 @@ const TABS = [
 ] as const;
 
 export type ProgressTab = (typeof TABS)[number]["value"];
+const MIN_ANALYTICS_SESSIONS = 4;
 
 export default function ProgressScreen({ onBatchLog }: { onBatchLog?: (planId: string | null) => void }) {
-  const { profile, sessions, logs, allBundles, clearExercise, clearSession } = useWorkspace();
+  const { profile, sessions, logs, allBundles, planViews, workspace, reload, clearExercise, clearSession } = useWorkspace();
   return (
     <ProgressBody
       sessions={sessions}
@@ -49,6 +54,12 @@ export default function ProgressScreen({ onBatchLog }: { onBatchLog?: (planId: s
       onClearExercise={clearExercise}
       onClearSession={(session) => clearSession(session.id)}
       onBatchLog={onBatchLog}
+      planRuns={planViews.map((view) => ({ bundle: view.bundle, start: view.start, end: view.end }))}
+      athleteId={profile.id}
+      viewerId={profile.id}
+      goals={workspace.goals}
+      onSaveGoal={async (goal) => { await api.saveProgressGoal(goal); await reload(); }}
+      onDeleteGoal={async (id) => { await api.deleteProgressGoal(id); await reload(); }}
     />
   );
 }
@@ -66,6 +77,12 @@ export function ProgressBody({
   onClearExercise,
   onEditSession,
   onBatchLog,
+  planRuns,
+  athleteId,
+  viewerId,
+  goals = [],
+  onSaveGoal,
+  onDeleteGoal,
 }: {
   sessions: Session[];
   logs: SetLog[];
@@ -82,6 +99,12 @@ export function ProgressBody({
   onEditSession?: (session: Session) => void;
   /** Offered only when plan-linked analytics contain missing set data. */
   onBatchLog?: (planId: string | null) => void;
+  planRuns?: ProgressPlanRun[];
+  athleteId?: string;
+  viewerId?: string;
+  goals?: import("../../data/types").ProgressGoal[];
+  onSaveGoal?: (goal: import("../../data/types").ProgressGoal) => Promise<void>;
+  onDeleteGoal?: (id: string) => Promise<void>;
 }) {
   const [tab, setTab] = useState<ProgressTab>(initialTab);
   const [openKey, setOpenKey] = useState<string | null>(null);
@@ -90,9 +113,21 @@ export function ProgressBody({
   const [openPlanId, setOpenPlanId] = useState<string | null>(null);
   const [openSessionId, setOpenSessionId] = useState<string | null>(null);
   const [openDayKey, setOpenDayKey] = useState<string | null>(null);
+  const [openDimension, setOpenDimension] = useState<DimensionKey | null>(null);
+  const readinessKey = `antrep-analytics-ready:${athleteId ?? "current"}`;
+  const [startedFresh, setStartedFresh] = useState(() => {
+    try { return localStorage.getItem(readinessKey) === "yes"; } catch { return false; }
+  });
 
   const scope = useProgressScope({ sessions: allSessions, logs: allLogs, plans });
   const { activeBundle, scopePlans, sessions, logs } = scope;
+  const effectivePlanRuns = useMemo<ProgressPlanRun[]>(() => {
+    const source = planRuns ?? plans.flatMap((bundle) => bundle.plan.start_date
+      ? [{ bundle, start: bundle.plan.start_date, end: bundle.plan.end_date }]
+      : []);
+    if (!activeBundle) return source;
+    return source.filter((run) => run.bundle.plan.id === activeBundle.plan.id);
+  }, [planRuns, plans, activeBundle]);
 
   const incompletePlanSessions = useMemo(() => sessions.filter((session) => {
     if (!session.plan_id) return false;
@@ -104,6 +139,12 @@ export function ProgressBody({
     );
   }), [sessions, logs]);
   const repairPlanId = activeBundle?.plan.id ?? incompletePlanSessions.find((session) => session.plan_id)?.plan_id ?? null;
+  const analysedSessionCount = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const eligible = new Set(sessions.filter((session) => session.date <= today).map((session) => session.id));
+    return new Set(logs.filter((log) => eligible.has(log.session_id) && setHasData(log)).map((log) => log.session_id)).size;
+  }, [sessions, logs]);
+  const analyticsReady = analysedSessionCount >= MIN_ANALYTICS_SESSIONS || startedFresh;
 
   // The one derivation every tab needs — the exercise detail page reads it too,
   // so it lives above the tabs rather than inside each of them.
@@ -112,8 +153,8 @@ export function ProgressBody({
   // Rest days the plans schedule bridge a streak rather than breaking it.
   // Asked per date, not per weekday — a cycle plan's days off move around.
   const isRestDay = useMemo(
-    () => restDayPredicate(plans.map((bundle) => ({ bundle }))),
-    [plans],
+    () => restDayPredicate(effectivePlanRuns),
+    [effectivePlanRuns],
   );
 
   const openStat = openKey ? (stats.find((s) => s.key === openKey) ?? null) : null;
@@ -143,6 +184,44 @@ export function ProgressBody({
     setOpenSessionId(null);
     setOpenKey(null);
     setOpenDayKey(null);
+    setOpenDimension(null);
+  }
+
+  if (openDimension) {
+    return (
+      <DimensionDetail
+        dimensionKey={openDimension}
+        sessions={sessions}
+        logs={logs}
+        weeklyGoal={weeklyGymGoal}
+        onBack={() => setOpenDimension(null)}
+        onOpenExercise={(key) => {
+          setOpenDimension(null);
+          setOpenKey(key);
+        }}
+        onOpenSession={(id) => {
+          setOpenDimension(null);
+          setOpenSessionId(id);
+        }}
+        plans={plans}
+        dayGroups={dayGroups}
+        onOpenPlan={(id) => {
+          setOpenDimension(null);
+          setTab("plans");
+          setOpenPlanId(id);
+        }}
+        onOpenDay={(key) => {
+          setOpenDimension(null);
+          setOpenDayKey(key);
+        }}
+        planRuns={effectivePlanRuns}
+        athleteId={athleteId}
+        viewerId={viewerId}
+        goals={goals}
+        onSaveGoal={onSaveGoal}
+        onDeleteGoal={onDeleteGoal}
+      />
+    );
   }
 
   if (openDay) {
@@ -151,8 +230,16 @@ export function ProgressBody({
         group={openDay}
         logs={logs}
         onBack={() => setOpenDayKey(null)}
-        onOpenSession={setOpenSessionId}
-        onOpenExercise={setOpenKey}
+        onOpenSession={(id) => {
+          setOpenDayKey(null);
+          setOpenSessionId(id);
+        }}
+        onOpenExercise={(key) => {
+          setOpenDayKey(null);
+          setOpenKey(key);
+        }}
+        weeklyGoal={weeklyGymGoal}
+        planRuns={effectivePlanRuns}
       />
     );
   }
@@ -165,6 +252,13 @@ export function ProgressBody({
         logs={logs}
         scopeLabel={activeBundle ? activeBundle.plan.name : null}
         onBack={() => setOpenKey(null)}
+        weeklyGoal={weeklyGymGoal}
+        planRuns={effectivePlanRuns}
+        athleteId={athleteId}
+        viewerId={viewerId}
+        goals={goals}
+        onSaveGoal={onSaveGoal}
+        onDeleteGoal={onDeleteGoal}
       />
     );
   }
@@ -187,24 +281,9 @@ export function ProgressBody({
             ? onEditSession
             : undefined
         }
+        weeklyGoal={weeklyGymGoal}
+        planRuns={effectivePlanRuns}
       />
-    );
-  }
-
-  if (allSessions.length === 0) {
-    return (
-      <>
-        {title && <ScreenTitle title={title} />}
-        <EmptyState
-          title="Nothing logged yet"
-          subtitle="Your charts appear after the first session."
-          action={onBatchLog && plans.length > 0 ? (
-            <Button onClick={() => onBatchLog(plans[0].plan.id)}>
-              <Icon.edit className="h-4 w-4" /> Batch log a plan
-            </Button>
-          ) : undefined}
-        />
-      </>
     );
   }
 
@@ -262,14 +341,26 @@ export function ProgressBody({
         </button>
       )}
 
-      <div className="mb-4">
-        <Segmented value={tab} onChange={setTab} options={TABS.map((t) => ({ ...t }))} />
-      </div>
+      {!analyticsReady ? (
+        <AnalyticsReadinessGate
+          count={analysedSessionCount}
+          threshold={MIN_ANALYTICS_SESSIONS}
+          onBatchLog={onBatchLog && repairPlanId ? () => onBatchLog(repairPlanId) : undefined}
+          onStartFresh={() => {
+            try { localStorage.setItem(readinessKey, "yes"); } catch { /* in-memory fallback */ }
+            setStartedFresh(true);
+          }}
+        />
+      ) : (
+        <>
+          <div className="mb-4">
+            <Segmented value={tab} onChange={setTab} options={TABS.map((t) => ({ ...t }))} />
+          </div>
 
       {sessions.length === 0 ? (
         <EmptyState
-          title="Nothing logged against this plan"
-          subtitle="Switch back to Overall, or log a session under this plan."
+          title={activeBundle ? "Nothing logged against this plan" : "Your first session starts the story"}
+          subtitle={activeBundle ? "Switch back to Overall, or log a session under this plan." : "Log any real exercise—planned or unplanned—and it will begin your progress history."}
           action={onBatchLog && activeBundle ? (
             <Button onClick={() => onBatchLog(activeBundle.plan.id)}>
               <Icon.edit className="h-4 w-4" /> Batch log this plan
@@ -287,6 +378,8 @@ export function ProgressBody({
               totalXp={totalXp}
               isRestDay={isRestDay}
               onOpenExercise={setOpenKey}
+              onOpenDimension={setOpenDimension}
+              planRuns={effectivePlanRuns}
             />
           )}
 
@@ -301,6 +394,8 @@ export function ProgressBody({
               onOpenPlan={setOpenPlanId}
               onOpenSession={setOpenSessionId}
               onOpenExercise={setOpenKey}
+              weeklyGoal={weeklyGymGoal}
+              planRuns={effectivePlanRuns}
             />
           )}
 
@@ -311,6 +406,43 @@ export function ProgressBody({
           {tab === "exercises" && <ExercisesTab stats={stats} onOpenExercise={setOpenKey} />}
         </>
       )}
+        </>
+      )}
     </>
+  );
+}
+
+function AnalyticsReadinessGate({
+  count,
+  threshold,
+  onBatchLog,
+  onStartFresh,
+}: {
+  count: number;
+  threshold: number;
+  onBatchLog?: () => void;
+  onStartFresh: () => void;
+}) {
+  return (
+    <Card className="mt-2">
+      <div className="flex items-start gap-3">
+        <IconTile emoji="🌱" tint="var(--t-accent)" size={40} />
+        <div className="min-w-0 flex-1">
+          <p className="text-base font-black text-ink">Build a trustworthy starting point</p>
+          <p className="mt-1 text-sm font-semibold leading-relaxed text-muted">
+            Progress becomes much more useful after {threshold} logged sessions. You have {count}. Add older training if you have it, or start fresh today—better late than never ♥
+          </p>
+        </div>
+      </div>
+      <div className="mt-4 grid gap-2 sm:grid-cols-2">
+        {onBatchLog && (
+          <Button full onClick={onBatchLog}><Icon.edit className="h-4 w-4" /> Add past training</Button>
+        )}
+        <Button full variant="secondary" onClick={onStartFresh}>Start fresh from today</Button>
+      </div>
+      <p className="mt-3 text-[11px] font-semibold text-muted">
+        Early scores are estimates and will settle as you log more comparable sessions.
+      </p>
+    </Card>
   );
 }

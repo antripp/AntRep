@@ -34,8 +34,28 @@ export interface ExerciseStat {
   lastBest: number;
   previousBest: number;
   trend: number;
+  /** Rolling performance change, not just the latest workout versus one prior workout. */
+  strengthTrend: number;
+  /** Change in later-set retention across comparable recent workouts. */
+  enduranceTrend: number;
+  /** 0-100; higher means the recent baseline is repeatable rather than peak-driven. */
+  stabilityScore: number;
+  /** Mean later-set performance divided by the first working set. */
+  setRetention: number | null;
+  trendLabel: "Improving" | "Stable" | "Plateau" | "High variability" | "Possible regression";
+  confidence: "Building" | "Moderate" | "High";
+  futureSessions: number;
   volume: number;
-  history: { date: string; best: number; volume: number; reps: number }[];
+  history: {
+    date: string;
+    best: number;
+    volume: number;
+    reps: number;
+    e1RM: number;
+    avgRpe: number | null;
+    retention: number | null;
+    future: boolean;
+  }[];
 }
 
 function inferLogType(sets: SetLog[]): LogType {
@@ -46,7 +66,8 @@ function inferLogType(sets: SetLog[]): LogType {
 }
 
 /** Per-exercise history, newest metric first. */
-export function exerciseStats(sessions: Session[], logs: SetLog[]): ExerciseStat[] {
+export function exerciseStats(sessions: Session[], logs: SetLog[], today = new Date()): ExerciseStat[] {
+  const cutoff = localDate(today);
   const sessionById = new Map(sessions.map((s) => [s.id, s]));
   const byExercise = new Map<string, { name: string; rows: { date: string; set: SetLog }[] }>();
 
@@ -75,29 +96,56 @@ export function exerciseStats(sessions: Session[], logs: SetLog[]): ExerciseStat
         best: sessionBest(daySets, logType),
         volume: volumeOf(daySets),
         reps: totalReps(daySets),
+        e1RM: daySets.reduce((m, s) => Math.max(m, estimated1RM(s.weight_kg ?? 0, s.reps ?? 0)), 0),
+        avgRpe: mean(daySets.map((s) => s.rpe).filter((r): r is number => r !== null && r > 0)),
+        retention: setRetention(daySets, logType),
+        future: date > cutoff,
       }))
       .sort((a, b) => a.date.localeCompare(b.date));
 
-    const best = history.reduce((m, h) => Math.max(m, h.best), 0);
-    const lastBest = history.at(-1)?.best ?? 0;
-    const previousBest = history.at(-2)?.best ?? 0;
-    const best1RM = sets.reduce((m, s) => Math.max(m, estimated1RM(s.weight_kg ?? 0, s.reps ?? 0)), 0);
+    // Future/simulation rows remain visible in the history table, but do not
+    // leak into present-tense records, trends, recency or headline totals.
+    const analysed = history.filter((h) => !h.future);
+    const analysedDates = new Set(analysed.map((h) => h.date));
+    const analysedSets = rows.filter((r) => analysedDates.has(r.date)).map((r) => r.set);
+    const best = analysed.reduce((m, h) => Math.max(m, h.best), 0);
+    const lastBest = analysed.at(-1)?.best ?? 0;
+    const previousBest = analysed.at(-2)?.best ?? 0;
+    const best1RM = analysedSets.reduce((m, s) => Math.max(m, estimated1RM(s.weight_kg ?? 0, s.reps ?? 0)), 0);
+    const performance = analysed.map((h) => {
+      const raw = h.e1RM > 0 ? h.e1RM : h.best;
+      // Same output at lower RPE represents more reserve. Keep the correction
+      // deliberately small because RPE is subjective.
+      return raw * (h.avgRpe ? 1 + Math.max(0, 10 - h.avgRpe) * 0.015 : 1);
+    });
+    const strengthTrend = rollingChange(performance);
+    const retentionSeries = analysed.flatMap((h) => h.retention === null ? [] : [h.retention]);
+    const enduranceTrend = rollingChange(retentionSeries);
+    const stabilityScore = stability(performance);
+    const trendLabel = classifyTrend(strengthTrend, stabilityScore, analysed.length);
 
     stats.push({
       key,
       name,
       logType,
-      sessions: byDate.size,
-      totalSets: sets.length,
-      hasWeight: sets.some((s) => (s.weight_kg ?? 0) > 0),
+      sessions: analysed.length,
+      totalSets: analysedSets.length,
+      hasWeight: analysedSets.some((s) => (s.weight_kg ?? 0) > 0),
       best,
-      bestReps: sets.reduce((m, s) => Math.max(m, s.reps ?? 0), 0),
+      bestReps: analysedSets.reduce((m, s) => Math.max(m, s.reps ?? 0), 0),
       best1RM,
-      lastDate: history.at(-1)?.date ?? null,
+      lastDate: analysed.at(-1)?.date ?? null,
       lastBest,
       previousBest,
-      trend: previousBest > 0 ? (lastBest - previousBest) / previousBest : 0,
-      volume: volumeOf(sets),
+      trend: strengthTrend,
+      strengthTrend,
+      enduranceTrend,
+      stabilityScore,
+      setRetention: retentionSeries.length ? retentionSeries.at(-1)! : null,
+      trendLabel,
+      confidence: analysed.length >= 8 ? "High" : analysed.length >= 4 ? "Moderate" : "Building",
+      futureSessions: history.length - analysed.length,
+      volume: volumeOf(analysedSets),
       history,
     });
   }
@@ -124,7 +172,8 @@ export function weeklySeries(sessions: Session[], logs: SetLog[], weeks = 8, tod
     const start = addDays(thisWeek, -7 * i);
     const startStr = localDate(start);
     const endStr = localDate(addDays(start, 6));
-    const weekSessions = sessions.filter((s) => s.date >= startStr && s.date <= endStr);
+    const todayStr = localDate(today);
+    const weekSessions = sessions.filter((s) => s.date >= startStr && s.date <= endStr && s.date <= todayStr);
     const ids = new Set(weekSessions.map((s) => s.id));
     const weekLogs = logs.filter((l) => ids.has(l.session_id) && sessionById.has(l.session_id) && setHasData(l));
     points.push({
@@ -167,7 +216,7 @@ export function recentRecords(stats: ExerciseStat[], days = 30, today = new Date
   const cutoff = localDate(addDays(today, -days));
   const records: PersonalRecord[] = [];
   for (const stat of stats) {
-    const peak = stat.history.reduce<{ date: string; best: number } | null>(
+    const peak = stat.history.filter((entry) => !entry.future).reduce<{ date: string; best: number } | null>(
       (top, h) => (!top || h.best > top.best ? h : top),
       null,
     );
@@ -203,7 +252,7 @@ export function buildInsights(
     if (Math.abs(change) >= 0.1) {
       out.push({
         id: "volume-trend",
-        title: change > 0 ? "Volume climbing" : "Volume easing off",
+        title: change > 0 ? "Total lifting work is rising" : "Total lifting work is easing",
         detail: `${Math.abs(Math.round(change * 100))}% ${change > 0 ? "more" : "less"} than last week (${thisWeek.volume.toLocaleString()} kg).`,
         tone: change > 0 ? "good" : "info",
       });
@@ -225,10 +274,14 @@ export function buildInsights(
 
   const improving = stats.filter((s) => s.trend > 0.02).slice(0, 1);
   if (improving.length > 0) {
+    const stat = improving[0];
+    const matchedBestChanged = Math.abs(stat.lastBest - stat.previousBest) >= 0.05;
     out.push({
-      id: `improving-${improving[0].key}`,
-      title: `${improving[0].name} is moving up`,
-      detail: `Best set went from ${round(improving[0].previousBest)} to ${round(improving[0].lastBest)}.`,
+      id: `improving-${stat.key}`,
+      title: `${stat.name} is moving up`,
+      detail: matchedBestChanged
+        ? `Best set went from ${round(stat.previousBest)} to ${round(stat.lastBest)}.`
+        : `Rolling performance is up ${Math.round(stat.strengthTrend * 100)}%, combining your estimated max lift with how manageable the work felt.`,
       tone: "good",
     });
   }
@@ -257,16 +310,72 @@ function round(n: number): number {
 }
 
 /** Totals for the header tiles. */
-export function lifetimeTotals(sessions: Session[], logs: SetLog[]) {
-  const valid = logs.filter(setHasData);
-  const logged = loggedSessionIds(logs);
+export function lifetimeTotals(sessions: Session[], logs: SetLog[], today = new Date()) {
+  const cutoff = localDate(today);
+  const currentSessions = sessions.filter((s) => s.date <= cutoff);
+  const currentIds = new Set(currentSessions.map((s) => s.id));
+  const valid = logs.filter((log) => currentIds.has(log.session_id) && setHasData(log));
+  const logged = loggedSessionIds(valid);
   return {
     sessions: new Set(
-      sessions.filter((s) => wasTrained(s, logged)).map((s) => `${s.date}-${s.id}`),
+      currentSessions.filter((s) => wasTrained(s, logged)).map((s) => `${s.date}-${s.id}`),
     ).size,
     sets: valid.length,
     volume: Math.round(volumeOf(valid)),
     distanceKm: Math.round(totalDistance(valid) * 10) / 10,
     minutes: Math.round(totalDuration(valid) / 60),
   };
+}
+
+function mean(values: number[]): number | null {
+  return values.length ? values.reduce((total, value) => total + value, 0) / values.length : null;
+}
+
+function setRetention(sets: SetLog[], logType: LogType): number | null {
+  const ordered = [...sets].sort((a, b) => a.set_index - b.set_index);
+  if (ordered.length < 2) return null;
+  const score = (set: SetLog) => {
+    if (logType === "cardio") return set.distance_km ?? set.duration_sec ?? 0;
+    if (logType === "timed" || logType === "interval") return set.duration_sec ?? set.reps ?? 0;
+    const reps = set.reps ?? 0;
+    const weight = set.weight_kg ?? 0;
+    return weight > 0 ? weight * reps : reps;
+  };
+  const first = score(ordered[0]);
+  if (first <= 0) return null;
+  const later = ordered.slice(1).map(score).filter((value) => value > 0);
+  return later.length ? later.reduce((total, value) => total + value, 0) / later.length / first : null;
+}
+
+function rollingChange(values: number[]): number {
+  if (values.length < 4) return 0;
+  const size = Math.min(4, Math.floor(values.length / 2));
+  const recent = values.slice(-size);
+  const baseline = values.slice(-(size * 2), -size);
+  const recentMean = mean(recent) ?? 0;
+  const baselineMean = mean(baseline) ?? 0;
+  return baselineMean > 0 ? (recentMean - baselineMean) / baselineMean : 0;
+}
+
+function stability(values: number[]): number {
+  const recent = values.slice(-8).filter((value) => value > 0);
+  if (recent.length < 3) return 50;
+  const average = mean(recent) ?? 0;
+  if (average <= 0) return 50;
+  const variance = recent.reduce((total, value) => total + (value - average) ** 2, 0) / recent.length;
+  const coefficient = Math.sqrt(variance) / average;
+  return Math.max(0, Math.min(100, Math.round(100 - coefficient * 300)));
+}
+
+function classifyTrend(
+  change: number,
+  stabilityScore: number,
+  observations: number,
+): ExerciseStat["trendLabel"] {
+  if (observations < 4) return "Stable";
+  if (stabilityScore < 55) return "High variability";
+  if (change >= 0.025) return "Improving";
+  if (change <= -0.04) return "Possible regression";
+  if (Math.abs(change) <= 0.01 && observations >= 8) return "Plateau";
+  return "Stable";
 }

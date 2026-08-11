@@ -64,7 +64,7 @@ export function DaysTab({
               <Pill tint="var(--t-muted)">
                 avg {formatDayMetric(group.metric, group.avgValue)}
               </Pill>
-              {group.avgRpe !== null && <Pill tint={tint}>avg RPE {group.avgRpe}</Pill>}
+              {group.avgRpe !== null && <Pill tint={tint}>average effort {group.avgRpe}/10</Pill>}
             </div>
           </Card>
         );

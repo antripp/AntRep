@@ -22,8 +22,10 @@ import type {
   ExercisePreset,
   ExtraExercise,
   PlanAssignment,
+  PlanAssignmentRemark,
   PlanBundle,
   PlanExercise,
+  ProgressGoal,
   Profile,
   Session,
   SetLog,
@@ -62,6 +64,8 @@ interface WorkspaceValue {
   sessions: Session[];
   logs: SetLog[];
   presets: ExercisePreset[];
+  remarks: PlanAssignmentRemark[];
+  goals: ProgressGoal[];
   reload: () => Promise<void>;
   sessionForSegment: (segment: ResolvedSegment, date?: string) => Session | undefined;
   ensureSession: (segment: ResolvedSegment, date?: string) => Promise<Session>;
@@ -103,6 +107,8 @@ const emptyWorkspace: AthleteWorkspace = {
   logs: [],
   presets: [],
   coaches: [],
+  remarks: [],
+  goals: [],
 };
 
 const WorkspaceContext = createContext<WorkspaceValue | null>(null);
@@ -137,19 +143,19 @@ export function WorkspaceProvider({ profile, children }: { profile: Profile; chi
   const allViews = useMemo<PlanView[]>(() => {
     const today = localDate();
     const own = workspace.ownPlans
-      .filter((b) => !b.plan.is_archived)
+      .filter((b) => !b.plan.is_archived && b.plan.is_active && Boolean(b.plan.start_date))
       .map((bundle) => ({
         bundle,
-        start: bundle.plan.start_date,
+        start: bundle.plan.start_date!,
         end: bundle.plan.end_date,
         assignment: null,
         live: planIsLive(bundle.plan, today),
       }));
     const synced = workspace.assigned
-      .filter((a) => a.assignment.status === "active")
+      .filter((a) => a.assignment.status === "active" && Boolean(a.assignment.start_date))
       .map((a) => ({
         bundle: a.bundle,
-        start: a.assignment.start_date ?? a.bundle.plan.start_date,
+        start: a.assignment.start_date!,
         end: planEnd(a.bundle.plan, a.assignment),
         assignment: a.assignment,
         live: planIsLive(a.bundle.plan, today, a.assignment),
@@ -486,6 +492,8 @@ export function WorkspaceProvider({ profile, children }: { profile: Profile; chi
       sessions: workspace.sessions,
       logs: workspace.logs,
       presets: workspace.presets,
+      remarks: workspace.remarks,
+      goals: workspace.goals,
       reload,
       sessionForSegment,
       ensureSession,

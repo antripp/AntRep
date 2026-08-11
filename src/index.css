@@ -16,6 +16,19 @@
   --t-chart-4: #ff9600;
   --t-chart-5: #ff4b8b;
 
+  /* Progress analytics keep semantic identity across accents and themes. */
+  --metric-strength: #3978f6;
+  --metric-endurance: #8654df;
+  --metric-consistency: #159a6b;
+  --metric-capacity: #e87918;
+  --metric-recovery: #118c99;
+  --metric-stability: #d94f86;
+  --category-push: #e94a92;
+  --category-pull: #168fa8;
+  --category-legs: #7651d3;
+  --category-core: #bf8710;
+  --category-cardio: #18865f;
+
   /* light mode surfaces */
   --t-bg: #f5f7f2;
   --t-surface: #ffffff;
@@ -37,6 +50,17 @@
   --t-muted: #8ba5b0;
   --t-line: #37464f;
   --t-checker: rgba(255, 255, 255, 0.03);
+  --metric-strength: #78a6ff;
+  --metric-endurance: #b38aff;
+  --metric-consistency: #58d6a6;
+  --metric-capacity: #ffb15e;
+  --metric-recovery: #55cbd3;
+  --metric-stability: #ff83b4;
+  --category-push: #ff79b7;
+  --category-pull: #54c8df;
+  --category-legs: #ae8cff;
+  --category-core: #f4c45f;
+  --category-cardio: #5bd5a4;
   color-scheme: dark;
 }
 
@@ -1336,11 +1360,11 @@ html[data-ui="compact"] .ui-tab span {
 html[data-ui="classic"] .ui-chart-bar {
   border-radius: 0.5rem 0.5rem 0.2rem 0.2rem;
   background: var(--chart-color);
-  box-shadow: inset 0 -3px 0 color-mix(in srgb, var(--chart-color) 70%, black);
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--chart-color) 72%, black);
 }
 
 html[data-ui="classic"] .ui-chart-line {
-  stroke-width: 3.5;
+  stroke-width: 2.1;
 }
 
 html[data-ui="classic"] .ui-dot-row > span {
@@ -1353,7 +1377,7 @@ html[data-ui="minimal"] .ui-chart-area {
 }
 
 html[data-ui="minimal"] .ui-chart-line {
-  stroke-width: 1.75;
+  stroke-width: 1.35;
 }
 
 html[data-ui="minimal"] .ui-chart-grid {
@@ -1411,18 +1435,18 @@ html[data-ui="compact"] .ui-chart-grid {
 }
 
 html[data-ui="compact"] .ui-chart-area {
-  opacity: 0.9;
+  opacity: 0.72;
 }
 
 html[data-ui="compact"] .ui-chart-line {
-  stroke-width: 2.75;
-  filter: drop-shadow(0 3px 5px color-mix(in srgb, var(--chart-color) 24%, transparent));
+  stroke-width: 1.9;
+  filter: drop-shadow(0 2px 3px color-mix(in srgb, var(--chart-color) 16%, transparent));
 }
 
 html[data-ui="compact"] .ui-chart-bar {
   border-radius: 0.5rem 0.5rem 0.22rem 0.22rem;
   opacity: 0.3;
-  filter: drop-shadow(0 5px 8px color-mix(in srgb, var(--chart-color) 16%, transparent));
+  filter: drop-shadow(0 3px 5px color-mix(in srgb, var(--chart-color) 10%, transparent));
 }
 
 html[data-ui="compact"] .ui-chart-bar[data-active="true"] {

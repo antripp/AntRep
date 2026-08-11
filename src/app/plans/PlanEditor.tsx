@@ -26,6 +26,9 @@ import {
   editableBlockCount,
   isCyclePlan,
   planSlots,
+  planDurationDays,
+  planSplitLengths,
+  planSplitRests,
   resolveSegments,
   slotCount,
   slotFields,
@@ -106,7 +109,9 @@ export function PlanEditor({
 
   const cycle = isCyclePlan(bundle.plan);
   const auto = bundle.plan.repeat_mode !== "custom";
-  const slots = planSlots(bundle.plan);
+  const slots = planSlots(bundle.plan, week);
+  const splitLengths = planSplitLengths(bundle.plan);
+  const splitRests = planSplitRests(bundle.plan);
   const dateImpacts = timelineBaseline
     ? [
         ...newTimelineImpacts({ before: timelineBaseline, after: bundle, sessions: loggedSessions }),
@@ -127,8 +132,9 @@ export function PlanEditor({
   useEffect(() => {
     setTimelineAcknowledged(false);
   }, [
-    bundle.plan.start_date,
-    bundle.plan.end_date,
+    bundle.plan.duration_days,
+    bundle.plan.split_lengths,
+    bundle.plan.split_rest_days,
     bundle.plan.schedule_mode,
     bundle.plan.cycle_length,
     bundle.plan.weeks,
@@ -176,6 +182,9 @@ export function PlanEditor({
       schedule_mode: mode,
       cycle_length: length,
       weeks: toCycle ? 1 : bundle.plan.weeks,
+      duration_days: toCycle ? 21 : Math.max(1, bundle.plan.weeks) * 7,
+      split_lengths: toCycle ? [Math.min(6, length)] : [7],
+      split_rest_days: toCycle ? [1] : [0],
     };
 
     const kept = toCycle ? bundle.days.filter((d) => d.week_index === 1) : bundle.days;
@@ -213,22 +222,35 @@ export function PlanEditor({
       onChange({ ...bundle, plan: { ...bundle.plan, repeat_mode: "auto" } });
       return;
     }
-    updatePlan({ repeat_mode: "custom" });
-    if (editableBlockCount(bundle.plan) < 2) setWeeks(2, "custom");
+    setWeeks(Math.max(2, editableBlockCount(bundle.plan)), "custom");
   }
 
-  /** Grow or shrink the cycle, dropping any day that falls off the end. */
+  /** Grow or shrink the selected split, dropping only days that fall off it. */
   function setCycleLength(count: number) {
-    const length = Math.max(2, Math.min(60, count));
-    const days = bundle.days.filter((d) => slotIndex(bundle.plan, d) <= length);
+    const length = Math.max(1, Math.min(60, count));
+    const lengths = [...splitLengths];
+    lengths[week - 1] = length;
+    const days = bundle.days.filter(
+      (d) => d.week_index !== week || slotIndex(bundle.plan, d) <= length,
+    );
     const keptIds = new Set(days.map((d) => d.id));
     onChange({
       ...bundle,
-      plan: { ...bundle.plan, cycle_length: length },
+      plan: {
+        ...bundle.plan,
+        cycle_length: Math.max(2, lengths[0] ?? length),
+        split_lengths: lengths,
+      },
       days,
       segments: bundle.segments.filter((s) => keptIds.has(s.plan_day_id)),
       exercises: bundle.exercises.filter((e) => keptIds.has(e.plan_day_id)),
     });
+  }
+
+  function setSplitRest(count: number) {
+    const rests = [...splitRests];
+    rests[week - 1] = Math.max(0, Math.min(30, count));
+    updatePlan({ split_rest_days: rests });
   }
 
   /**
@@ -241,6 +263,19 @@ export function PlanEditor({
    */
   function setWeeks(count: number, repeatMode: RepeatMode = bundle.plan.repeat_mode) {
     const weeks = Math.max(1, Math.min(52, count));
+    if (!cycle && repeatMode === "auto") {
+      const days = bundle.days.filter((d) => d.week_index === 1);
+      const keptIds = new Set(days.map((d) => d.id));
+      onChange({
+        ...bundle,
+        plan: { ...bundle.plan, weeks, duration_days: weeks * 7, repeat_mode: repeatMode },
+        days,
+        segments: bundle.segments.filter((s) => keptIds.has(s.plan_day_id)),
+        exercises: bundle.exercises.filter((e) => keptIds.has(e.plan_day_id)),
+      });
+      setWeek(1);
+      return;
+    }
     const days = bundle.days.filter((d) => d.week_index <= weeks);
     const segments = [...bundle.segments];
     const exercises = [...bundle.exercises];
@@ -283,7 +318,18 @@ export function PlanEditor({
     const keptIds = new Set(days.map((d) => d.id));
     onChange({
       ...bundle,
-      plan: { ...bundle.plan, weeks, repeat_mode: repeatMode },
+      plan: {
+        ...bundle.plan,
+        weeks,
+        duration_days: cycle ? bundle.plan.duration_days : weeks * 7,
+        repeat_mode: repeatMode,
+        split_lengths: cycle
+          ? Array.from({ length: weeks }, (_, index) => splitLengths[index] ?? splitLengths[0] ?? 6)
+          : [7],
+        split_rest_days: cycle
+          ? Array.from({ length: weeks }, (_, index) => splitRests[index] ?? splitRests[0] ?? 0)
+          : [0],
+      },
       days,
       segments: segments.filter((s) => keptIds.has(s.plan_day_id)),
       exercises: exercises.filter((e) => keptIds.has(e.plan_day_id)),
@@ -311,7 +357,7 @@ export function PlanEditor({
       {dateImpacts.length > 0 && (
         <Card className="mb-3" tint="var(--color-gold)">
           <p className="text-sm font-black text-ink">
-            This date change affects {dateImpacts.length} recorded session{dateImpacts.length === 1 ? "" : "s"}
+            This schedule change affects {dateImpacts.length} recorded session{dateImpacts.length === 1 ? "" : "s"}
           </p>
           <p className="mt-1 text-xs font-semibold leading-relaxed text-muted">
             Work logged on {dateImpacts.slice(0, 4).map(({ session }) => session.date).join(", ")}
@@ -327,6 +373,18 @@ export function PlanEditor({
       <Card className="mb-3 space-y-3">
         <Field label="Plan name">
           <TextField value={bundle.plan.name} onChange={(e) => updatePlan({ name: e.target.value })} />
+        </Field>
+        <Field
+          label="Generic plan notes"
+          hint="Part of the reusable outline. Coaches can add athlete-specific guidance after assignment."
+        >
+          <textarea
+            value={bundle.plan.notes}
+            placeholder="Purpose, general coaching intent, or rules that apply to everyone on this plan"
+            rows={3}
+            onChange={(event) => updatePlan({ notes: event.target.value })}
+            className="w-full resize-y rounded-xl border border-line bg-surface px-3 py-2 text-sm font-semibold text-ink outline-none placeholder:text-muted/70 focus:border-accent"
+          />
         </Field>
         <Field
           label="Repeats on"
@@ -347,45 +405,20 @@ export function PlanEditor({
         </Field>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Starts" hint={cycle ? "This day is day 1" : undefined}>
-            <TextField
-              type="date"
-              value={bundle.plan.start_date}
-              onChange={(e) => updatePlan({ start_date: e.target.value })}
-            />
-          </Field>
-          {/* Optional: an open-ended plan is still the common case, so this
-              stays empty until someone means it. */}
-          <Field
-            label="Ends"
-            hint={
-              bundle.plan.end_date
-                ? "Moves to past plans after this day"
-                : "Optional — runs until you stop it"
-            }
-          >
-            <div className="flex items-center gap-1.5">
-              <TextField
-                type="date"
-                value={bundle.plan.end_date ?? ""}
-                min={bundle.plan.start_date}
-                onChange={(e) => updatePlan({ end_date: e.target.value || null })}
-              />
-              {bundle.plan.end_date && (
-                <IconButton label="Clear end date" onClick={() => updatePlan({ end_date: null })}>
-                  <Icon.close className="h-4 w-4" />
-                </IconButton>
-              )}
-            </div>
-          </Field>
-          {cycle && (
-            <Field label="Days per split" hint="Starts over on the next day">
+          {cycle ? (
+            <Field label="Overall duration" hint="Dates are chosen when this plan is assigned">
               <NumberField
-                value={bundle.plan.cycle_length}
-                min={2}
-                max={60}
-                onChange={(v) => setCycleLength(v ?? 2)}
+                value={planDurationDays(bundle.plan)}
+                min={1}
+                max={730}
+                onChange={(v) => updatePlan({ duration_days: Math.max(1, v ?? 21) })}
               />
+              <p className="mt-1 text-[10px] font-bold text-muted">days</p>
+            </Field>
+          ) : (
+            <Field label="Overall duration" hint="Dates are chosen when this plan is assigned">
+              <NumberField value={bundle.plan.weeks} min={1} max={104} onChange={(v) => setWeeks(v ?? 4)} />
+              <p className="mt-1 text-[10px] font-bold text-muted">weeks · {planDurationDays(bundle.plan)} days</p>
             </Field>
           )}
         </div>
@@ -411,29 +444,28 @@ export function PlanEditor({
           />
         </Field>
 
-        {!auto && (
+        {!auto && cycle && (
           <Field
-            label={cycle ? "Splits in the plan" : "Week blocks"}
-            hint={
-              cycle
-                ? `${blockCount(bundle.plan) * (bundle.plan.cycle_length || 0)} days, then back to split 1`
-                : "Weeks cycle after the last one"
-            }
+            label="Splits in the baseline"
+            hint="Each new split starts as a copy of split 1 and can have more or fewer days"
           >
             <NumberField value={bundle.plan.weeks} min={2} max={52} onChange={(v) => setWeeks(v ?? 2)} />
           </Field>
         )}
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-bold text-ink">Active plan</p>
-            <p className="text-xs font-semibold text-muted">Drives Home and today's schedule</p>
+        {cycle && (
+          <div className="grid grid-cols-2 gap-3 rounded-2xl bg-inset p-3">
+            <Field label={`${blockLabel(bundle.plan, week)} days`} hint="Active days in this split">
+              <NumberField value={splitLengths[week - 1] ?? 6} min={1} max={60} onChange={(v) => setCycleLength(v ?? 1)} />
+            </Field>
+            <Field label="Rest after split" hint="0 keeps the next split back-to-back">
+              <NumberField value={splitRests[week - 1] ?? 0} min={0} max={30} onChange={(v) => setSplitRest(v ?? 0)} />
+            </Field>
           </div>
-          <Toggle
-            label="Active plan"
-            checked={bundle.plan.is_active}
-            onChange={(v) => updatePlan({ is_active: v })}
-          />
-        </div>
+        )}
+        <p className="text-xs font-semibold leading-relaxed text-muted">
+          This is a reusable template. Its calendar starts only when a coach assigns it to an athlete,
+          or when an athlete activates their own copy.
+        </p>
       </Card>
 
       {blockCount(bundle.plan) > 1 && (
@@ -452,7 +484,7 @@ export function PlanEditor({
         </div>
       )}
 
-      <SectionHeader title={cycle ? `${bundle.plan.cycle_length}-day split` : "Week schedule"} />
+      <SectionHeader title={cycle ? `${splitLengths[week - 1] ?? 1}-day ${blockLabel(bundle.plan, week).toLowerCase()}` : "Week schedule"} />
       <DayBoard
         label="Plan days"
         columns={slotDays.map((day, index) => {

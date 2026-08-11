@@ -28,6 +28,8 @@ import { plural } from "../../domain/text";
 import { Sparkline } from "../../ui/charts";
 import { Card, EmptyState, Icon, IconButton, IconTile, Pill, Segmented, StatTile } from "../../ui/kit";
 import { LogTable, useLogTableSummary } from "../shared/LogTable";
+import { MetricTrendGrid } from "./MetricTrendGrid";
+import type { ProgressPlanRun } from "../../domain/consistency";
 
 export function PlansTab({
   sessions,
@@ -39,6 +41,8 @@ export function PlansTab({
   onOpenPlan,
   onOpenSession,
   onOpenExercise,
+  weeklyGoal,
+  planRuns,
 }: {
   sessions: Session[];
   logs: SetLog[];
@@ -50,6 +54,8 @@ export function PlansTab({
   onOpenPlan: (id: string | null) => void;
   onOpenSession: (id: string) => void;
   onOpenExercise: (key: string) => void;
+  weeklyGoal: number;
+  planRuns: ProgressPlanRun[];
 }) {
   const [view, setView] = useState<"list" | "grid">("list");
 
@@ -74,11 +80,20 @@ export function PlansTab({
   return (
     <>
       {group && (
-        <PlanHeader
-          group={group}
-          summary={summary}
-          onBack={activeBundle ? null : () => onOpenPlan(null)}
-        />
+        <>
+          <PlanHeader
+            group={group}
+            summary={summary}
+            onBack={activeBundle ? null : () => onOpenPlan(null)}
+          />
+          <MetricTrendGrid
+            sessions={gridSessions}
+            logs={logs}
+            weeklyGoal={weeklyGoal}
+            title="Plan metric trends"
+            planRuns={planRuns.filter((run) => run.bundle.plan.id === group.id)}
+          />
+        </>
       )}
 
       <div className="mb-3">

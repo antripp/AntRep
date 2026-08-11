@@ -29,10 +29,10 @@ function sessionRows(sessions: Session[], logs: SetLog[]): Cell[][] {
       "Set",
       "Weight (kg)",
       "Reps",
-      "RPE",
+      "Effort (0–10)",
       "Distance (km)",
       "Duration",
-      "Volume (kg)",
+      "Total lifting work (kg)",
       "Note",
       ...extraKeys.map(headerLabel),
     ],
@@ -71,7 +71,7 @@ function sessionRows(sessions: Session[], logs: SetLog[]): Cell[][] {
 function summaryRows(sessions: Session[], logs: SetLog[]): Cell[][] {
   const stats = exerciseStats(sessions, logs);
   const rows: Cell[][] = [
-    ["Exercise", "Sessions", "Sets", "Best", "Best est. 1RM (kg)", "Total volume (kg)", "Last logged", "Trend"],
+    ["Exercise", "Sessions", "Sets", "Best", "Best estimated max lift (kg)", "Total lifting work (kg)", "Last logged", "Trend"],
   ];
   for (const stat of stats) {
     rows.push([
@@ -89,7 +89,7 @@ function summaryRows(sessions: Session[], logs: SetLog[]): Cell[][] {
 }
 
 function sessionSummaryRows(sessions: Session[], logs: SetLog[]): Cell[][] {
-  const rows: Cell[][] = [["Date", "Session", "Status", "Exercises", "Sets", "Volume (kg)", "Time"]];
+  const rows: Cell[][] = [["Date", "Session", "Status", "Exercises", "Sets", "Total lifting work (kg)", "Time"]];
   for (const session of [...sessions].sort((a, b) => a.date.localeCompare(b.date))) {
     const sessionLogs = logs.filter((l) => l.session_id === session.id && setHasData(l));
     const duration = elapsedSeconds(session);
@@ -166,7 +166,7 @@ export const IMPORT_COLUMNS = [
   "Set",
   "Weight (kg)",
   "Reps",
-  "RPE",
+  "Effort (0–10)",
   "Distance (km)",
   "Duration",
   "Note",
@@ -189,7 +189,7 @@ export const IMPORT_PROMPT = [
   "- Day is the workout name, e.g. 'Pull day'. Session is which repeat of that day",
   "  it was, counting from 1.",
   "- Weight in kg. Convert from lbs by dividing by 2.2046 if needed.",
-  "- RPE is 0-10, halves allowed. Leave blank if not recorded.",
+  "- Effort is scored from 0 to 10 (sometimes called RPE); halves are allowed. Leave blank if not recorded.",
   "- Duration as mm:ss. Distance in km.",
   "- Do not invent values. Leave a cell blank if the source doesn't say.",
   "- Output only the CSV, no commentary.",

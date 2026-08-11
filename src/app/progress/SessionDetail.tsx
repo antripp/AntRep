@@ -14,7 +14,9 @@ import { setHasData } from "../../domain/logging";
 import { typeIcon } from "../../domain/plan";
 import { formatDelta, formatSetCell } from "../../domain/planLog";
 import { buildSessionDetail, formatVolume, type SessionExerciseRow } from "../../domain/sessionTable";
+import { buildContextSignals } from "../../domain/progressionDetail";
 import { plural } from "../../domain/text";
+import { BarChart } from "../../ui/charts";
 import {
   Button,
   ActionDialog,
@@ -29,6 +31,8 @@ import {
   StatTile,
   TextField,
 } from "../../ui/kit";
+import { MetricTrendGrid } from "./MetricTrendGrid";
+import type { ProgressPlanRun } from "../../domain/consistency";
 
 export function SessionDetail({
   session,
@@ -42,6 +46,8 @@ export function SessionDetail({
   onClearSession,
   onClearExercise,
   onEditSession,
+  weeklyGoal,
+  planRuns,
 }: {
   session: Session;
   /** The whole scope — the "vs last time" column reads back through it. */
@@ -56,6 +62,8 @@ export function SessionDetail({
   onClearSession?: (session: Session) => Promise<void>;
   onClearExercise?: (session: Session, exerciseName: string) => Promise<void>;
   onEditSession?: (session: Session) => void;
+  weeklyGoal: number;
+  planRuns: ProgressPlanRun[];
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [clearTarget, setClearTarget] = useState<
@@ -71,6 +79,7 @@ export function SessionDetail({
     () => buildSessionDetail({ session, sessions, logs, bundle }),
     [session, sessions, logs, bundle],
   );
+  const signals = useMemo(() => buildContextSignals([session], logs), [session, logs]);
 
   const tint = DAY_TYPE_COLORS[session.day_type] ?? "var(--t-accent)";
   const allExpanded = expanded.size > 0 && expanded.size === detail.rows.length;
@@ -163,7 +172,7 @@ export function SessionDetail({
           {detail.totals.volume === 0 && detail.totals.distanceKm > 0 ? (
             <StatTile value={String(detail.totals.distanceKm)} label="km" />
           ) : (
-            <StatTile value={Math.round(detail.totals.volume).toLocaleString()} label="kg volume" />
+            <StatTile value={Math.round(detail.totals.volume).toLocaleString()} label="kg total work" />
           )}
           <StatTile
             value={detail.totals.durationSec > 0 ? formatDuration(detail.totals.durationSec) : "—"}
@@ -178,6 +187,48 @@ export function SessionDetail({
           </p>
         )}
       </Card>
+
+      <Card className="mb-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-wide text-muted">Session signals</p>
+            <p className="mt-1 text-sm font-black leading-snug text-ink">{signals.takeaway}</p>
+          </div>
+          <Pill tint={tint}>{signals.stability}/100 stable</Pill>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <StatTile value={signals.retention === null ? "—" : `${Math.round(signals.retention * 100)}%`} label="later-set strength kept" />
+          <StatTile value={signals.qualityShare === null ? "—" : `${Math.round(signals.qualityShare * 100)}%`} label="manageable sets" />
+          <StatTile value={signals.avgRpe === null ? "—" : `${signals.avgRpe.toFixed(1)}/10`} label="average effort" />
+          <StatTile value={signals.density === null ? "—" : signals.density.toFixed(2)} label="work rate" />
+        </div>
+        {signals.exerciseRetention.length > 1 && (
+          <div className="mt-4">
+            <p className="mb-2 text-[10px] font-black uppercase tracking-wide text-muted">Later-set output by exercise</p>
+            <BarChart
+              data={signals.exerciseRetention.map((entry) => ({
+                label: entry.name.split(" ")[0],
+                value: Math.round(entry.retention * 100),
+                detail: `${entry.name} · ${entry.sets} sets`,
+              }))}
+              color={tint}
+              height={118}
+              format={(value) => `${Math.round(value)}%`}
+              goal={90}
+              goalLabel="strong later sets"
+            />
+          </div>
+        )}
+      </Card>
+
+      <MetricTrendGrid
+        sessions={sessions}
+        logs={logs}
+        weeklyGoal={weeklyGoal}
+        today={parseDate(session.date)}
+        title="Metric trends into this session"
+        planRuns={planRuns}
+      />
 
       {session.athlete_notes && (
         <Card className="mb-3">
@@ -211,7 +262,7 @@ export function SessionDetail({
           <table className="w-full min-w-[520px] border-collapse text-left">
             <thead>
               <tr>
-                {["Exercise", "Best", "Sets", "Reps", "Volume"].map((label, i) => (
+                {["Exercise", "Best", "Sets", "Reps", "Total work"].map((label, i) => (
                   <th
                     key={label}
                     className={`border-b border-line px-3 py-2 text-[10px] font-black uppercase tracking-wide text-muted ${
@@ -465,7 +516,7 @@ function ExerciseRows({
                 <span className="text-[11px] font-bold text-muted">Set {set.set_index}</span>
                 {(set.rpe || extras.length > 0) && (
                   <span className="ml-1.5 text-[10px] font-semibold text-muted">
-                    {[set.rpe ? `RPE ${set.rpe}` : null, ...extras].filter(Boolean).join(" · ")}
+                    {[set.rpe ? `Effort ${set.rpe}/10` : null, ...extras].filter(Boolean).join(" · ")}
                   </span>
                 )}
               </td>

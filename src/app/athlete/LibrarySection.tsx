@@ -6,7 +6,7 @@
 import { useMemo, useState } from "react";
 import { api } from "../../data";
 import { makePreset } from "../../data/factories";
-import { LOG_TYPE_LABELS, type ExercisePreset } from "../../data/types";
+import { LOG_TYPE_LABELS, type ExercisePreset, type ProgressGoal } from "../../data/types";
 import { Button, Card, Field, Icon, NumberField, Pill, SectionHeader, Sheet, TextField } from "../../ui/kit";
 import { CustomFieldsEditor, LogTypePicker } from "../plans/LoggingFields";
 import { useWorkspace } from "../workspace";
@@ -14,6 +14,9 @@ import { ExerciseCategoryTabs, type ExerciseCategoryFilter } from "../shared/Exe
 import { LibraryExerciseSheet, MatchExerciseSheet } from "./ExerciseLibrarySheets";
 import { MuscleFigure } from "./MuscleFigure";
 import { useExerciseLibrary } from "./useExerciseLibrary";
+import type { ExerciseStat } from "../../domain/analytics";
+import { nameKey } from "../../domain/logging";
+import { GoalProgressCard, ProgressGoalEditor, type GoalContextOption } from "../progress/ProgressGoalEditor";
 
 export interface ExercisePresetLibraryProps {
   profile: ReturnType<typeof useWorkspace>["profile"];
@@ -21,14 +24,44 @@ export interface ExercisePresetLibraryProps {
   reload: () => Promise<void>;
   showToast: (message: string) => void;
   usage?: "athlete" | "coach";
+  goals?: ProgressGoal[];
+  stats?: ExerciseStat[];
+  athleteId?: string;
+  viewerId?: string;
+  onSaveGoal?: (goal: ProgressGoal) => Promise<void>;
+  onDeleteGoal?: (id: string) => Promise<void>;
 }
 
 export default function LibrarySection() {
   const workspace = useWorkspace();
-  return <ExercisePresetLibrary profile={workspace.profile} presets={workspace.presets} reload={workspace.reload} showToast={workspace.showToast} />;
+  return (
+    <ExercisePresetLibrary
+      profile={workspace.profile}
+      presets={workspace.presets}
+      reload={workspace.reload}
+      showToast={workspace.showToast}
+      goals={workspace.goals}
+      athleteId={workspace.profile.id}
+      viewerId={workspace.profile.id}
+      onSaveGoal={async (goal) => { await api.saveProgressGoal(goal); await workspace.reload(); }}
+      onDeleteGoal={async (id) => { await api.deleteProgressGoal(id); await workspace.reload(); }}
+    />
+  );
 }
 
-export function ExercisePresetLibrary({ profile, presets, reload, showToast, usage = "athlete" }: ExercisePresetLibraryProps) {
+export function ExercisePresetLibrary({
+  profile,
+  presets,
+  reload,
+  showToast,
+  usage = "athlete",
+  goals = [],
+  stats = [],
+  athleteId,
+  viewerId,
+  onSaveGoal,
+  onDeleteGoal,
+}: ExercisePresetLibraryProps) {
   const library = useExerciseLibrary();
   const [category, setCategory] = useState<ExerciseCategoryFilter>("all");
   const [editing, setEditing] = useState<ExercisePreset | null>(null);
@@ -90,6 +123,9 @@ export function ExercisePresetLibrary({ profile, presets, reload, showToast, usa
         ) : (
           <div className="divide-y divide-line">
             {sorted.map((preset) => (
+              (() => {
+                const goal = goals.find((item) => item.scope_type === "exercise" && item.scope_key === nameKey(preset.name) && item.status === "active");
+                return (
               <button
                 key={preset.id}
                 onClick={() => setEditing(preset)}
@@ -104,8 +140,11 @@ export function ExercisePresetLibrary({ profile, presets, reload, showToast, usa
                   </p>
                 </div>
                 {preset.is_favorite && <Pill tint="var(--t-accent)">Favourite</Pill>}
+                {goal && <Pill tint="var(--color-done)">{Math.round(goalProgress(goal, stats.find((stat) => stat.key === nameKey(preset.name))))}% to goal</Pill>}
                 <Icon.chevron className="h-4 w-4 text-muted" />
               </button>
+                );
+              })()
             ))}
           </div>
         )}
@@ -128,6 +167,12 @@ export function ExercisePresetLibrary({ profile, presets, reload, showToast, usa
               : undefined
           }
           usage={usage}
+          goal={goals.find((item) => item.scope_type === "exercise" && item.scope_key === nameKey(editing.name) && item.status === "active") ?? null}
+          stat={stats.find((item) => item.key === nameKey(editing.name))}
+          athleteId={athleteId}
+          viewerId={viewerId}
+          onSaveGoal={onSaveGoal}
+          onDeleteGoal={onDeleteGoal}
         />
       )}
     </>
@@ -141,6 +186,12 @@ function PresetSheet({
   onDelete,
   onClose,
   usage,
+  goal,
+  stat,
+  athleteId,
+  viewerId,
+  onSaveGoal,
+  onDeleteGoal,
 }: {
   preset: ExercisePreset;
   library: ReturnType<typeof useExerciseLibrary>["exercises"];
@@ -148,10 +199,17 @@ function PresetSheet({
   onDelete?: () => Promise<void>;
   onClose: () => void;
   usage: "athlete" | "coach";
+  goal: ProgressGoal | null;
+  stat?: ExerciseStat;
+  athleteId?: string;
+  viewerId?: string;
+  onSaveGoal?: (goal: ProgressGoal) => Promise<void>;
+  onDeleteGoal?: (id: string) => Promise<void>;
 }) {
   const [draft, setDraft] = useState(preset);
   const [matching, setMatching] = useState(false);
   const [showingReference, setShowingReference] = useState(false);
+  const [goalOpen, setGoalOpen] = useState(false);
   const set = (patch: Partial<ExercisePreset>) => setDraft((d) => ({ ...d, ...patch }));
   const linked = library.find((item) => item.wgerId === draft.wger_exercise_id);
 
@@ -229,6 +287,22 @@ function PresetSheet({
             {draft.is_favorite ? "Yes" : "No"}
           </button>
         </div>
+
+        {usage === "athlete" && athleteId && viewerId && onSaveGoal && (
+          <div>
+            {goal && (
+              <GoalProgressCard
+                goal={goal}
+                current={goalCurrent(goal, stat)}
+                color="var(--t-accent)"
+                onEdit={() => setGoalOpen(true)}
+              />
+            )}
+            {!goal && (
+              <Button full variant="secondary" onClick={() => setGoalOpen(true)}>Set a personal record goal</Button>
+            )}
+          </div>
+        )}
       </div>
 
       <Button full className="mt-4" disabled={!draft.name.trim()} onClick={() => onSave(draft)}>
@@ -259,6 +333,40 @@ function PresetSheet({
           onClose={() => setShowingReference(false)}
         />
       )}
+      {goalOpen && athleteId && viewerId && onSaveGoal && (() => {
+        const contexts: GoalContextOption[] = [{ scopeType: "exercise", key: nameKey(draft.name), label: draft.name || "Exercise" }];
+        return (
+          <ProgressGoalEditor
+            open
+            goal={goal}
+            athleteId={athleteId}
+            viewerId={viewerId}
+            contexts={contexts}
+            defaultContext={contexts[0]}
+            defaultTargetType={stat?.hasWeight === false ? "reps" : "weight"}
+            suggestedTargetValue={stat
+              ? stat.hasWeight
+                ? Math.max(1, Math.ceil(stat.best * 1.05 / 2.5) * 2.5)
+                : Math.max(1, Math.ceil(stat.bestReps * 1.1))
+              : undefined}
+            metric="exercise_pr"
+            onClose={() => setGoalOpen(false)}
+            onSave={onSaveGoal}
+            onDelete={onDeleteGoal}
+          />
+        );
+      })()}
     </Sheet>
   );
+}
+
+function goalCurrent(goal: ProgressGoal, stat?: ExerciseStat): number {
+  if (!stat) return 0;
+  if (goal.target_type === "reps") return stat.bestReps;
+  if (goal.target_type === "estimated_max") return stat.best1RM;
+  return stat.best;
+}
+
+function goalProgress(goal: ProgressGoal, stat?: ExerciseStat): number {
+  return goal.target_value > 0 ? Math.max(0, Math.min(100, goalCurrent(goal, stat) / goal.target_value * 100)) : 0;
 }

@@ -27,7 +27,14 @@ const TABS = [
   { key: "settings", label: "Settings", icon: Icon.settings },
 ];
 
-const emptyWorkspace: CoachWorkspace = { plans: [], presets: [], athletes: [], pendingInvites: [], assignments: [] };
+const emptyWorkspace: CoachWorkspace = {
+  plans: [],
+  presets: [],
+  athletes: [],
+  selfAthlete: null,
+  pendingInvites: [],
+  assignments: [],
+};
 
 export default function CoachApp({
   profile,
@@ -195,7 +202,7 @@ function CoachTraining() {
           ))}
         </div>
         {view === "home" && <HomeScreen onGoPlans={() => setView("plans")} />}
-        {view === "plans" && <PlansScreen onBatchLog={setBatchPlanId} />}
+        {view === "plans" && <PlansScreen onBatchLog={setBatchPlanId} context="coach-training" />}
         {view === "progress" && <ProgressScreen onBatchLog={setBatchPlanId} />}
       </Screen>
       <Toast message={toast} onDone={clearToast} />

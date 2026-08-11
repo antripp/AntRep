@@ -9,10 +9,25 @@ export function applyAssignmentOverrides(
   if (Object.keys(overrides).length === 0) return bundle;
   return {
     ...bundle,
-    exercises: bundle.exercises.map((exercise) => ({
-      ...exercise,
-      ...(overrides[exercise.id] ?? {}),
-    })),
+    exercises: bundle.exercises.map((exercise) => {
+      const override = overrides[exercise.id] ?? {};
+      const legacyAthleteNote = override.trainer_notes?.trim();
+      const workload = { ...override };
+      delete workload.trainer_notes;
+      return {
+        ...exercise,
+        ...workload,
+        // Older assignment customizers stored the athlete note by replacing
+        // the outline's generic note. Preserve that text additively while all
+        // new performance guidance lives in scoped assignment remarks.
+        trainer_notes: [
+          exercise.trainer_notes,
+          legacyAthleteNote && legacyAthleteNote !== exercise.trainer_notes
+            ? legacyAthleteNote
+            : "",
+        ].filter(Boolean).join("\n\n"),
+      };
+    }),
   };
 }
 
@@ -24,7 +39,6 @@ const WORKLOAD_KEYS: (keyof PlanExerciseOverride)[] = [
   "rpe_target",
   "set_details",
   "rep_scheme",
-  "trainer_notes",
   "is_mandatory",
 ];
 
