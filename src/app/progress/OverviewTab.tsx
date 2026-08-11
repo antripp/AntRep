@@ -155,11 +155,8 @@ export function OverviewTab({
         title="Training dimensions"
         action={<Pill tint="var(--t-accent)">{intelligence.trend}</Pill>}
       />
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <p className="text-[11px] font-semibold text-muted">{intelligence.analysedSessions} analysed sessions</p>
-        <span className="text-[10px] font-black uppercase tracking-wide text-muted">Tap a card to explore</span>
-      </div>
-      <div className="mb-5 grid grid-cols-2 gap-2.5 lg:grid-cols-3">
+      <p className="mb-2 text-[11px] font-semibold text-muted">{intelligence.analysedSessions} analysed sessions</p>
+      <div className="mb-5 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
         {intelligence.dimensions.map((dimension) => (
           <DimensionCard
             key={dimension.key}
@@ -424,32 +421,35 @@ export function OverviewTab({
 function DimensionCard({ dimension, onOpen, onInfo }: { dimension: TrainingDimension; onOpen: () => void; onInfo: () => void }) {
   const tint = DIMENSION_COLORS[dimension.key];
   return (
-    <div
-      className="relative overflow-hidden rounded-card border border-line bg-surface shadow-[0_1px_0_0_rgba(0,0,0,0.04)]"
-      style={{ background: `linear-gradient(145deg, color-mix(in srgb, ${tint} 10%, var(--t-surface)), var(--t-surface) 58%)` }}
-    >
-      <button type="button" onClick={onOpen} className="flex w-full items-center gap-2.5 p-3 pr-9 text-left active:scale-[0.99]">
+    <div className="ui-card relative overflow-hidden rounded-card border border-line bg-surface shadow-[0_1px_0_0_rgba(0,0,0,0.04)]">
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex min-h-[84px] w-full items-center gap-3 p-4 pr-14 text-left transition active:scale-[0.99]"
+      >
         <MetricScoreRing score={dimension.score} color={tint} size={52} />
         <div className="min-w-0 flex-1">
-          <p className="line-clamp-2 text-[12px] font-black leading-tight text-ink">{dimension.label}</p>
-          <p className="mt-1 truncate text-[10px] font-black uppercase tracking-wide" style={{ color: tint }}>{dimension.status}</p>
-          <p className="truncate text-[9px] font-bold text-muted">{dimension.confidence} confidence</p>
+          <p className="text-sm font-black leading-tight text-ink">{dimension.label}</p>
+          <Pill tint={tint} className="mt-1 max-w-full overflow-hidden text-ellipsis whitespace-nowrap">
+            {dimension.status}
+          </Pill>
+          <p className="mt-1 truncate text-[10px] font-bold text-muted">{dimension.confidence} confidence</p>
         </div>
       </button>
       <button
         type="button"
         onClick={onInfo}
         aria-label={`About ${dimension.label}`}
-        className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full border border-line bg-surface/80 text-[10px] font-black text-muted"
+        className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full border border-line bg-inset text-[10px] font-black text-muted transition active:scale-95 active:text-ink"
       >i</button>
       <button
         type="button"
         onClick={onOpen}
         aria-label={`Open ${dimension.label}`}
-        className="absolute bottom-2 right-2 flex h-6 w-6 items-center justify-center rounded-full border bg-surface/85 transition active:scale-95"
-        style={{ color: tint, borderColor: `color-mix(in srgb, ${tint} 40%, var(--t-line))` }}
+        className="absolute bottom-3 right-3 flex h-7 w-7 items-center justify-center rounded-full border border-line bg-inset transition active:scale-95"
+        style={{ color: tint }}
       >
-        <Icon.chevron className="h-3.5 w-3.5" />
+        <Icon.chevron className="h-4 w-4" />
       </button>
     </div>
   );
