@@ -442,6 +442,15 @@ function DimensionCard({ dimension, onOpen, onInfo }: { dimension: TrainingDimen
         aria-label={`About ${dimension.label}`}
         className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full border border-line bg-surface/80 text-[10px] font-black text-muted"
       >i</button>
+      <button
+        type="button"
+        onClick={onOpen}
+        aria-label={`Open ${dimension.label}`}
+        className="absolute bottom-2 right-2 flex h-6 w-6 items-center justify-center rounded-full border bg-surface/85 transition active:scale-95"
+        style={{ color: tint, borderColor: `color-mix(in srgb, ${tint} 40%, var(--t-line))` }}
+      >
+        <Icon.chevron className="h-3.5 w-3.5" />
+      </button>
     </div>
   );
 }

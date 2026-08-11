@@ -58,6 +58,16 @@ export function rpeMeaning(value: number | null | undefined): string {
   return MEANINGS[key] ?? (value > 10 ? MEANINGS["10"] : MEANINGS["0"]);
 }
 
+/** Plain-language feedback for people who do not use coaching terminology. */
+export function rpePlainMeaning(value: number | null | undefined): string {
+  if (value === null || value === undefined) return "Choose how hard the set felt";
+  if (value >= 9.5) return "Maximum — you could not do another clean rep";
+  if (value >= 8.5) return "Very hard — only 1 or 2 clean reps left";
+  if (value >= 7) return "Challenging — a few clean reps were still possible";
+  if (value >= 5) return "Manageable — you had plenty left";
+  return "Easy — little effort needed";
+}
+
 /** A one-word read on how hard the set was, for chips and summaries. */
 export function rpeTone(value: number | null | undefined): "easy" | "moderate" | "hard" | "maximal" | null {
   if (value === null || value === undefined) return null;

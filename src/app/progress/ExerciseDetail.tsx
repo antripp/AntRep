@@ -265,10 +265,10 @@ export function ExerciseDetail({
 
       <div className="overflow-hidden rounded-card border border-line bg-surface">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[420px] border-collapse text-left">
+          <table className="w-full min-w-[500px] border-collapse text-left">
             <thead>
               <tr>
-                {["Date", `Best ${unit}`, "Sets", "Reps", "Total work"].map((label, i) => (
+                {["Date", `Best ${unit}`, "Sets", "Reps", "RPE", "Total work"].map((label, i) => (
                   <th
                     key={label}
                     className={`border-b border-line px-3 py-2 text-[10px] font-black uppercase tracking-wide text-muted ${
@@ -323,6 +323,9 @@ export function ExerciseDetail({
                         {entry.reps || "—"}
                       </td>
                       <td className="whitespace-nowrap border-b border-line px-3 py-2 text-right text-[12px] font-bold text-muted">
+                        {entry.avgRpe === null ? "—" : `${Math.round(entry.avgRpe * 10) / 10}/10`}
+                      </td>
+                      <td className="whitespace-nowrap border-b border-line px-3 py-2 text-right text-[12px] font-bold text-muted">
                         {entry.volume > 0 ? `${Math.round(entry.volume).toLocaleString()} kg` : "—"}
                       </td>
                     </tr>
@@ -333,9 +336,6 @@ export function ExerciseDetail({
                         <tr key={set.id} style={{ background }}>
                           <td className="border-b border-line py-1.5 pl-8 pr-3">
                             <span className="text-[11px] font-bold text-muted">Set {set.set_index}</span>
-                            {set.rpe !== null && (
-                              <span className="ml-1.5 text-[10px] font-semibold text-muted">Effort {set.rpe}/10</span>
-                            )}
                           </td>
                           <td className="whitespace-nowrap border-b border-line px-3 py-1.5 text-right text-[11px] font-bold text-ink">
                             {cells.best}
@@ -343,6 +343,9 @@ export function ExerciseDetail({
                           <td className="border-b border-line px-3 py-1.5 text-right text-[11px] font-bold text-muted">—</td>
                           <td className="border-b border-line px-3 py-1.5 text-right text-[11px] font-bold text-ink">
                             {cells.reps}
+                          </td>
+                          <td className="whitespace-nowrap border-b border-line px-3 py-1.5 text-right text-[11px] font-bold text-muted">
+                            {set.rpe === null ? "—" : `${set.rpe}/10`}
                           </td>
                           <td className="whitespace-nowrap border-b border-line px-3 py-1.5 text-right text-[11px] font-bold text-muted">
                             {cells.volume}
@@ -353,7 +356,7 @@ export function ExerciseDetail({
 
                     {expanded && sets.length === 0 && (
                       <tr style={{ background }}>
-                        <td className="border-b border-line py-1.5 pl-8 pr-3 text-[11px] font-semibold text-muted" colSpan={5}>
+                        <td className="border-b border-line py-1.5 pl-8 pr-3 text-[11px] font-semibold text-muted" colSpan={6}>
                           Marked done, but no sets were recorded.
                         </td>
                       </tr>

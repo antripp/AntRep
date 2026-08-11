@@ -367,6 +367,7 @@ export function RpeSlider({
   color = "var(--t-accent)",
   target,
   compact = false,
+  onInfo,
 }: {
   value: number | null;
   onChange: (v: number | null) => void;
@@ -376,6 +377,7 @@ export function RpeSlider({
   /** The coach's prescribed effort, marked on the track. */
   target?: number | null;
   compact?: boolean;
+  onInfo?: () => void;
 }) {
   const MIN = 0;
   const MAX = 10;
@@ -389,12 +391,22 @@ export function RpeSlider({
   return (
     <div className="w-full">
       <div className="flex items-baseline gap-2">
-        <span className="text-[10px] font-black uppercase tracking-wide text-muted">Effort</span>
+        <span className="text-[10px] font-black uppercase tracking-wide text-muted">Effort (RPE)</span>
+        {onInfo && (
+          <button
+            type="button"
+            onClick={onInfo}
+            aria-label="What does RPE mean?"
+            className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-line text-[9px] font-black text-muted active:text-ink"
+          >
+            i
+          </button>
+        )}
         <span
-          className="text-[15px] font-black tabular-nums"
+          className="text-[13px] font-black tabular-nums"
           style={{ color: rated ? color : "var(--t-muted)" }}
         >
-          {rated ? shown : "—"}
+          {rated ? `${shown}/10` : "—"}
         </span>
         {!compact && (
           <span className="min-w-0 flex-1 truncate text-[11px] font-bold text-muted">{meaning}</span>
@@ -439,6 +451,11 @@ export function RpeSlider({
           className="rpe-range absolute inset-0 w-full cursor-pointer appearance-none bg-transparent"
           style={{ ["--rpe-thumb" as string]: rated ? color : "var(--t-muted)" }}
         />
+      </div>
+
+      <div className="mt-0.5 flex justify-between text-[9px] font-bold text-muted">
+        <span>Easy · plenty left</span>
+        <span>Maximum · nothing left</span>
       </div>
 
       {compact && <p className="mt-0.5 truncate text-[11px] font-bold text-muted">{meaning}</p>}

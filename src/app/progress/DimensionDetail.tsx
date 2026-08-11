@@ -145,14 +145,9 @@ export function DimensionDetail({
             {report.analysedSessions} sessions · {report.dimension.confidence.toLowerCase()} confidence
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowMethod(true)}
-          className="flex h-9 items-center gap-1 rounded-full border border-line bg-surface px-3 text-xs font-black text-ink"
-        >
-          <span className="flex h-4 w-4 items-center justify-center rounded-full border border-current text-[10px]">i</span>
-          Assessed
-        </button>
+        <IconButton label={`How ${report.dimension.label} is assessed`} onClick={() => setShowMethod(true)}>
+          <span className="flex h-4 w-4 items-center justify-center rounded-full border border-current text-[10px] font-black">i</span>
+        </IconButton>
         {dimensionKey === "strength" && athleteId && viewerId && onSaveGoal && (
           <button
             type="button"

@@ -14,9 +14,9 @@ import {
 } from "../../domain/logging";
 import { formatSetCell } from "../../domain/planLog";
 import { typeColor } from "../../domain/plan";
-import { rpeColor, rpeMeaning } from "../../domain/rpe";
+import { rpeColor, rpePlainMeaning } from "../../domain/rpe";
 import { plural } from "../../domain/text";
-import { ActionDialog, Icon, IconTile, NumberField, Pill, RpeSlider } from "../../ui/kit";
+import { ActionDialog, Icon, IconTile, NumberField, Pill, RpeSlider, Sheet } from "../../ui/kit";
 import { RestTimerBar, RestTimerPill, useRestTimer } from "./RestTimer";
 import { setsForExercise, useWorkspace } from "../workspace";
 import type { ResolvedSegment } from "../../domain/plan";
@@ -116,6 +116,7 @@ export function ExerciseLogCard({
   const [dirty, setDirty] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [showRpeInfo, setShowRpeInfo] = useState(false);
   const [showEffort, setShowEffort] = useState(
     () => exercise.rpe_target > 0 || stored.some((set) => set.rpe !== null),
   );
@@ -572,9 +573,10 @@ export function ExerciseLogCard({
                       <RpeSlider
                         value={set.rpe}
                         onChange={(v) => updateSet(index, { rpe: v })}
-                        meaning={rpeMeaning(set.rpe ?? target.rpe)}
+                        meaning={rpePlainMeaning(set.rpe ?? target.rpe)}
                         color={rpeColor(set.rpe)}
                         target={exercise.rpe_target || null}
+                        onInfo={() => setShowRpeInfo(true)}
                       />
                     </div>
                   )}
@@ -636,6 +638,29 @@ export function ExerciseLogCard({
         onClose={() => setConfirmClear(false)}
         actions={[{ label: "Clear logged sets", tone: "danger", onClick: clearLoggedSets }]}
       />
+
+      <Sheet open={showRpeInfo} onClose={() => setShowRpeInfo(false)} title="What does RPE mean?">
+        <p className="text-sm font-semibold leading-relaxed text-ink">
+          RPE means <strong>Rating of Perceived Exertion</strong>. In everyday language, it is simply how hard that set felt to you.
+        </p>
+        <div className="mt-4 space-y-2">
+          {[
+            ["5–6", "Manageable", "You could comfortably do several more clean reps."],
+            ["7–8", "Challenging", "You still had roughly 2–4 clean reps left."],
+            ["9", "Very hard", "You probably had only 1 clean rep left."],
+            ["10", "Maximum", "You could not complete another clean rep."],
+          ].map(([score, label, detail]) => (
+            <div key={score} className="grid grid-cols-[42px_82px_1fr] gap-2 rounded-2xl bg-inset px-3 py-2.5">
+              <span className="text-xs font-black text-accent">{score}</span>
+              <span className="text-xs font-black text-ink">{label}</span>
+              <span className="text-xs font-semibold leading-snug text-muted">{detail}</span>
+            </div>
+          ))}
+        </div>
+        <p className="mt-4 text-xs font-semibold leading-relaxed text-muted">
+          Record how the set actually felt—not how hard it was supposed to feel. Your answer can be subjective; consistency matters more than perfect precision.
+        </p>
+      </Sheet>
     </div>
   );
 }
