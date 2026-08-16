@@ -1,0 +1,108 @@
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    margin: 0;
+    padding: 16px;
+    font: 12px/1.45 Inter, -apple-system, system-ui, sans-serif;
+    color: #1a1a1a;
+    background: #fff;
+  }
+  @media (prefers-color-scheme: dark) {
+    body { color: #f1f1f1; background: #2c2c2c; }
+    .card { background: #383838; border-color: #4a4a4a; }
+    select, button.secondary { background: #383838; color: #f1f1f1; border-color: #4a4a4a; }
+  }
+  h1 { margin: 0 0 2px; font-size: 13px; font-weight: 700; }
+  p.sub { margin: 0 0 14px; opacity: .6; }
+  .card { border: 1px solid #e5e5e5; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
+  .card h2 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; opacity: .55; font-weight: 700; }
+  label { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+  select { flex: 1; padding: 5px 6px; border: 1px solid #e5e5e5; border-radius: 6px; font: inherit; }
+  .row { display: flex; gap: 8px; margin-top: 14px; }
+  button {
+    flex: 1; height: 34px; border-radius: 6px; border: 0;
+    font: 600 12px Inter, system-ui, sans-serif; cursor: pointer;
+    background: #0d99ff; color: #fff;
+  }
+  button.secondary { background: #f5f5f5; color: #333; border: 1px solid #e5e5e5; }
+  button:disabled { opacity: .5; cursor: default; }
+  #status { margin-top: 12px; min-height: 16px; opacity: .7; }
+  #status.error { color: #e5484d; opacity: 1; }
+</style>
+
+<h1>AntRep Design System</h1>
+<p class="sub">Generates variables, components and both end-to-end flows into this file.</p>
+
+<div class="card">
+  <h2>Generate</h2>
+  <label><input type="checkbox" id="p-foundations" checked> Foundations &amp; variables</label>
+  <label><input type="checkbox" id="p-components" checked> Component library</label>
+  <label><input type="checkbox" id="p-athlete" checked> Athlete flow</label>
+  <label><input type="checkbox" id="p-coach" checked> Coach flow</label>
+  <label><input type="checkbox" id="p-flowmap" checked> Flow map &amp; prototype links</label>
+</div>
+
+<div class="card">
+  <h2>Theme</h2>
+  <label>Palette <select id="palette"></select></label>
+  <label>Screens render in <select id="mode">
+    <option value="Light">Light</option>
+    <option value="Dark">Dark</option>
+  </select></label>
+</div>
+
+<div class="row">
+  <button class="secondary" id="cancel">Close</button>
+  <button id="run">Generate</button>
+</div>
+<div id="status"></div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+
+  parent.postMessage({ pluginMessage: { type: "ready" } }, "*");
+
+  onmessage = (event) => {
+    const msg = event.data.pluginMessage;
+    if (!msg) return;
+    if (msg.type === "palettes") {
+      $("palette").innerHTML = msg.items
+        .map((p) => `<option value="${p.key}"${p.key === msg.active ? " selected" : ""}>${p.family} · ${p.label}</option>`)
+        .join("");
+    }
+    if (msg.type === "status") {
+      $("status").className = "";
+      $("status").textContent = msg.text;
+    }
+    if (msg.type === "done") {
+      $("status").className = "";
+      $("status").textContent = msg.text;
+      $("run").disabled = false;
+    }
+    if (msg.type === "error") {
+      $("status").className = "error";
+      $("status").textContent = msg.text;
+      $("run").disabled = false;
+    }
+  };
+
+  $("run").onclick = () => {
+    $("run").disabled = true;
+    $("status").className = "";
+    $("status").textContent = "Working…";
+    parent.postMessage({ pluginMessage: {
+      type: "run",
+      palette: $("palette").value,
+      mode: $("mode").value,
+      parts: {
+        foundations: $("p-foundations").checked,
+        components: $("p-components").checked,
+        athlete: $("p-athlete").checked,
+        coach: $("p-coach").checked,
+        flowmap: $("p-flowmap").checked,
+      },
+    } }, "*");
+  };
+
+  $("cancel").onclick = () => parent.postMessage({ pluginMessage: { type: "cancel" } }, "*");
+</script>

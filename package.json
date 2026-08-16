@@ -9,7 +9,10 @@
     "preview": "vite preview",
     "seed:demo": "node scripts/seed-demo.mjs",
     "guide:pdf": "python3 scripts/build-guide-pdf.py",
-    "guide:shots": "node scripts/capture-guide-shots.mjs"
+    "guide:shots": "node scripts/capture-guide-shots.mjs",
+    "figma": "node scripts/build-figma-plugin.mjs && node figma/test/all.mjs",
+    "figma:build": "node scripts/build-figma-plugin.mjs",
+    "figma:test": "node figma/test/all.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
